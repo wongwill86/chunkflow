@@ -1,0 +1,6 @@
+--ignore-dir=.coverage
+--ignore-dir=.tox
+--ignore-dir=.pytest_cache
+--ignore-dir=venv_3
+--ignore-dir=dist
+--ignore-file=match:/\.coverage\..*/
