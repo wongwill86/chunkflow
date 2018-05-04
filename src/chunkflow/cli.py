@@ -43,109 +43,116 @@ def main():
     print('hi')
 
 
-@main.command()
-# @click.option('--input_image_source', type=str, help="input image source path, i.e. file://, gs://, or s3://.",
-#               required=True)
-# @click.option('--output_core_destination', type=str, help="destination path for the valid core output of the chunk,\
-#               prefixes supported: file://, gs://, s3://.",
-#               required=True)
-# @click.option('--output_overlap_destination', type=str, help="destination path of the overlap region of the chunk,\
-#               prefixes supported: file://, gs://, s3://.",
-#               required=True)
-# @click.option('--model_path', type=str, help="the path of convnet model", required=True)
-# @click.option('--net_path', type=str, help="the path of convnet weights", required=True)
-# @click.option('--gpu_ids', type=int, help="ids of cpus to use",
-#               cls=PythonLiteralOption, default=None)
-# @click.option('--framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
-#               default='pytorch')
-# @click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
-
-class BlockedIterator(object):
-    def check_valid(self, data_size, block_size, overlap):
-        stride = tuple((bs - o) for bs, o in zip(block_size, overlap))
-        num_blocks = tuple(floor(ds / st) for ds, st in zip(data_size, stride))
-        for blocks, b_size, d_size, olap in zip(num_blocks, block_size, data_size, overlap):
-            if blocks * b_size + olap != d_size:
-                raise ValueError('Data size %s divided by %s with overlap %s does not divide evenly' % (
-                    data_size, block_size, overlap))
-
-    def _recurse_iterator(self, bounds, block_size, overlap, dimension):
-        if dimension = len(bounds):
-            yield
+# @main.command()
+# # @click.option('--input_image_source', type=str, help="input image source path, i.e. file://, gs://, or s3://.",
+# #               required=True)
+# # @click.option('--output_core_destination', type=str, help="destination path for the valid core output of the chunk,\
+# #               prefixes supported: file://, gs://, s3://.",
+# #               required=True)
+# # @click.option('--output_overlap_destination', type=str, help="destination path of the overlap region of the chunk,\
+# #               prefixes supported: file://, gs://, s3://.",
+# #               required=True)
+# # @click.option('--model_path', type=str, help="the path of convnet model", required=True)
+# # @click.option('--net_path', type=str, help="the path of convnet weights", required=True)
+# # @click.option('--gpu_ids', type=int, help="ids of cpus to use",
+# #               cls=PythonLiteralOption, default=None)
+# # @click.option('--framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
+# #               default='pytorch')
+# # @click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
 
 
-    def blocked_iterator(self, bounds, block_size, overlap):
-        shape = tuple(s.stop - s.start for s in bounds)
-        self.check_valid(shape, block_size, overlap)
-        yield from self._recurse_iterator(shape, block_size, overlap)
+# class InferenceEngine(object):
+#     def __init__(self):
+#         self.input_patch_size
+#         pass
+#     def __call__(input_patch):
+#         pass
+
+# class IdentityEngine(InferenceEngine):
+#     def __init__(self, patch_size, model_path, net_path, patch_size):
+#         # init stuff here
+#         self.patch_size = patch_size
+
+#     def __call__(input_patch):
+#         return input_path * np.ones(patch_size)
+
+
+# from collections import deque
+
+# def get_face_neighbors(index):
+#     pass
+
+# def get_all_neighbors(index):
+#     pass
+
+# def blah(cloudvolume_local_core, cloudvolume_local_shell):
+#     deque = deque()
+#     dequeue.append((0,0,0))
+#     while len(deque):
+#         patch_index = deque.popleft()
+#         patch_slice = get_slices(block_index)
+#         core_slice = get_core_slice(patch_slice, overlap)
+#         shell_slices = get_core_slice(patch_slice, overlap)
+#         cloud_volume_local_core[core_slice] = patch_output[core_slice]
+#         for shell_slice in shell_slices:
+#             cloud_volume_local_shell[shell_slice] = patch_output[shell_slice]
+
+#         for face_neighbor in get_face_neighbors(patch_index):
+#             deque.append(face_neighbor)
+
+#         deque.append(
+
+
+# class BlockScheduler(object):
+#     def __init__(self, input_volume, output_core_volume, output_shell_volume, inference_engine, patch_engine):
+#         self.input_volume = input_volume
+#         self.output_core_volume = output_core_volume
+#         self.output_shell_volume = output_shell_volume
+#         self.inference_engine = input_engine
+#         self.patch_engine = patch_engine
+
+#     def validate_slices(self, slices):
+#         patch_size = self.inference_engine.patch_size
+#         raise ValueError("not multiple of patch and overlap")
+
+
+#     def execute(output_slice):
+#         self.validate_slices(output_slice)
+
+
+# def inference():
+#     """
+#     Run inference on a block
+#     """
+#     input_volume = CloudVolume(input_image_source)
+#     output_core_volume = CloudVolume(output_core_destination)
+#     output_shell_volume = CloudVolume(output_core_destination)
+#     inference_engine = InferenceFactory.get(framework, model_path, net_path, patch_size)
+#     patch_engine = PatchMasks.get(patch_type, patch_params) # TODO patch params
+
+#     block_engine = BlockScheduler(input_volume, output_core_volume, output_shell_volume, inference_engine, patch_engine)
+
+
+#     block_engine.execute(overlap, output_block_slice) # check to make sure matches with ng chunks and multiple of patch
 
 
 
-class InferenceEngine(object):
-    def __init__(self):
-        self.input_patch_size
-        pass
-    def __call__(input_patch):
-        pass
-
-class IdentityEngine(InferenceEngine):
-    def __init__(self, patch_size, model_path, net_path, patch_size):
-        # init stuff here
-        self.patch_size = patch_size
-
-    def __call__(input_patch):
-        return input_path * np.ones(patch_size)
-
-class BlockScheduler(Object):
-    def __init__(self, input_volume, output_core_volume, output_shell_volume, inference_engine, patch_engine):
-        self.input_volume = input_volume
-        self.output_core_volume = output_core_volume
-        self.output_shell_volume = output_shell_volume
-        self.inference_engine = input_engine
-        self.patch_engine = patch_engine
-
-    def validate_slices(self, slices):
-        patch_size = self.inference_engine.patch_size
-        raise ValueError("not multiple of patch and overlap")
-
-
-    def execute(output_slice):
-        self.validate_slices(output_slice)
-
-
-def inference():
-    """
-    Run inference on a block
-    """
-    input_volume = CloudVolume(input_image_source)
-    output_core_volume = CloudVolume(output_core_destination)
-    output_shell_volume = CloudVolume(output_core_destination)
-    inference_engine = InferenceFactory.get(framework, model_path, net_path, patch_size)
-    patch_engine = PatchMasks.get(patch_type, patch_params) # TODO patch params
-
-    block_engine = BlockScheduler(input_volume, output_core_volume, output_shell_volume, inference_engine, patch_engine)
-
-
-    block_engine.execute(overlap, output_block_slice) # check to make sure matches with ng chunks and multiple of patch
 
 
 
+#     print('inference')
 
 
-
-    print('inference')
-
-
-# @click.option('--input_overlap_sources', type=str, help="input source path(s) for overlap regions to blend \
-#               prefixes supported: file://, gs://, s3://. i.e. [\"gs://mybucket/left\", \"gs://mybucket/right\"]",
-#               required=True)
-# @click.option('--output_final_destination', type=str, help="final destination path of chunkflow blended inference,\
-#               prefixes supported: file://, gs://, s3://.",
-#               required=True)
-@main.command()
-def blend():
-    """
-    Blend chunk using overlap regions
-    """
-if __name__ == '__main__':
-    main()
+# # @click.option('--input_overlap_sources', type=str, help="input source path(s) for overlap regions to blend \
+# #               prefixes supported: file://, gs://, s3://. i.e. [\"gs://mybucket/left\", \"gs://mybucket/right\"]",
+# #               required=True)
+# # @click.option('--output_final_destination', type=str, help="final destination path of chunkflow blended inference,\
+# #               prefixes supported: file://, gs://, s3://.",
+# #               required=True)
+# @main.command()
+# def blend():
+#     """
+#     Blend chunk using overlap regions
+#     """
+# if __name__ == '__main__':
+#     main()
