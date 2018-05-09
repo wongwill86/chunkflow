@@ -1,5 +1,6 @@
-import numpy as np
 import numbers
+
+import numpy as np
 from numpy.lib.mixins import NDArrayOperatorsMixin
 
 OUT = 'out'

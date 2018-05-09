@@ -1,17 +1,21 @@
-import unittest
-import numpy as np
-from math import factorial, floor
-from chunkflow.global_offset_array import GlobalOffsetArray
 import operator
+import unittest
+from math import factorial
+from math import floor
 
+import numpy as np
 
-# create test arrays of increasing size AND dimensions i.e.
-# [0 1]
-# [[0 1 2]
-#  [3 4 5]]
-# [[[ 0  1  2  3]
-#   [ 4  5  6  7]
-#   [ 8  9 10 11]]
+from chunkflow.global_offset_array import GlobalOffsetArray
+
+"""
+create test arrays of increasing size AND dimensions i.e.
+[0 1]
+[[0 1 2]
+ [3 4 5]]
+[[[ 0  1  2  3]
+  [ 4  5  6  7]
+  [ 8  9 10 11]]
+"""
 TEST_ARRAYS = [np.arange(factorial(dimension + 1)).reshape(tuple(i for i in range(2, dimension + 2)))
                for dimension in range(1, 4)]
 STANDARD_OPERATORS = {

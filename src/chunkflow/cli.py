@@ -14,16 +14,19 @@ Why does this file exist, and why not put this in __main__?
 
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
-import click
 import ast
+
+import click
+
 
 # https://stackoverflow.com/a/47730333
 class PythonLiteralOption(click.Option):
     def type_cast_value(self, ctx, value):
         try:
             return ast.literal_eval(value)
-        except:
+        except Exception as e:
             raise click.BadParameter(value)
+
 
 @click.group()
 # @click.option('--output_chunk_start', type=int, help="the start coordinates of final output block",
