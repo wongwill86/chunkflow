@@ -5,17 +5,25 @@ from rx import Observable
 from rx.concurrency import ThreadPoolScheduler
 
 from chunkflow import iterators
+from threading import current_thread
+
 # from rx.subjects import Subject
 
 
 def run_inference(index):
-    print('\trunning inference at index %s' % (index,))
+    print('\t(%s) running inference at index %s' % (current_thread().name, index,))
 
 def blend(index):
-    print('---- blending at %s' % (index,))
+    print('(%s) ---- blending at %s' % (current_thread().name, index,))
 
 def create_blend(index):
     return lambda x: blend(index)
+
+def upload(index):
+    print('(%s) uploading %s' % (current_thread().name, index,))
+
+def clear(index):
+    print('(%s) clearing %s' % (current_thread().name, index,))
 
 def inference_done(index):
     return index in done
@@ -218,27 +226,93 @@ class InferenceEngineTest(unittest.TestCase):
         # overlap = (10, 10)
         done = set()
 
-        def inside_bounds(index):
-            return not any(idx < 0 or idx > 3 for idx in index)
+        def all_neighbors_done(index):
+            return all(neighbor in done for neighbor in iterators.get_all_neighbors(index))
 
-        (
-            Observable.from_iterable(iterators.bfs_iterator(start, (4, 4)))
+        def is_volume_edge(index):
+            return any(idx == 0 or idx == 2 for idx in index)
+
+        neighbor_stream = (
+            Observable.from_(iterators.bfs_iterator(start, (3, 3)))
             .do_action(run_inference)
             .do_action(lambda x: done.add(x))
+            .observe_on(pool_scheduler)
             .flat_map(iterators.get_all_neighbors)
-            .filter(inside_bounds)
-            .map(
-                lambda x: (
-                    x,
-                    iterators.get_all_neighbors(x)
-                    # Observable.from_list(get_all_neighbors(x)).filter(lambda x: x not in visited).filter(inside_bounds)
-                )
-            ).filter(
-                # lambda x: x[1].all(lambda y: False and print('hello %s, visited is %s' % (x, visited)) and y in visited)
-                lambda x: print("x %s and done %s, get %s" % (x, done, [
-                    neighbor in done for neighbor in x[1] if inside_bounds(neighbor)])) or all([
-                    neighbor in done for neighbor in x[1] if inside_bounds(neighbor)])
-            ).subscribe(lambda x: blend(x[0]))
         )
 
+        edge_stream, inner_stream = neighbor_stream.partition(is_volume_edge)
+
+        blah = (
+            inner_stream
+            .filter(all_neighbors_done)
+            .distinct()
+            .do_action(blend)
+            .do_action(upload)
+        )
+
+        boh = (
+            edge_stream.distinct().do_action(upload)
+        )
+
+        Observable.merge(blah, boh).subscribe(clear)
+        print('waiting to finish')
+        # time.sleep(2)
+        pool_scheduler.executor.shutdown()
+
+        # assert False
+
+    def test_ugh(self):
+        scheduler = ThreadPoolScheduler(optimal_thread_count)
+
+        # Observable.range(0, 100)\
+        #     .select_many(lambda x: Observable.start(lambda: x, scheduler=scheduler)) \
+        #     .map(lambda i: i * 100) \
+        #     .observe_on(scheduler) \
+        #     .map(intense_calculation) \
+        #     .subscribe(on_next=lambda i: print("PROCESS 3: {0} {1}".format(current_thread().name, i)),
+        #                on_error=lambda e: print(e))
+        (
+            Observable.range(1, 10)
+                .select_many(lambda i: Observable.start(lambda: i, scheduler=scheduler))
+
+                # .observe_on(Scheduler.event_loop)
+                # .observe_on(scheduler)
+                .do_action(intense_calculation)
+
+                .subscribe(
+                    on_next=lambda x: printthread("on_next: {}".format(x)),
+                    on_completed=lambda: printthread("on_completed"),
+                    on_error=lambda err: printthread("on_error: {}".format(err)))
+        )
+        # Observable.range(1, 20) \
+        #     .map(lambda s: intense_calculation(s)) \
+        #     .subscribe_on(pool_scheduler) \
+        #     .subscribe(on_next=lambda i: print("PROCESS 2: {0} {1}".format(current_thread().name, i)),
+        #             on_error=lambda e: print(e), on_completed=lambda: print("PROCESS 2 done!"))
+
+        # Create Process 3, which is infinite
+        # Observable.range(1, 100) \
+        #     .map(lambda i: i * 100) \
+        #     .observe_on(pool_scheduler) \
+        #     .map(lambda s: intense_calculation(s)) \
+        #     .subscribe(on_next=lambda i: print("PROCESS 3: {0} {1}".format(current_thread().name, i)),
+        #             on_error=lambda e: print(e))
+
+        printthread("\nAll done")
+        scheduler.executor.shutdown(wait=True)
+        # time.sleep(4)
+        # pool_scheduler.executor.shutdown()
         assert False
+
+import random
+import time
+from rx.core import Scheduler
+
+def printthread(val):
+    print("{}, \tthread: {}".format(val, current_thread().name))
+
+def intense_calculation(value):
+    printthread("calc {}".format(value))
+    time.sleep(.5)
+    return value
+
