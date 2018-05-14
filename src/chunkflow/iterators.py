@@ -7,10 +7,10 @@ all_neighbor_offsets = [-1, 0, 1]
 
 class Iterator(object):
     def get_all_neighbors(self, index):
-        raise NotImplementedError
+        raise NotImplemented
 
     def iterator(self, index):
-        raise NotImplementedError
+        raise NotImplemented
 
 
 class UnitIterator(Iterator):
@@ -43,6 +43,7 @@ class UnitBFSIterator(UnitIterator):
         visited = set((start,))
 
         def inside_bounds(index):
+            # print('index, is %s, dimensions is %s' % (index, dimensions))
             return not any(idx < 0 or idx >= dimension for idx, dimension in zip(index, dimensions))
 
         while(len(queue) > 0):
@@ -54,42 +55,5 @@ class UnitBFSIterator(UnitIterator):
             visited.update(neighbors)
             queue.extend(neighbors)
             yield internal_index
-
-
-class BlockedIterator(UnitBFSIterator):
-    def __init__(self, bounds, overlap, unit_iterator):
-        self.bounds = bounds
-        self.overlap = overlap
-        self.data_size = tuple(b.stop - b.start for b in self.bounds)
-        self.stride = tuple((b_size - olap) for b_size, olap in zip(self.block_size, self.overlap))
-        self.num_blocks = tuple(floor(d_size / s) for d_size, s in zip(self.data_size, self.stride))
-        self.iterator = unit_iterator
-
-    def get_all_neighbors(self, index):
-        raise NotImplementedError
-
-    def bfs_iterator(self, bounds, overlap=None):
-        """
-        Get an iterator that traverses the bounds given an iterator style
-        :param bounds: list or tuple of slices fore start and end positions of data to traverse
-        :param block_size: list or tuple of the step size to iterate using
-        :param iterator: unit step iterator function that fits the function signature:
-            func(start, dimensions).  see iterators.bfs_iterator
-        :param overlap: (optional) list or tuple of overlap size for each dimension
-        """
-        if not overlap:
-            overlap = tuple([0] * len(bounds))
-
-
-        for blocks, b_size, d_size, olap in zip(self.num_blocks, self.block_size, self.data_size, self.overlap):
-            if blocks * (b_size - olap) + olap != d_size:
-                raise ValueError('Data size %s divided by %s with overlap %s does not divide evenly' % (
-                    self.data_size, self.block_size, self.overlap))
-
-        def internal_index_to_slices(index):
-            return tuple(slice(b.start + idx * s, b.start + idx * s + b_size) for b, idx, s, b_size in zip(
-                self.bounds, self.index, self.stride, self.block_size))
-
-        start = tuple([0] * len(self.bounds))
-        for block in iterator(start, self.num_blocks):
-            yield internal_index_to_slices(block)
+            # print(queue)
+            # print(visited)

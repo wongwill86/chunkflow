@@ -56,7 +56,7 @@ setup(
     ],
     install_requires=[
         'click',
-        'cloud-volume',
+        'cloud-volume==0.21.0',
         'numpy',
         'rx'
         # eg: 'aspectlib==1.1.1', 'six>=1.7',
