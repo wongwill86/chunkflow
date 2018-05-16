@@ -5,10 +5,10 @@ class BlendEngine(object):
         """
         raise NotImplemented
 
-    def run_blend(self, input_datasource, bounds):
+    def run_blend(self, data):
         # self.source[bounds] *= self.factor
         # print('************** running identity Blend on %s' % (bounds,))
-        return self._process(input_datasource[bounds])
+        return self._process(data)
 
 
 class IdentityBlend(BlendEngine):

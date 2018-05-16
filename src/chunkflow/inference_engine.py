@@ -5,10 +5,20 @@ class InferenceEngine(object):
         """
         raise NotImplemented
 
-    def run_inference(self, input_datasource, bounds):
+    def run_inference(self, data):
         # self.source[bounds] *= self.factor
-        # print('-------------- running identity inference on %s' % (bounds,))
-        return self._process(input_datasource[bounds])
+        return self._process(data)
+
+    def inference_stream(slices, index, input_datasource, output_datasource)
+
+        return (
+            Observable.just(slices)
+            .do_action(lambda x: print('running inference on %s, %s' % (x, index)))
+            .map(input_datasource)
+            .map(self.run_inference)
+            .map(partial(output_datasource.__setitem__, slices))
+        )
+
 
 
 class IdentityInference(InferenceEngine):

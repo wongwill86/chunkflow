@@ -43,8 +43,6 @@ import numpy as np
 #     latch.wait()
 
 #     return disposable
-CombinedIndex = namedtuple('CombinedIndex', 'unit_index slices')
-IndexDatasource = namedtuple('IndexDatasource', 'combined_index datasource')
 
 class BlockProcessor(object):
     def __init__(self, inference_engine, blend_engine, datasource_manager, block_size, overlap=None,
@@ -80,29 +78,8 @@ class BlockProcessor(object):
                     data_size, self.block_size, self.overlap))
         return  num_blocks, data_size
 
-    def run_inference(self, combined_index):
-        print('---------------runnin inf on %s' % (combined_index,))
-        datasource = self.datasource_manager.get_datasource(combined_index.unit_index)
-        datasource[combined_index.slices] = self.inference_engine.run_inference(
-            self.datasource_manager.input_datasource, combined_index.slices)
-
-    def blend(self, combined_index):
-        print('****************runnin blend on %s' % (combined_index,))
-        datasource = self.datasource_manager.get_datasource(combined_index.unit_index)
-        datasource[combined_index.slices] = self.blend_engine.run_blend(datasource, combined_index.slices)
-
     def upload(self, combined_index, data=None):
         print('uploading %s data' % (combined_index,))
-
-    def blend_and_upload(self, combined_index):
-        def in_place_sum(aggregate, datasource):
-            aggregate += datasource[combined_index.slices]
-            return aggregate
-        (
-            Observable.from_(self.datasource_manager.repository.values())
-            .reduce(in_place_sum, seed=np.zeros(self.block_size))
-            .subscribe(lambda data: self.upload(combined_index, data))
-        )
 
     def process(self, bounds, start_slice=None):
         num_blocks, data_size = self._bounds_to_block_sizes(bounds)
@@ -113,16 +90,6 @@ class BlockProcessor(object):
 
         print('num_blocks %s(' % (num_blocks,))
         # TODO refactor
-        def run_edge_upload(index):
-            print('running edge_upload for %s' % (index,))
-            start = tuple([0] * len(bounds))
-        def run_inner_upload(index):
-            print('running innner_upload for %s' % (index,))
-            start = tuple([0] * len(bounds))
-        def run_clear(index):
-            print('running clear for %s current thread is %s' % (index, current_thread().name))
-            start = tuple([0] * len(bounds))
-
         if start_slice:
             start = self._slices_to_unit_index(start_slice)
         else:
@@ -134,45 +101,65 @@ class BlockProcessor(object):
         to_combined_index = lambda unit_index: CombinedIndex(unit_index=unit_index,
                                                              slices=index_to_slices_partial(unit_index))
 
+        datasource_observable = Observable.from_(self.datasource_manager.repository.values())
+
+
+        def inference_stream(index):
+            slices = index_to_slices_partial(index)
+            return (
+                Observable.just(slices)
+                .do_action(lambda x: print('running inference on %s, %s' % (x, index)))
+                .map(self.datasource_manager.input_datasource.__getitem__)
+                .map(self.inference_engine.run_inference)
+                .map(partial(self.datasource_manager.get_datasource(index).__setitem__, slices))
+                .map(lambda data: index)
+            )
+
+        def aggregate(slices, aggregate, datasource):
+            aggregate += datasource[slices]
+            return aggregate
+
+        def blend_stream(index):
+            slices = index_to_slices_partial(index)
+            return (
+                Observable.combine_latest(
+                    Observable.just(index).map(self.datasource_manager.get_datasource),
+                    datasource_observable.reduce(partial(aggregate, slices), seed=np.zeros(self.block_size)
+                    ).map(self.blend_engine.run_blend),
+                    lambda output_datasource, data: output_datasource.__setitem__(slices, data)
+                )
+                .map(lambda data: index)
+            )
+
+
         ready_index_stream = (
             Observable.from_(self.base_iterator.get(start, num_blocks))
-            .map(to_combined_index)
-            # save inference to 1 of 27 datasource choices
-            .do_action(self.run_inference)
-            .do_action(lambda combined_index: done.add(combined_index.unit_index))
-            .flat_map(lambda combined_index: self.base_iterator.get_all_neighbors(combined_index.unit_index,
-                                                                                  max=num_blocks))
-            # multithread
-            # .flat_map(lambda x: Observable.just(x, scheduler=scheduler))
-            .map(to_combined_index)
-            .filter(lambda combined_index: all(neighbor in done for neighbor in self.base_iterator.get_all_neighbors(
-                        combined_index.unit_index, max=num_blocks)))
-            .distinct()
-        )
-
-        datasource_stream = (
-
-        )
-
-        (
-            ready_index_stream
-            .flat_map(lambda combined_index:
+            .flat_map(lambda index:
                       (
-                          Observable.combine_latest(Observable.just(combined_index),
-                                                    Observable.from_(self.datasource_manager.repository.values()),
-                                                    lambda index, datasource: IndexDatasource(combined_index=index,
-                                                                                              datasource=datasource))
-                          .reduce(lambda aggregate, index_datasource:
-                                  aggregate + index_datasource.datasource[index_datasource.combined_index.slices],
-                                  seed=np.zeros(self.block_size))
-                          .map(lambda x: combined_index)
+                          Observable.just(index).zip(
+                              index_to_slices_partial(index),
+                              self.datasource_manager.input_datasource,
+                              self.datasource_manager.get_datasource(index)
+                          )
+                          .map(self.inference_engine.inference_stream)
+                          .map(lambda data: index)
                       )
-            )
-            # .subscribe(lambda data: self.upload(combined_index, data))
+
+            .flat_map(inference_stream)
+            .do_action(lambda index: done.add(index))
+            .flat_map(lambda index: self.base_iterator.get_all_neighbors(index, max=num_blocks))
+            # multithread
+            .flat_map(lambda x: Observable.just(x, scheduler=scheduler))
+            .filter(
+                lambda index:
+                all(neighbor in done for neighbor in self.base_iterator.get_all_neighbors(index, max=num_blocks)))
+            .distinct()
+            .flat_map(blend_stream)
+            # .flat_map(upload_stream)
             .subscribe(
                 self.upload,
-                on_error=lambda error: print('error error *&)*&*&)*\n\n') or traceback.print_exception(None, error,
-                                                                                                       error.__traceback__))
+                on_error=lambda error: print('error error *&)*&*&)*\n\n') or traceback.print_exception(
+                    None, error, error.__traceback__))
         )
 
         # def inner_upload(combined_index):
@@ -196,66 +183,3 @@ class BlockProcessor(object):
         # split between inner blocks and edge/corner blocks
         # edge_stream, inner_stream = neighbor_stream.partition(
         #     lambda index: any(idx == 0 or idx == max_index for idx, max_index in zip(index.unit_index, num_blocks)))
-
-
-        # edge_stream = (
-        #     edge_stream
-        #     .distinct()
-        #     # get inference from 1 of 27 datasources and upload appropriate edges to
-        #     # single master core and single master edge datasource
-        # )
-
-        # inner_stream = (
-        #     inner_stream
-        #     .filter(lambda combined_index: all(
-        #         neighbor in done for neighbor in self.base_iterator.get_all_neighbors(combined_index.unit_index)))
-        #     .distinct()
-        #     # get inference from all 27 datasource and blend into main at index
-        #     .do_action(self.blend)
-        #     # upload main at index to master core
-        # )
-
-        # Observable.merge(edge_stream, inner_stream).do_action(self.upload).subscribe(
-        #     run_clear,
-        #     on_error=lambda error: print('error error *&()*&*(&*(&)*(\n\n') or traceback.print_exception(None, error, error.__traceback__))
-
-        # to avoid numpy data copy
-
-        # def blend_and_upload(combined_index):
-        #     def in_place_sum(aggregate, datasource):
-        #         aggregate += datasource[combined_index.slices]
-        #         return aggregate
-        #     (
-        #         Observable.from_(self.datasource_manager.repository.values())
-        #         .scan(in_place_sum, seed=numpy.zeros(self.block_size))
-        #         .subscribe(run_clear)
-        #     )
-        #     print('****************runnin blend on %s' % (combined_index,))
-        #     datasource = self.datasource_manager.get_datasource(combined_index.unit_index)
-        #     datasource[combined_index.slices] = self.blend_engine.run_blend(datasource, combined_index.slices)
-
-        # ready_index_stream = (
-        #     neighbor_stream
-        #     .filter(lambda combined_index: all(neighbor in done for neighbor in self.base_iterator.get_all_neighbors(
-        #                 combined_index.unit_index, max=num_blocks)))
-        #     .distinct()
-        # )
-        # datasource_stream = (
-        #     Observable.from_(self.datasource_manager.repository.values())
-        # )
-        # def in_place_sum(aggregate, index_datasource):
-        #     combined_index, datasource = index_datasource
-        #     aggregate += datasource[combined_index.slices]
-        #     return aggregate
-
-        # (
-        #     Observable.combine_latest(ready_index_stream, datasource_stream,
-        #                               lambda combined_index, datasource: (combined_index, datasource))
-        #     .scan(in_place_sum, seed=np.zeros(self.block_size))
-        #     .map()
-        #     .subscribe(
-        #         run_clear,
-        #         on_error=lambda error: print('error error *&)*&*&)*\n\n') or traceback.print_exception(None, error,
-        #                                                                                                error.__traceback__))
-
-        # )
