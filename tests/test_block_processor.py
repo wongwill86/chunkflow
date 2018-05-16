@@ -11,6 +11,8 @@ from rx.internal import extensionmethod
 from chunkflow import iterators
 from chunkflow.blend_engine import IdentityBlend
 from chunkflow.block_processor import BlockProcessor
+from chunkflow.datasource_manager import DatasourceManager
+from chunkflow.datasource_manager import NumpyDatasource
 from chunkflow.inference_engine import IdentityInference
 
 
@@ -20,7 +22,7 @@ class BlockProcessorTest(unittest.TestCase):
         bounds = (slice(0, 70), slice(0, 70))
         block_size = (30, 30)
 
-        processor = BlockProcessor(None, None, block_size)
+        processor = BlockProcessor(None, None, None, block_size)
         with self.assertRaises(ValueError):
             processor.process(bounds)
 
@@ -29,28 +31,43 @@ class BlockProcessorTest(unittest.TestCase):
         block_size = (30, 30)
         overlap = (11, 11)
 
-        processor = BlockProcessor(None, None, block_size, overlap)
+        processor = BlockProcessor(None, None, None, block_size, overlap)
         with self.assertRaises(ValueError):
             processor.process(bounds)
 
-    def test_index_slices(self):
+    def test_index_to_slices(self):
         bounds = (slice(0, 70), slice(0, 70))
         block_size = (30, 30)
         overlap = (10, 10)
 
-        processor = BlockProcessor(None, None, block_size, overlap)
+        processor = BlockProcessor(None, None, None, block_size, overlap)
 
         self.assertEquals((slice(0, 30), slice(0, 30)), processor._unit_index_to_slices(bounds, (0, 0)))
         self.assertEquals((slice(0, 30), slice(20, 50)), processor._unit_index_to_slices(bounds, (0, 1)))
         self.assertEquals((slice(20, 50), slice(0, 30)), processor._unit_index_to_slices(bounds, (1, 0)))
-        self.assertEquals((slice(20, 50), slice(20, 50)),processor._unit_index_to_slices(bounds, (1, 1)))
+
+    def test_slices_to_index(self):
+        bounds = (slice(0, 70), slice(0, 70))
+        block_size = (30, 30)
+        overlap = (10, 10)
+
+        processor = BlockProcessor(None, None, None, block_size, overlap)
+
+        self.assertEquals(processor._slices_to_unit_index(bounds, (slice(0, 30), slice(0, 30))), (0, 0))
+        self.assertEquals(processor._slices_to_unit_index(bounds, (slice(0, 30), slice(20, 50))), (0, 1))
+        self.assertEquals(processor._slices_to_unit_index(bounds, (slice(20, 50), slice(0, 30))), (1, 0))
+        self.assertEquals(processor._slices_to_unit_index(bounds, (slice(20, 50), slice(20, 50))),(1, 1))
 
     def test_process(self):
         bounds = (slice(0, 70), slice(0, 70))
         block_size = (30, 30)
         overlap = (10, 10)
 
-        processor = BlockProcessor(IdentityInference('test', 'blah'), IdentityBlend('test', 'blah'), block_size, overlap)
+        import numpy as np
+        processor = BlockProcessor(IdentityInference(factor=1),
+                                   IdentityBlend(factor=1),
+                                   NumpyDatasource(np.ones((100, 100))),
+                                   block_size, overlap)
         processor.process(bounds)
 
         assert False
@@ -64,43 +81,49 @@ class BlockProcessorTest(unittest.TestCase):
     #     # block_size = (30, 30)
     #     # overlap = (10, 10)
     #     done = set()
+    #     iterator = iterators.UnitBFSIterator()
 
     #     def all_neighbors_done(index):
-    #         return all(neighbor in done for neighbor in iterators.get_all_neighbors(index))
+    #         return all(neighbor in done for neighbor in iterator.get_all_neighbors(index))
 
     #     def is_volume_edge(index):
     #         return any(idx == 0 or idx == 2 for idx in index)
 
+    #     inf = []
+    #     blend = []
     #     neighbor_stream = (
-    #         Observable.from_(iterators.bfs_iterator(start, (3, 3)))
-    #         .do_action(run_inference)
+    #         Observable.from_(iterator.iterator(start, (10, 10)))
+    #         .do_action(lambda x: inf.append(x) or print('---------running inf %s' % (x,)))
     #         .do_action(lambda x: done.add(x))
-    #         .flat_map(iterators.get_all_neighbors)
+    #         .flat_map(iterator.get_all_neighbors)
     #         .flat_map(lambda x: Observable.just(x, scheduler=scheduler))
     #     )
 
     #     edge_stream, inner_stream = neighbor_stream.partition(is_volume_edge)
 
     #     edge_stream = (
-    #         edge_stream.distinct().do_action(run_edge_upload)
+    #         edge_stream.distinct().do_action(lambda x: print('do edge %s' % (x,)))
     #     )
 
     #     inner_stream = (
     #         inner_stream
     #         .filter(all_neighbors_done)
     #         .distinct()
-    #         .do_action(run_blend)
-    #         .do_action(run_inner_upload)
+    #         .do_action(lambda x: blend.append(x) or print('***************blend %s' % (x,)))
+    #         .do_action(lambda x: print('inner upoload %s' % (x,)))
     #     )
 
-    #     Observable.merge(edge_stream, inner_stream).to_blocking().blocking_subscribe(run_clear)
+    #     # inner_stream.subscribe(print)
+    #     # print('----finished egde')
+    #     # edge_stream.subscribe(print)
+    #     Observable.merge(edge_stream, inner_stream).subscribe(lambda x: print('clearing %s' % (x,)))
     #     print('All done')
 
-    #     print('inference: len: %s \t %s' % (len(inference), inference))
+    #     print('inference: len: %s \t %s' % (len(inf), inf))
     #     print('blend: len: %s \t %s' % (len(blend), blend))
-    #     print('edge_upload: len: %s \t %s' % (len(edge_upload), edge_upload))
-    #     print('inner_upload: len: %s \t %s' % (len(inner_upload), inner_upload))
-    #     print('clear: len: %s \t %s' % (len(clear), clear))
+    #     # print('edge_upload: len: %s \t %s' % (len(edge_upload), edge_upload))
+    #     # print('inner_upload: len: %s \t %s' % (len(inner_upload), inner_upload))
+    #     # print('clear: len: %s \t %s' % (len(clear), clear))
     #     assert False
 
     # def test_blocked_iterator_no_overlap(self):

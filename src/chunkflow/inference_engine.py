@@ -1,16 +1,21 @@
 class InferenceEngine(object):
-    def __init__(self, source):
-        self.source = source
+    def _process(self, data):
+        """
+        returns processed data
+        """
+        raise NotImplemented
 
-    def run_inference(self, bounds):
-        pass
+    def run_inference(self, input_datasource, bounds):
+        # self.source[bounds] *= self.factor
+        # print('-------------- running identity inference on %s' % (bounds,))
+        return self._process(input_datasource[bounds])
 
 
 class IdentityInference(InferenceEngine):
     def __init__(self, factor=1, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self.factor = factor
 
-    def run_inference(self, bounds):
-        # self.source[bounds] *= self.factor
-        print('running identity inference on %s' % (bounds,))
+    def _process(self, data):
+        return data * self.factor
+
+
