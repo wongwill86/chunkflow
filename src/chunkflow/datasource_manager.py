@@ -1,5 +1,6 @@
 import numpy as np
 from chunkflow.iterators import UnitIterator
+from chunkflow.global_offset_array import GlobalOffsetArray
 
 def get_mod_index(index):
     return tuple(idx % 3 for idx in index)
@@ -33,4 +34,4 @@ class NumpyDatasource(DatasourceManager):
     # def __init__(self, input_datasource):
     #     super().__init__(input_datasource)
     def create(self, mod_index, *args, **kwargs):
-        return np.ones((100,100))
+        return GlobalOffsetArray(np.ones((100,100)), global_offset=(0,0))

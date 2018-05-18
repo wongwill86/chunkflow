@@ -11,6 +11,7 @@ from rx.internal import extensionmethod
 from chunkflow import iterators
 from chunkflow.blend_engine import IdentityBlend
 from chunkflow.block_processor import BlockProcessor
+from chunkflow.block_processor import Block
 from chunkflow.datasource_manager import DatasourceManager
 from chunkflow.datasource_manager import NumpyDatasource
 from chunkflow.inference_engine import IdentityInference
@@ -18,57 +19,59 @@ from chunkflow.inference_engine import IdentityInference
 
 class BlockProcessorTest(unittest.TestCase):
 
-    def test_init_wrong_size_no_overlap(self):
-        bounds = (slice(0, 70), slice(0, 70))
-        block_size = (30, 30)
+    # def test_init_wrong_size_no_overlap(self):
+    #     bounds = (slice(0, 70), slice(0, 70))
+    #     chunk_size = (30, 30)
 
-        processor = BlockProcessor(None, None, None, block_size)
-        with self.assertRaises(ValueError):
-            processor.process(bounds)
+    #     processor = BlockProcessor(None, None, None, chunk_size)
+    #     with self.assertRaises(ValueError):
+    #         processor.process(bounds)
 
-    def test_init_wrong_size_overlap(self):
-        bounds = (slice(0, 70), slice(0, 70))
-        block_size = (30, 30)
-        overlap = (11, 11)
+    # def test_init_wrong_size_overlap(self):
+    #     bounds = (slice(0, 70), slice(0, 70))
+    #     chunk_size = (30, 30)
+    #     overlap = (11, 11)
 
-        processor = BlockProcessor(None, None, None, block_size, overlap)
-        with self.assertRaises(ValueError):
-            processor.process(bounds)
+    #     processor = BlockProcessor(None, None, None, chunk_size, overlap)
+    #     with self.assertRaises(ValueError):
+    #         processor.process(bounds)
 
-    def test_index_to_slices(self):
-        bounds = (slice(0, 70), slice(0, 70))
-        block_size = (30, 30)
-        overlap = (10, 10)
+    # def test_index_to_slices(self):
+    #     bounds = (slice(0, 70), slice(0, 70))
+    #     chunk_size = (30, 30)
+    #     overlap = (10, 10)
 
-        processor = BlockProcessor(None, None, None, block_size, overlap)
+    #     processor = BlockProcessor(None, None, None, chunk_size, overlap)
 
-        self.assertEquals((slice(0, 30), slice(0, 30)), processor._unit_index_to_slices(bounds, (0, 0)))
-        self.assertEquals((slice(0, 30), slice(20, 50)), processor._unit_index_to_slices(bounds, (0, 1)))
-        self.assertEquals((slice(20, 50), slice(0, 30)), processor._unit_index_to_slices(bounds, (1, 0)))
+    #     self.assertEquals((slice(0, 30), slice(0, 30)), processor._unit_index_to_slices(bounds, (0, 0)))
+    #     self.assertEquals((slice(0, 30), slice(20, 50)), processor._unit_index_to_slices(bounds, (0, 1)))
+    #     self.assertEquals((slice(20, 50), slice(0, 30)), processor._unit_index_to_slices(bounds, (1, 0)))
 
-    def test_slices_to_index(self):
-        bounds = (slice(0, 70), slice(0, 70))
-        block_size = (30, 30)
-        overlap = (10, 10)
+    # def test_slices_to_index(self):
+    #     bounds = (slice(0, 70), slice(0, 70))
+    #     chunk_size = (30, 30)
+    #     overlap = (10, 10)
 
-        processor = BlockProcessor(None, None, None, block_size, overlap)
+    #     processor = BlockProcessor(None, None, None, chunk_size, overlap)
 
-        self.assertEquals(processor._slices_to_unit_index(bounds, (slice(0, 30), slice(0, 30))), (0, 0))
-        self.assertEquals(processor._slices_to_unit_index(bounds, (slice(0, 30), slice(20, 50))), (0, 1))
-        self.assertEquals(processor._slices_to_unit_index(bounds, (slice(20, 50), slice(0, 30))), (1, 0))
-        self.assertEquals(processor._slices_to_unit_index(bounds, (slice(20, 50), slice(20, 50))),(1, 1))
+    #     self.assertEquals(processor._slices_to_unit_index(bounds, (slice(0, 30), slice(0, 30))), (0, 0))
+    #     self.assertEquals(processor._slices_to_unit_index(bounds, (slice(0, 30), slice(20, 50))), (0, 1))
+    #     self.assertEquals(processor._slices_to_unit_index(bounds, (slice(20, 50), slice(0, 30))), (1, 0))
+    #     self.assertEquals(processor._slices_to_unit_index(bounds, (slice(20, 50), slice(20, 50))),(1, 1))
 
     def test_process(self):
         bounds = (slice(0, 70), slice(0, 70))
-        block_size = (30, 30)
+        chunk_size = (30, 30)
         overlap = (10, 10)
 
         import numpy as np
-        processor = BlockProcessor(IdentityInference(factor=1),
-                                   IdentityBlend(factor=1),
-                                   NumpyDatasource(np.ones((100, 100))),
-                                   block_size, overlap)
-        processor.process(bounds)
+        block = Block(bounds, chunk_size, overlap)
+
+        processor = BlockProcessor(
+            IdentityInference(factor=1), IdentityBlend(factor=1), NumpyDatasource(np.ones((100, 100)))
+        )
+
+        processor.process(block)
 
         assert False
 
@@ -78,7 +81,7 @@ class BlockProcessorTest(unittest.TestCase):
     #     start = (0, 0)
 
     #     # bounds = (slice(0, 70), slice(0, 70))
-    #     # block_size = (30, 30)
+    #     # chunk_size = (30, 30)
     #     # overlap = (10, 10)
     #     done = set()
     #     iterator = iterators.UnitBFSIterator()
@@ -145,8 +148,8 @@ class BlockProcessorTest(unittest.TestCase):
     #     print(expected_bfs_steps)
 
     #     bounds = (slice(0, 90), slice(0, 90))
-    #     block_size = (30, 30)
-    #     bfs = deque(iterators.blocked_iterator(bounds, block_size, iterators.bfs_iterator))
+    #     chunk_size = (30, 30)
+    #     bfs = deque(iterators.blocked_iterator(bounds, chunk_size, iterators.bfs_iterator))
     #     for expected_bfs in expected_bfs_steps:
     #         while len(expected_bfs) and len(bfs):
     #             step = bfs.popleft()
@@ -174,9 +177,9 @@ class BlockProcessorTest(unittest.TestCase):
     #     print(expected_bfs_steps)
 
     #     bounds = (slice(0, 70), slice(0, 70))
-    #     block_size = (30, 30)
+    #     chunk_size = (30, 30)
     #     overlap = (10, 10)
-    #     bfs = deque(iterators.blocked_iterator(bounds, block_size, iterators.bfs_iterator, overlap=overlap))
+    #     bfs = deque(iterators.blocked_iterator(bounds, chunk_size, iterators.bfs_iterator, overlap=overlap))
     #     for expected_bfs in expected_bfs_steps:
     #         while len(expected_bfs) and len(bfs):
     #             step = bfs.popleft()
