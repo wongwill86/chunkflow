@@ -63,18 +63,22 @@ class BlockProcessor(object):
 
         def run_inference(chunk):
             return (
-                Observable.just(chunk.data)
-                .do_action(lambda x: print('>>>>>> %s--%s %s running inference' % (
-                                   datetime.now(), current_thread().name, chunk.unit_index)))
-                .map(self.inference_engine.run_inference)
-                .map(self.blend_engine.run_blend)
-                .map(lambda _: chunk)
             )
 
         (
             Observable.from_(block.chunk_iterator(start))
             .do_action(lambda chunk: chunk.load_data(self.datasource_manager.input_datasource))
-            .flat_map(run_inference)
+            .flat_map(
+                lambda chunk:
+                (
+                    Observable.just(chunk.data)
+                    .do_action(lambda x: print('>>>>>> %s--%s %s running inference' % (
+                                    datetime.now(), current_thread().name, chunk.unit_index)))
+                    .map(self.inference_engine.run_inference)
+                    .map(self.blend_engine.run_blend)
+                    .map(lambda _: chunk)
+                )
+            )
             .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
             .do_action(block.checkpoint)
             .flat_map(block.get_all_neighbors)
