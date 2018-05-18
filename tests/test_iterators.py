@@ -27,8 +27,9 @@ class UnitIteratorTest(unittest.TestCase):
             (1, 0),
             (0, 0),
         ])
-        neighbors = iterator.get_all_neighbors((1, 1), max=(2,2))
+        neighbors = iterator.get_all_neighbors((1, 1), max=(2, 2))
         self.assertEquals(expected_neighbors, set(neighbors))
+
 
 class UnitBFSIteratorTest(unittest.TestCase):
 

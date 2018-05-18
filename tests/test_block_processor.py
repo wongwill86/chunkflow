@@ -1,63 +1,13 @@
-import multiprocessing
 import unittest
-from threading import current_thread
 
-from rx import Observable
-from rx import config
-from rx.concurrency import ThreadPoolScheduler
-from rx.core.blockingobservable import BlockingObservable
-from rx.internal import extensionmethod
-
-from chunkflow import iterators
 from chunkflow.blend_engine import IdentityBlend
 from chunkflow.block_processor import BlockProcessor
-from chunkflow.block_processor import Block
-from chunkflow.datasource_manager import DatasourceManager
 from chunkflow.datasource_manager import NumpyDatasource
 from chunkflow.inference_engine import IdentityInference
+from chunkflow.models import Block
 
 
 class BlockProcessorTest(unittest.TestCase):
-
-    # def test_init_wrong_size_no_overlap(self):
-    #     bounds = (slice(0, 70), slice(0, 70))
-    #     chunk_size = (30, 30)
-
-    #     processor = BlockProcessor(None, None, None, chunk_size)
-    #     with self.assertRaises(ValueError):
-    #         processor.process(bounds)
-
-    # def test_init_wrong_size_overlap(self):
-    #     bounds = (slice(0, 70), slice(0, 70))
-    #     chunk_size = (30, 30)
-    #     overlap = (11, 11)
-
-    #     processor = BlockProcessor(None, None, None, chunk_size, overlap)
-    #     with self.assertRaises(ValueError):
-    #         processor.process(bounds)
-
-    # def test_index_to_slices(self):
-    #     bounds = (slice(0, 70), slice(0, 70))
-    #     chunk_size = (30, 30)
-    #     overlap = (10, 10)
-
-    #     processor = BlockProcessor(None, None, None, chunk_size, overlap)
-
-    #     self.assertEquals((slice(0, 30), slice(0, 30)), processor._unit_index_to_slices(bounds, (0, 0)))
-    #     self.assertEquals((slice(0, 30), slice(20, 50)), processor._unit_index_to_slices(bounds, (0, 1)))
-    #     self.assertEquals((slice(20, 50), slice(0, 30)), processor._unit_index_to_slices(bounds, (1, 0)))
-
-    # def test_slices_to_index(self):
-    #     bounds = (slice(0, 70), slice(0, 70))
-    #     chunk_size = (30, 30)
-    #     overlap = (10, 10)
-
-    #     processor = BlockProcessor(None, None, None, chunk_size, overlap)
-
-    #     self.assertEquals(processor._slices_to_unit_index(bounds, (slice(0, 30), slice(0, 30))), (0, 0))
-    #     self.assertEquals(processor._slices_to_unit_index(bounds, (slice(0, 30), slice(20, 50))), (0, 1))
-    #     self.assertEquals(processor._slices_to_unit_index(bounds, (slice(20, 50), slice(0, 30))), (1, 0))
-    #     self.assertEquals(processor._slices_to_unit_index(bounds, (slice(20, 50), slice(20, 50))),(1, 1))
 
     def test_process(self):
         bounds = (slice(0, 70), slice(0, 70))
@@ -72,9 +22,6 @@ class BlockProcessorTest(unittest.TestCase):
         )
 
         processor.process(block)
-
-        assert False
-
     # def test_with_iter(self):
     #     optimal_thread_count = multiprocessing.cpu_count()
     #     scheduler = ThreadPoolScheduler(optimal_thread_count)

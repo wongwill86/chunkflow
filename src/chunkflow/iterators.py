@@ -1,12 +1,11 @@
 import itertools
 from collections import deque
-from math import floor
 
 all_neighbor_offsets = [-1, 0, 1]
 
 
 class Iterator(object):
-    def get_all_neighbors(self, index):
+    def get_all_neighbors(self, index, max=None):
         raise NotImplemented
 
     def iterator(self, index):
