@@ -1,6 +1,7 @@
 from datetime import datetime
 from functools import lru_cache
 from functools import partial
+import itertools
 from threading import current_thread
 
 from chunkflow.iterators import UnitBFSIterator
@@ -74,41 +75,64 @@ class Block(object):
             start_index = start
         yield from map(self.unit_index_to_chunk, self.base_iterator.get(start_index, self.num_chunks))
 
-    def edge_slices(self, chunk):
-        bounds_edges = tuple((s.start if s.start != b.start else slice(s.start, s.start + olap // 2),
-                                s.stop if s.stop != b.stop  else slice(b.stop - olap // 2, s.stop))
-                               for s, b, olap, c_size in zip(chunk.slices, self.bounds, self.overlap, self.chunk_size))
+    def overlap_slices(self, chunk):
+        """
+        Returns a list of overlap slices for the given chunk. If we have a block:
+            dimensions: 7x7
+            chunk_size: 3x3
+            overlap: 1x1
 
-        slices = []
-        edges = 0
+        This should result in 3x3 chunks. At the non corner chunks, we expect to return a single tuple of slices that
+        cover the overlap region, i.e.(not actual format, dictionary used for clarity)
+            x: slice(0, 1), y: slice(2, 5)
+
+        For corner chunks, this takes care of overlapping areas so they do not get counted twice.  For example, for the
+        chunk at position (0, 0), we should expect to return the tuples of slices:
+            x1: slice(0, 3), y1: slice(0, 1)
+            x2: slice(0, 1), y2: slice(1, 3)]
+
+        WARNING: not tested for dimensions > 3.
+
+        """
+        full_slices = chunk.slices
+        num_overlapped = 0
+        sub_slices = []
+
+        # Get overlapped slices
         for s, b, olap, c_size in zip(chunk.slices, self.bounds, self.overlap, self.chunk_size):
             if s.start == b.start:
-                slices.append(slice(s.start, s.start + olap // 2))
-                edges += 1
+                sub_slices.append(slice(s.start, s.start + olap))
+                num_overlapped += 1
             elif s.stop == b.stop:
-                slices.append(slice(s.stop - olap // 2, s.stop))
-                edges += 1
+                sub_slices.append(slice(s.stop - olap, s.stop))
+                num_overlapped += 1
             else:
-                slices.append(s)
+                sub_slices.append(s)
 
-        # bounds_overlap = tuple(
-        #     slice(s.start, s.start + olap // 2) if s.start == b.start else
-        #     slice(s.stop - olap // 2, s.stop) if s.stop == b.stop else
-        #     s
-        #     for s, b, olap, c_size in zip(chunk.slices, self.bounds, self.overlap, self.chunk_size))
+        # No common intersection of dimensions
+        if num_overlapped != len(chunk.unit_index):
+            return [tuple(sub_slices)]
 
+        # Add the first overlap slice which includes the intersection region between all dimensions
+        overlap_slices = [tuple(itertools.chain(full_slices[0:1], sub_slices[1:]))]
 
+        # Add the rest of the overlap slices which excludes the intersection region between all dimensions
+        remainders = tuple(map(lambda x: sub(*x), zip(full_slices, overlap_slices[0])))
+        for index in range(1, num_overlapped):
+            overlap_slices.append(tuple(itertools.chain(
+                sub_slices[0:index], [remainders[index]], sub_slices[index + 1:])))
 
-        print(edges)
+        return overlap_slices
 
-        return slices
-        # slices = []
-        # for bound in bounds_overlap:
-        #     if isinstance(bound, slice):
-        #         slices.append(bound)
-        #     else:
-        #         slices.append(slice(
+def sub(slice_left, slice_right):
+    start = 0
+    stop = 0
+    if slice_left.start == slice_right.start:
+        start = min(slice_left.stop, slice_right.stop)
+        stop = max(slice_left.stop, slice_right.stop)
+    if slice_left.stop == slice_right.stop:
+        start = min(slice_left.start, slice_right.start)
+        stop = max(slice_left.start, slice_right.start)
 
-
-        print(bounds_overlap)
-
+    # print('sub left %s, right %s, returning %s' % (slice_left, slice_right, slice(start, stop)))
+    return slice(start, stop)

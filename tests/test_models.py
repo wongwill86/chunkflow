@@ -62,21 +62,40 @@ class BlockTest(unittest.TestCase):
         self.assertEqual(1, len(chunks))
         self.assertEqual(start, chunks[0].unit_index)
 
-
-    def test_overlap_slices(self):
-        bounds = (slice(0, 5), slice(0, 5))
+    def test_overlap_slices_2d(self):
+        bounds = (slice(0, 7), slice(0, 7))
         chunk_size = (3, 3)
-        overlap = (2, 2)
+        overlap = (1, 1)
 
-        block = Block(bounds, chunk_size, overlap=overlap)#, base_iterator=IdentityIterator())
-        self.assertEquals((3,3), block.num_chunks)
+        block = Block(bounds, chunk_size, overlap=overlap)
+        self.assertEquals((3, 3), block.num_chunks)
 
         edge_slices = dict()
-        for chunk in block.chunk_iterator((0,0)):
-            edge_slices[chunk] = block.edge_slices(chunk)
-            print(chunk.unit_index)
+        for chunk in block.chunk_iterator((0, 0)):
+            edge_slices[chunk] = block.overlap_slices(chunk)
+            print('at %s, slices are %s' % (chunk.unit_index, chunk.slices))
             print(edge_slices[chunk])
+
+        assert False
 
         # for chunk, olap in edge_slices.items():
 
-        assert False
+
+    def test_overlap_slices_3d(self):
+        bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
+        chunk_size = (3, 3, 3)
+        overlap = (1, 1, 1)
+
+        block = Block(bounds, chunk_size, overlap=overlap)
+        self.assertEquals((3, 3, 3), block.num_chunks)
+
+        edge_slices = dict()
+        for chunk in block.chunk_iterator((0, 0, 0)):
+            edge_slices[chunk] = block.overlap_slices(chunk)
+            print('at %s, slices are %s' % (chunk.unit_index, chunk.slices))
+            print(edge_slices[chunk])
+
+        # assert False
+
+        # for chunk, olap in edge_slices.items():
+
