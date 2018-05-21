@@ -61,3 +61,22 @@ class BlockTest(unittest.TestCase):
         chunks = list(block.chunk_iterator(start))
         self.assertEqual(1, len(chunks))
         self.assertEqual(start, chunks[0].unit_index)
+
+
+    def test_overlap_slices(self):
+        bounds = (slice(0, 5), slice(0, 5))
+        chunk_size = (3, 3)
+        overlap = (2, 2)
+
+        block = Block(bounds, chunk_size, overlap=overlap)#, base_iterator=IdentityIterator())
+        self.assertEquals((3,3), block.num_chunks)
+
+        edge_slices = dict()
+        for chunk in block.chunk_iterator((0,0)):
+            edge_slices[chunk] = block.edge_slices(chunk)
+            print(chunk.unit_index)
+            print(edge_slices[chunk])
+
+        # for chunk, olap in edge_slices.items():
+
+        assert False

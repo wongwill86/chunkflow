@@ -57,7 +57,7 @@ class BlockProcessor(object):
 
         print('num_chunks %s' % (block.num_chunks,))
         if start_slice:
-            start = self.block._slices_to_unit_index(start_slice)
+            start = self.block.slices_to_unit_index(start_slice)
         else:
             start = tuple([0] * len(block.bounds))
 
