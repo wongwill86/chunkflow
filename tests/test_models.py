@@ -1,5 +1,8 @@
 import unittest
 
+import numpy as np
+
+from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.iterators import Iterator
 from chunkflow.models import Block
 
@@ -68,18 +71,22 @@ class BlockTest(unittest.TestCase):
         overlap = (1, 1)
 
         block = Block(bounds, chunk_size, overlap=overlap)
+
+        fake_data = GlobalOffsetArray(np.zeros(block.data_size), global_offset=(0,0))
+        print(fake_data)
         self.assertEquals((3, 3), block.num_chunks)
 
         edge_slices = dict()
         for chunk in block.chunk_iterator((0, 0)):
             edge_slices[chunk] = block.overlap_slices(chunk)
             print('at %s, slices are %s' % (chunk.unit_index, chunk.slices))
+            print(block.core_slice(chunk))
+            for edge_slice in edge_slices[chunk]:
+                fake_data[edge_slice] += 1
+            print(fake_data)
             print(edge_slices[chunk])
 
-        assert False
-
-        # for chunk, olap in edge_slices.items():
-
+        # assert False
 
     def test_overlap_slices_3d(self):
         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))

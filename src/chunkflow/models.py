@@ -23,6 +23,11 @@ class Chunk(object):
         print('^^^^^^ %s--%s %s dumping from chunk' % (datetime.now(), current_thread().name, self.unit_index))
         datasource[self.slices] = self.data
 
+    def __eq__(self, other):
+        return isinstance(other, Chunk) and self.unit_index == other.unit_index
+
+    def __hash__(self):
+        return hash(self.unit_index)
 
 class Block(object):
     def __init__(self, bounds, chunk_size, overlap=None, base_iterator=None):
@@ -37,8 +42,13 @@ class Block(object):
             base_iterator = UnitBFSIterator()
         self.base_iterator = base_iterator
 
+        self.data_size = tuple(b.stop - b.start for b in self.bounds)
         self.stride = tuple((c_size - olap) for c_size, olap in zip(self.chunk_size, self.overlap))
-        self.num_chunks = self._calc_num_chunks()
+        self.num_chunks = tuple((d_size - olap) // s for d_size, olap, s in zip(
+            self.data_size, self.overlap, self.stride))
+
+        self.verify_size()
+
         self.checkpoints = set()
         self.unit_index_to_chunk = partial(Chunk, self)
 
@@ -50,14 +60,11 @@ class Block(object):
         return tuple((slice.start - b.start) // s for b, s, slice in zip(self.bounds, self.stride, slices))
 
     @lru_cache(maxsize=None)
-    def _calc_num_chunks(self):
-        data_size = tuple(b.stop - b.start for b in self.bounds)
-        num_chunks = tuple((d_size - olap) // s for d_size, olap, s in zip(data_size, self.overlap, self.stride))
-        for chunks, c_size, d_size, olap in zip(num_chunks, self.chunk_size, data_size, self.overlap):
+    def verify_size(self):
+        for chunks, c_size, d_size, olap in zip(self.num_chunks, self.chunk_size, self.data_size, self.overlap):
             if chunks * (c_size - olap) + olap != d_size:
                 raise ValueError('Data size %s divided by %s with overlap %s does not divide evenly' % (
-                    data_size, self.chunk_size, self.overlap))
-        return num_chunks
+                    self.data_size, self.chunk_size, self.overlap))
 
     def checkpoint(self, chunk):
         self.checkpoints.add(chunk.unit_index)
@@ -74,6 +81,9 @@ class Block(object):
         else:
             start_index = start
         yield from map(self.unit_index_to_chunk, self.base_iterator.get(start_index, self.num_chunks))
+
+    def core_slice(self, chunk):
+        return tuple(slice(s.start + o, s.stop - o) for s, o in zip(chunk.slices, self.overlap))
 
     def overlap_slices(self, chunk):
         """
@@ -109,6 +119,10 @@ class Block(object):
             else:
                 sub_slices.append(s)
 
+        # not overlapping
+        if num_overlapped == 0:
+            return []
+
         # No common intersection of dimensions
         if num_overlapped != len(chunk.unit_index):
             return [tuple(sub_slices)]
@@ -125,6 +139,10 @@ class Block(object):
         return overlap_slices
 
 def sub(slice_left, slice_right):
+    """
+    Removes the right slice from the left. Does NOT account for slices on the right that do not touch the border of the
+    left
+    """
     start = 0
     stop = 0
     if slice_left.start == slice_right.start:
@@ -134,5 +152,4 @@ def sub(slice_left, slice_right):
         start = min(slice_left.start, slice_right.start)
         stop = max(slice_left.start, slice_right.start)
 
-    # print('sub left %s, right %s, returning %s' % (slice_left, slice_right, slice(start, stop)))
     return slice(start, stop)
