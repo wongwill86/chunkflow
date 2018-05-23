@@ -23,7 +23,7 @@ class BlockProcessorTest(unittest.TestCase):
 
         processor.process(block)
         print(block.num_chunks)
-        assert False
+        # assert False
     # def test_with_iter(self):
     #     optimal_thread_count = multiprocessing.cpu_count()
     #     scheduler = ThreadPoolScheduler(optimal_thread_count)

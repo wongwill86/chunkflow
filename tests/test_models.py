@@ -65,7 +65,7 @@ class BlockTest(unittest.TestCase):
         self.assertEqual(1, len(chunks))
         self.assertEqual(start, chunks[0].unit_index)
 
-    def test_overlap_slices_2d(self):
+    def test_get_slices_2d(self):
         bounds = (slice(0, 7), slice(0, 7))
         chunk_size = (3, 3)
         overlap = (1, 1)
@@ -76,17 +76,11 @@ class BlockTest(unittest.TestCase):
         print(fake_data)
         self.assertEquals((3, 3), block.num_chunks)
 
-        edge_slices = dict()
         for chunk in block.chunk_iterator((0, 0)):
-            edge_slices[chunk] = block.overlap_slices(chunk)
-            print('at %s, slices are %s' % (chunk.unit_index, chunk.slices))
-            print(block.core_slice(chunk))
-            for edge_slice in edge_slices[chunk]:
+            for edge_slice in block.overlap_slices(chunk):
                 fake_data[edge_slice] += 1
-            print(fake_data)
-            print(edge_slices[chunk])
-
-        # assert False
+            fake_data[block.core_slices(chunk)] += 1
+        self.assertEquals(np.product(fake_data.shape), fake_data.sum())
 
     def test_overlap_slices_3d(self):
         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
@@ -96,13 +90,9 @@ class BlockTest(unittest.TestCase):
         block = Block(bounds, chunk_size, overlap=overlap)
         self.assertEquals((3, 3, 3), block.num_chunks)
 
-        edge_slices = dict()
+        fake_data = GlobalOffsetArray(np.zeros(block.data_size), global_offset=(0, 0, 0))
         for chunk in block.chunk_iterator((0, 0, 0)):
-            edge_slices[chunk] = block.overlap_slices(chunk)
-            print('at %s, slices are %s' % (chunk.unit_index, chunk.slices))
-            print(edge_slices[chunk])
-
-        # assert False
-
-        # for chunk, olap in edge_slices.items():
-
+            for edge_slice in block.overlap_slices(chunk):
+                fake_data[edge_slice] += 1
+            fake_data[block.core_slices(chunk)] += 1
+        self.assertEquals(np.product(fake_data.shape), fake_data.sum())

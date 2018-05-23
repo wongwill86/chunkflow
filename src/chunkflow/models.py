@@ -82,17 +82,36 @@ class Block(object):
             start_index = start
         yield from map(self.unit_index_to_chunk, self.base_iterator.get(start_index, self.num_chunks))
 
-    def core_slice(self, chunk):
-        return tuple(slice(s.start + o, s.stop - o) for s, o in zip(chunk.slices, self.overlap))
+    def core_slices(self, chunk):
+        """
+        Returns the slices of the core of the block that belongs to the input chunk.
+        """
+        intersect_slices = []
+        for s, b, olap, idx in zip(chunk.slices, self.bounds, self.overlap, range(0, len(chunk.slices))):
+            if s.start == b.start:
+                intersect_slices.append(slice(s.start + olap, s.stop))
+            elif s.stop == b.stop:
+                intersect_slices.append(slice(s.start, s.stop - olap))
+            else:
+                intersect_slices.append(s)
+
+        return tuple(self.remove_chunk_overlap(chunk, intersect_slices))
 
     def overlap_slices(self, chunk):
         """
-        Returns a list of overlap slices for the given chunk. If we have a block:
+        Returns a list of slices for the overlap region of the block that belongs to the input chunk.
+
+        If we have a block:
             dimensions: 7x7
             chunk_size: 3x3
             overlap: 1x1
 
-        This should result in 3x3 chunks. At the non corner chunks, we expect to return a single tuple of slices that
+        This should result in 3x3 chunks. When this function is called with each of these chunks, slices that cover the
+        overlap region are returned with no duplicates. Additionally, overlaps across chunks are excluded in a push
+        forward fashion, i.e. the slices do not include the portion of the data that had should be accounted for by the
+        previous chunk ( previous meaning lesser index ).
+
+        At the non corner chunks, we expect to return a single tuple of slices that
         cover the overlap region, i.e.(not actual format, dictionary used for clarity)
             x: slice(0, 1), y: slice(2, 5)
 
@@ -106,37 +125,48 @@ class Block(object):
         """
         full_slices = chunk.slices
         num_overlapped = 0
-        sub_slices = []
 
-        # Get overlapped slices
-        for s, b, olap, c_size in zip(chunk.slices, self.bounds, self.overlap, self.chunk_size):
+        # determine the common intersect slices within the chunk
+        border_dimensions = set()
+        intersect_slices = []
+        for s, b, olap, idx in zip(full_slices, self.bounds, self.overlap, range(0, len(full_slices))):
             if s.start == b.start:
-                sub_slices.append(slice(s.start, s.start + olap))
-                num_overlapped += 1
+                intersect_slices.append(slice(s.start, s.start + olap))
+                border_dimensions.add(idx)
             elif s.stop == b.stop:
-                sub_slices.append(slice(s.stop - olap, s.stop))
-                num_overlapped += 1
+                intersect_slices.append(slice(s.stop - olap, s.stop))
+                border_dimensions.add(idx)
             else:
-                sub_slices.append(s)
+                intersect_slices.append(s)
 
-        # not overlapping
-        if num_overlapped == 0:
-            return []
+        # determine the remainder slice that exists with the intersect slices removed
+        remainders = tuple(map(lambda x: sub(*x), zip(full_slices, intersect_slices)))
 
-        # No common intersection of dimensions
-        if num_overlapped != len(chunk.unit_index):
-            return [tuple(sub_slices)]
+        # generate final list of slices with common intersection removed
+        overlapped_slices = []
+        processed_dimensions = set()
+        for border_dimension in border_dimensions:
+            new_slices = list(full_slices)
+            overlapped_slices.append(tuple(
+                intersect_slices[idx] if idx == border_dimension else
+                remainders[idx] if idx in processed_dimensions else
+                full_slices[idx]
+                for idx in range(0, len(full_slices))
+            ))
 
-        # Add the first overlap slice which includes the intersection region between all dimensions
-        overlap_slices = [tuple(itertools.chain(full_slices[0:1], sub_slices[1:]))]
+            processed_dimensions.add(border_dimension)
 
-        # Add the rest of the overlap slices which excludes the intersection region between all dimensions
-        remainders = tuple(map(lambda x: sub(*x), zip(full_slices, overlap_slices[0])))
-        for index in range(1, num_overlapped):
-            overlap_slices.append(tuple(itertools.chain(
-                sub_slices[0:index], [remainders[index]], sub_slices[index + 1:])))
+        return list(map(partial(self.remove_chunk_overlap, chunk), overlapped_slices))
 
-        return overlap_slices
+    def remove_chunk_overlap(self, chunk, overlapped_slices):
+        """
+        remove chunk overlap for slices that
+        """
+        return [
+            slice(o_slice.start + olap, o_slice.stop) if o_slice.start == s.start and o_slice.start != b.start else
+            o_slice
+            for s, o_slice, olap, b in zip(chunk.slices, overlapped_slices, self.overlap, self.bounds)
+        ]
 
 def sub(slice_left, slice_right):
     """
