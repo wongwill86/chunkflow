@@ -49,7 +49,7 @@ class BlockProcessor(object):
         self.inference_engine = inference_engine
         self.blend_engine = blend_engine
         self.datasource_manager = datasource_manager
-        self.datasource_stream = Observable.from_(self.datasource_manager.repository.values())
+        self.datasource_stream = Observable.from_(self.datasource_manager.repository.repository.values())
 
     def process(self, block, start_slice=None):
         # optimal_thread_count = multiprocessing.cpu_count()
@@ -61,13 +61,10 @@ class BlockProcessor(object):
         else:
             start = tuple([0] * len(block.bounds))
 
-        def run_inference(chunk):
-            return (
-            )
-
         (
             Observable.from_(block.chunk_iterator(start))
-            .do_action(lambda chunk: chunk.load_data(self.datasource_manager.input_datasource))
+            # .do_action(lambda chunk: chunk.load_data(self.datasource_manager.input_datasource))
+            .do_action(self.datasource_manager.load_chunk)
             .flat_map(
                 lambda chunk:
                 (
@@ -75,17 +72,20 @@ class BlockProcessor(object):
                     .do_action(lambda x: print('>>>>>> %s--%s %s running inference' % (
                                     datetime.now(), current_thread().name, chunk.unit_index)))
                     .map(self.inference_engine.run_inference)
+                    #probably need to wrap in global offset array here
                     .map(self.blend_engine.run_blend)
-                    .map(lambda _: chunk)
+                    .map(chunk.load_data)
                 )
             )
-            .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
+            .do_action(self.datasource_manager.dump_chunk)
+            # .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
             .do_action(block.checkpoint)
             .flat_map(block.get_all_neighbors)
             .filter(block.all_neighbors_checkpointed)
             .distinct()
             # put on new thread
             # .flat_map(lambda neighbor_index: Observable.from_((neighbor_index,), scheduler=scheduler))
+            # sum the different datasources together
             .flat_map(
                 lambda chunk:
                 (
@@ -95,12 +95,21 @@ class BlockProcessor(object):
                     .map(lambda _: chunk)
                 )
             )
-            .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
+            .flat_map(lambda chunk:
+                      Observable.merge(
+                          Observable.just(chunk).flat_map(block.overlap_slices).do_action(
+                              partial(self.datasource_manager.upload_overlap, chunk)),
+                          Observable.just(chunk).map(block.core_slices).do_action(
+                              partial(self.datasource_manager.upload_core, chunk))
+                      )
+                      )
+            # .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
             .subscribe(
-                self.upload,
+                #self.datasource_manager.upload(sub_chunk)
+                print,
                 on_error=lambda error: print('error error *&)*&*&)*\n\n') or traceback.print_exception(
                     None, error, error.__traceback__))
         )
 
-    def upload(self, chunk, data=None):
+    def upload_chunk(self, chunk, data=None):
         print('****** %s--%s %s uploading data' % (datetime.now(), current_thread().name, chunk.unit_index,))

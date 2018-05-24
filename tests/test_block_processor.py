@@ -2,6 +2,7 @@ import unittest
 
 from chunkflow.blend_engine import IdentityBlend
 from chunkflow.block_processor import BlockProcessor
+from chunkflow.datasource_manager import DatasourceManager
 from chunkflow.datasource_manager import NumpyDatasource
 from chunkflow.inference_engine import IdentityInference
 from chunkflow.models import Block
@@ -17,12 +18,15 @@ class BlockProcessorTest(unittest.TestCase):
         import numpy as np
         block = Block(bounds, chunk_size, overlap)
 
+        fake_data = np.zeros(block.data_size)
+        datasource_manager = DatasourceManager(NumpyDatasource(fake_data))
         processor = BlockProcessor(
-            IdentityInference(factor=1), IdentityBlend(factor=1), NumpyDatasource(np.ones((100, 100)))
+            IdentityInference(factor=1), IdentityBlend(factor=1), datasource_manager
         )
 
         processor.process(block)
-        print(block.num_chunks)
+        print(datasource_manager.repository.output_datasource_core.sum())
+        print(datasource_manager.repository.output_datasource_overlap.sum())
         # assert False
     # def test_with_iter(self):
     #     optimal_thread_count = multiprocessing.cpu_count()

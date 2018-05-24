@@ -73,7 +73,6 @@ class BlockTest(unittest.TestCase):
         block = Block(bounds, chunk_size, overlap=overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.data_size), global_offset=(0,0))
-        print(fake_data)
         self.assertEquals((3, 3), block.num_chunks)
 
         for chunk in block.chunk_iterator((0, 0)):
@@ -81,6 +80,8 @@ class BlockTest(unittest.TestCase):
                 fake_data[edge_slice] += 1
             fake_data[block.core_slices(chunk)] += 1
         self.assertEquals(np.product(fake_data.shape), fake_data.sum())
+        print(fake_data)
+        assert False
 
     def test_overlap_slices_3d(self):
         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))

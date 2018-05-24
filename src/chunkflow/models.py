@@ -15,13 +15,23 @@ class Chunk(object):
         self.size = block.chunk_size
         self.overlap = block.overlap
 
-    def load_data(self, datasource):
+    def load_data(self, datasource, slices=None):
         print('VVVVVV %s--%s %s loading into chunk' % (datetime.now(), current_thread().name, self.unit_index))
-        self.data = datasource[self.slices]
 
-    def dump_data(self, datasource):
+        if slices is None:
+            slices = self.slices
+        if self.data is None:
+            self.data = datasource[slices]
+        else:
+            self.data[slices] = datasource[slices]
+        return self
+
+    def dump_data(self, datasource, slices=None):
         print('^^^^^^ %s--%s %s dumping from chunk' % (datetime.now(), current_thread().name, self.unit_index))
-        datasource[self.slices] = self.data
+        if slices is None:
+            slices = self.slices
+        datasource[slices] = self.data[slices]
+        return self
 
     def __eq__(self, other):
         return isinstance(other, Chunk) and self.unit_index == other.unit_index
@@ -162,11 +172,11 @@ class Block(object):
         """
         remove chunk overlap for slices that
         """
-        return [
+        return tuple(
             slice(o_slice.start + olap, o_slice.stop) if o_slice.start == s.start and o_slice.start != b.start else
             o_slice
             for s, o_slice, olap, b in zip(chunk.slices, overlapped_slices, self.overlap, self.bounds)
-        ]
+        )
 
 def sub(slice_left, slice_right):
     """

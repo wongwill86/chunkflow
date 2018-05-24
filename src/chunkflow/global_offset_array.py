@@ -21,7 +21,8 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         if global_offset is None:
             global_offset = tuple([0] * input_array.ndim)
 
-        obj.global_offset = tuple(global_offset)
+        if input_array.ndim > 0:
+            obj.global_offset = tuple(global_offset)
         return obj
 
     def __array_finalize__(self, obj):
@@ -98,7 +99,10 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         Overwrite string conversion to create a view instead of calling super. Super will call with the overridden
         __getitem__ function which will not work
         """
-        return '%s, global_offset: %s' % (self.view(np.ndarray).__str__(), self.global_offset)
+        if self.global_offset is not None:
+            return '%s, global_offset: %s' % (self.view(np.ndarray).__str__(), self.global_offset)
+        else:
+            return super().__str__()
 
     def __repr__(self):
         """

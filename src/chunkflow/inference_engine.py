@@ -14,4 +14,5 @@ class IdentityInference(InferenceEngine):
         self.factor = factor
 
     def _process(self, data):
-        return data * self.factor
+        print('Processing with factor %s' % self.factor)
+        return data + self.factor
