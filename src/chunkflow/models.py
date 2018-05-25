@@ -6,6 +6,9 @@ from threading import current_thread
 
 from chunkflow.iterators import UnitBFSIterator
 
+@lru_cache(maxsize=None)
+def all_borders(dimensions):
+    return tuple(itertools.product(range(0, dimensions), (-1, 1)))
 
 class Chunk(object):
     def __init__(self, block, unit_index):
@@ -14,6 +17,7 @@ class Chunk(object):
         self.data = None
         self.size = block.chunk_size
         self.overlap = block.overlap
+        self.all_borders = all_borders(len(self.size))
 
     def load_data(self, datasource, slices=None):
         print('VVVVVV %s--%s %s loading into chunk' % (datetime.now(), current_thread().name, self.unit_index))
@@ -39,7 +43,7 @@ class Chunk(object):
     def __hash__(self):
         return hash(self.unit_index)
 
-    def core_slices(self, borders):
+    def core_slices(self, borders=None):
         """
         Returns a list of non-intersecting slices that is excluded by the requested borders. Borders is a list of tuples:
             (dimension index of border, border direction)
@@ -47,6 +51,9 @@ class Chunk(object):
         Border direction is specified by -1 to represent the border in the negative index direction and +1 for the
         positive index direction.
         """
+        if borders is None:
+            borders = self.all_borders
+
         core_slices = list(self.slices)
         for border, direction in borders:
             core_slice = core_slices[border]
@@ -59,7 +66,7 @@ class Chunk(object):
         return tuple(core_slices)
 
 
-    def border_slices(self, borders):
+    def border_slices(self, borders=None):
         """
         Returns a list of non-intersecting slices that cover the requested borders. Borders is a list of tuples:
             (dimension index of border, border direction)
@@ -67,6 +74,9 @@ class Chunk(object):
         Border direction is specified by -1 to represent the border in the negative index direction and +1 for the
         positive index direction.
         """
+        if borders is None:
+            borders = self.all_borders
+
         border_slices = []
 
         processed_dimensions = set()
@@ -91,6 +101,34 @@ class Chunk(object):
             processed_dimensions.add(border)
 
         return border_slices
+
+    def corner_slices(self):
+        corner_slices = []
+
+        for corner_index in itertools.product(*[[0,1]] * len(self.slices)):
+            slices = tuple(
+                slice(s.start if idx == 0 else s.stop - olap, s.start + olap if idx == 0 else s.stop)
+                for idx, s, olap in zip(corner_index, self.slices, self.overlap)
+            )
+
+            corner_slices.append(slices)
+
+        return corner_slices
+
+    def edge_slices(self):
+        corner_slices = []
+
+        for corner_index in itertools.product(*[[0,1]] * len(self.slices)):
+            slices = tuple(
+                # slice(s.start + olap if idx == 0 else s.start, s.stop - olap  if idx == 0 else s.start + olap)
+                slice(s.start + olap if idx == 0 else 0, s.stop - olap  if idx == 0 else 0)
+                for idx, s, olap in zip(corner_index, self.slices, self.overlap)
+            )
+
+            corner_slices.append(slices)
+
+        return corner_slices
+
 
 
 class Block(object):
@@ -123,7 +161,6 @@ class Block(object):
     def slices_to_unit_index(self, slices):
         return tuple((slice.start - b.start) // s for b, s, slice in zip(self.bounds, self.stride, slices))
 
-    @lru_cache(maxsize=None)
     def verify_size(self):
         for chunks, c_size, d_size, olap in zip(self.num_chunks, self.chunk_size, self.data_size, self.overlap):
             if chunks * (c_size - olap) + olap != d_size:
@@ -148,7 +185,7 @@ class Block(object):
 
     def core_slices(self, chunk):
         """
-        Returns the slices of the core of the block that belongs to the input chunk.
+        Returns the slices of the chunk that corresponds to the block's core that has no overlap with other blocks.
         """
         intersect_slices = []
         for s, b, olap, idx in zip(chunk.slices, self.bounds, self.overlap, range(0, len(chunk.slices))):
@@ -161,9 +198,9 @@ class Block(object):
 
         return tuple(self.remove_chunk_overlap(chunk, intersect_slices))
 
-    def block_overlap_borders(self, chunk):
+    def overlap_borders(self, chunk):
         """
-        Get the block overlap borders that correspond to the input chunk.
+        Get a list of borders in the chunk that correspond to the block's overlap region.
 
         Returns list of borders in the form of tuples:
             (dimension index of border, border direction)
@@ -171,7 +208,7 @@ class Block(object):
         Border direction is specified by -1 to represent the border in the negative index direction and +1 for the
         positive index direction.
 
-        See py:method::block_overlap_slices(chunk) for usage
+        See py:method::overlap_slices(chunk) for usage
         """
         # determine the common intersect slices within the chunk
         borders = []
@@ -186,11 +223,11 @@ class Block(object):
 
     def remove_chunk_overlap(self, chunk, overlapped_slices):
         """
-        Modify slices so that account for common interesection of the chunks within the block. Common intersections are
+        Modify slices to remove the common intersection of the chunks within the block. Common intersections are
         excluded in a push forward fashion, i.e. the slices do not include the portion of the data that had should be
-        accounted for by the previous chunk ( previous meaning lesser index ).
+        accounted for by the previous chunk ( previous meaning of a lesser index ).
 
-        See py:method::block_overlap_slices(chunk) for usage
+        See py:method::overlap_slices(chunk) for usage
         """
         return tuple(
             slice(o_slice.start + olap, o_slice.stop) if o_slice.start == s.start and o_slice.start != b.start else
@@ -198,9 +235,9 @@ class Block(object):
             for s, o_slice, olap, b in zip(chunk.slices, overlapped_slices, self.overlap, self.bounds)
         )
 
-    def block_overlap_slices(self, chunk):
+    def overlap_slices(self, chunk):
         """
-        Get a list of the slices in the block overlap region that correspond to the input chunk.
+        Get a list of the slices in the chunk that correspond to the block's overlap region.
 
         If we have a block:
             dimensions: 7x7
@@ -226,7 +263,7 @@ class Block(object):
         """
         return [
             self.remove_chunk_overlap(chunk, overlapped_slice) for overlapped_slice in chunk.border_slices(
-                self.block_overlap_borders(chunk))
+                self.overlap_borders(chunk))
         ]
 
 def sub(slice_left, slice_right):

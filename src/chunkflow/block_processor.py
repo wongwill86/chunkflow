@@ -45,9 +45,9 @@ def aggregate(slices, aggregate, datasource):
 
 
 class BlockProcessor(object):
-    def __init__(self, inference_engine, blend_engine, datasource_manager):
-        self.inference_engine = inference_engine
-        self.blend_engine = blend_engine
+    def __init__(self, inference_operation, blend_operation, datasource_manager):
+        self.inference_operation = inference_operation
+        self.blend_operation = blend_operation
         self.datasource_manager = datasource_manager
         self.datasource_stream = Observable.from_(self.datasource_manager.repository.repository.values())
 
@@ -65,20 +65,20 @@ class BlockProcessor(object):
             Observable.from_(block.chunk_iterator(start))
             # .do_action(lambda chunk: chunk.load_data(self.datasource_manager.input_datasource))
             .do_action(self.datasource_manager.load_chunk)
-            .flat_map(
-                lambda chunk:
-                (
-                    Observable.just(chunk.data)
-                    .do_action(lambda x: print('>>>>>> %s--%s %s running inference' % (
-                                    datetime.now(), current_thread().name, chunk.unit_index)))
-                    .map(self.inference_engine.run_inference)
-                    #probably need to wrap in global offset array here
-                    # .do_action(lambda data:
-                    #            for
-                    .map(self.blend_engine.run_blend)
-                    .map(chunk.load_data)
-                )
-            )
+            .map(self.inference_operation)
+            .map(self.blend_operation)
+            # .flat_map(
+            #     lambda chunk:
+            #     (
+            #         Observable.just(chunk.data)
+            #         .do_action(lambda x: print('>>>>>> %s--%s %s running inference' % (
+            #                         datetime.now(), current_thread().name, chunk.unit_index)))
+            #         .map(self.inference_operation.run_inference)
+            #         .map(self.blend_operation.run_blend)
+            #         .map(chunk.load_data)
+            #         .map(chunk)
+            #     )
+            # )
             .do_action(self.datasource_manager.dump_chunk)
             # .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
             .do_action(block.checkpoint)
