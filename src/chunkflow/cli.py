@@ -31,7 +31,7 @@ class PythonLiteralOption(click.Option):
 @click.group()
 # @click.option('--output_chunk_start', type=int, help="the start coordinates of final output block",
 #               cls=PythonLiteralOption, required=True)
-# @click.option('--output_chunk_size', type=int, help="the size of output block",
+# @click.option('--output_chunk_shape', type=int, help="the size of output block",
 #               cls=PythonLiteralOption, default=[112, 1152, 1152])
 # @click.option('--overlap', type=int, help="overlap by number of voxels",
 #               cls=PythonLiteralOption, default=[4, 64, 64])
@@ -44,9 +44,6 @@ def main():
     Set up configuration
     """
     print('hi')
-
-
-# @main.command()
 # # @click.option('--input_image_source', type=str, help="input image source path, i.e. file://, gs://, or s3://.",
 # #               required=True)
 # # @click.option('--output_core_destination', type=str, help="destination path for the valid core output of the chunk,\
@@ -62,90 +59,6 @@ def main():
 # # @click.option('--framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
 # #               default='pytorch')
 # # @click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
-
-
-# class InferenceEngine(object):
-#     def __init__(self):
-#         self.input_patch_size
-#         pass
-#     def __call__(input_patch):
-#         pass
-
-# class IdentityEngine(InferenceEngine):
-#     def __init__(self, patch_size, model_path, net_path, patch_size):
-#         # init stuff here
-#         self.patch_size = patch_size
-
-#     def __call__(input_patch):
-#         return input_path * np.ones(patch_size)
-
-
-# from collections import deque
-
-# def get_face_neighbors(index):
-#     pass
-
-# def get_all_neighbors(index):
-#     pass
-
-# def blah(cloudvolume_local_core, cloudvolume_local_shell):
-#     deque = deque()
-#     dequeue.append((0,0,0))
-#     while len(deque):
-#         patch_index = deque.popleft()
-#         patch_slice = get_slices(block_index)
-#         core_slice = get_core_slice(patch_slice, overlap)
-#         shell_slices = get_core_slice(patch_slice, overlap)
-#         cloud_volume_local_core[core_slice] = patch_output[core_slice]
-#         for shell_slice in shell_slices:
-#             cloud_volume_local_shell[shell_slice] = patch_output[shell_slice]
-
-#         for face_neighbor in get_face_neighbors(patch_index):
-#             deque.append(face_neighbor)
-
-#         deque.append(
-
-
-# class BlockScheduler(object):
-#     def __init__(self, input_volume, output_core_volume, output_shell_volume, inference_engine, patch_engine):
-#         self.input_volume = input_volume
-#         self.output_core_volume = output_core_volume
-#         self.output_shell_volume = output_shell_volume
-#         self.inference_engine = input_engine
-#         self.patch_engine = patch_engine
-
-#     def validate_slices(self, slices):
-#         patch_size = self.inference_engine.patch_size
-#         raise ValueError("not multiple of patch and overlap")
-
-
-#     def execute(output_slice):
-#         self.validate_slices(output_slice)
-
-
-# def inference():
-#     """
-#     Run inference on a block
-#     """
-#     input_volume = CloudVolume(input_image_source)
-#     output_core_volume = CloudVolume(output_core_destination)
-#     output_shell_volume = CloudVolume(output_core_destination)
-#     inference_engine = InferenceFactory.get(framework, model_path, net_path, patch_size)
-#     patch_engine = PatchMasks.get(patch_type, patch_params) # TODO patch params
-
-#     block_engine = BlockScheduler(input_volume, output_core_volume, output_shell_volume, inference_engine, patch_engine)
-
-
-#     block_engine.execute(overlap, output_block_slice) # check to make sure matches with ng chunks and multiple of patch
-
-
-
-
-
-
-#     print('inference')
-
-
 # # @click.option('--input_overlap_sources', type=str, help="input source path(s) for overlap regions to blend \
 # #               prefixes supported: file://, gs://, s3://. i.e. [\"gs://mybucket/left\", \"gs://mybucket/right\"]",
 # #               required=True)

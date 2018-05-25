@@ -17,12 +17,14 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
     _HANDLED_TYPES = (np.ndarray, numbers.Number)
 
     def __new__(cls, input_array, global_offset=None):
+        if not isinstance(input_array, np.ndarray):
+            return input_array
+
         obj = np.asarray(input_array).view(cls)
         if global_offset is None:
             global_offset = tuple([0] * input_array.ndim)
 
-        if input_array.ndim > 0:
-            obj.global_offset = tuple(global_offset)
+        obj.global_offset = tuple(global_offset)
         return obj
 
     def __array_finalize__(self, obj):

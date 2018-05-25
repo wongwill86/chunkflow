@@ -1,5 +1,5 @@
-import unittest
 import itertools
+import unittest
 
 import numpy as np
 
@@ -18,81 +18,65 @@ class IdentityIterator(Iterator):
 
 
 class ChunkTest(unittest.TestCase):
-    def test_get_border_slices(self):
+    def test_get_border_slices_2d(self):
         bounds = (slice(0, 70), slice(0, 70))
-        chunk_size = (30, 30)
+        chunk_shape = (30, 30)
         overlap = (10, 10)
 
-        block = Block(bounds, chunk_size, overlap)
+        block = Block(bounds, chunk_shape, overlap)
 
         chunk = Chunk(block, (0, 0))
 
         borders = list(itertools.product(range(0, len(bounds)), [-1, 1]))
 
-        fake_data = np.zeros(chunk.size)
+        fake_data = np.zeros(chunk.shape)
         for slices in chunk.border_slices(borders):
             fake_data[slices] += 1
 
         fake_data[chunk.core_slices(borders)] += 1
         self.assertEquals(np.product(fake_data.shape), fake_data.sum())
 
-    def test_get_corner_slices(self):
-        bounds = (slice(0, 7), slice(0, 7))
-        chunk_size = (3, 3)
-        overlap = (1, 1)
+    def test_get_border_slices_3d(self):
+        bounds = (slice(0, 70), slice(0, 70), slice(0, 70))
+        chunk_shape = (30, 30, 30)
+        overlap = (10, 10, 10)
 
-        block = Block(bounds, chunk_size, overlap)
+        block = Block(bounds, chunk_shape, overlap)
 
-        chunk = Chunk(block, (0, 0))
+        chunk = Chunk(block, (0, 0, 0))
 
-        fake_data = np.zeros(chunk.size)
-        for slices in chunk.corner_slices():
+        borders = list(itertools.product(range(0, len(bounds)), [-1, 1]))
+
+        fake_data = np.zeros(chunk.shape)
+        for slices in chunk.border_slices(borders):
             fake_data[slices] += 1
 
-        # print(fake_data)
-        # self.assertEquals(np.product(fake_data.shape), fake_data.sum())
-
-    def test_get_edge_slices(self):
-        bounds = (slice(0, 7), slice(0, 7))
-        chunk_size = (3, 3)
-        overlap = (1, 1)
-
-        block = Block(bounds, chunk_size, overlap)
-
-        chunk = Chunk(block, (0, 0))
-
-        fake_data = np.zeros(chunk.size)
-        for slices in chunk.edge_slices():
-            fake_data[slices] += 1
-
-        print(fake_data)
+        fake_data[chunk.core_slices(borders)] += 1
         self.assertEquals(np.product(fake_data.shape), fake_data.sum())
-        assert False
-
 
 
 class BlockTest(unittest.TestCase):
     def test_init_wrong_size_no_overlap(self):
         bounds = (slice(0, 70), slice(0, 70))
-        chunk_size = (30, 30)
+        chunk_shape = (30, 30)
 
         with self.assertRaises(ValueError):
-            Block(bounds, chunk_size)
+            Block(bounds, chunk_shape)
 
     def test_init_wrong_size_overlap(self):
         bounds = (slice(0, 70), slice(0, 70))
-        chunk_size = (30, 30)
+        chunk_shape = (30, 30)
         overlap = (11, 11)
 
         with self.assertRaises(ValueError):
-            Block(bounds, chunk_size, overlap=overlap)
+            Block(bounds, chunk_shape, overlap=overlap)
 
     def test_index_to_slices(self):
         bounds = (slice(0, 70), slice(0, 70))
-        chunk_size = (30, 30)
+        chunk_shape = (30, 30)
         overlap = (10, 10)
 
-        block = Block(bounds, chunk_size, overlap)
+        block = Block(bounds, chunk_shape, overlap)
 
         self.assertEquals((slice(0, 30), slice(0, 30)), block.unit_index_to_slices((0, 0)))
         self.assertEquals((slice(0, 30), slice(20, 50)), block.unit_index_to_slices((0, 1)))
@@ -100,10 +84,10 @@ class BlockTest(unittest.TestCase):
 
     def test_slices_to_index(self):
         bounds = (slice(0, 70), slice(0, 70))
-        chunk_size = (30, 30)
+        chunk_shape = (30, 30)
         overlap = (10, 10)
 
-        block = Block(bounds, chunk_size, overlap)
+        block = Block(bounds, chunk_shape, overlap)
 
         self.assertEquals(block.slices_to_unit_index((slice(0, 30), slice(0, 30))), (0, 0))
         self.assertEquals(block.slices_to_unit_index((slice(0, 30), slice(20, 50))), (0, 1))
@@ -112,10 +96,10 @@ class BlockTest(unittest.TestCase):
 
     def test_iterator(self):
         bounds = (slice(0, 70), slice(0, 70))
-        chunk_size = (30, 30)
+        chunk_shape = (30, 30)
         overlap = (10, 10)
 
-        block = Block(bounds, chunk_size, overlap=overlap, base_iterator=IdentityIterator())
+        block = Block(bounds, chunk_shape, overlap=overlap, base_iterator=IdentityIterator())
         start = (0, 0)
         chunks = list(block.chunk_iterator(start))
         self.assertEqual(1, len(chunks))
@@ -123,12 +107,12 @@ class BlockTest(unittest.TestCase):
 
     def test_get_slices_2d(self):
         bounds = (slice(0, 7), slice(0, 7))
-        chunk_size = (3, 3)
+        chunk_shape = (3, 3)
         overlap = (1, 1)
 
-        block = Block(bounds, chunk_size, overlap=overlap)#, base_iterator=IdentityIterator())
+        block = Block(bounds, chunk_shape, overlap=overlap)
 
-        fake_data = GlobalOffsetArray(np.zeros(block.data_size), global_offset=(0,0))
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0, 0))
         self.assertEquals((3, 3), block.num_chunks)
 
         for chunk in block.chunk_iterator((0, 0)):
@@ -139,13 +123,13 @@ class BlockTest(unittest.TestCase):
 
     def test_overlap_slices_3d(self):
         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-        chunk_size = (3, 3, 3)
+        chunk_shape = (3, 3, 3)
         overlap = (1, 1, 1)
 
-        block = Block(bounds, chunk_size, overlap=overlap)
+        block = Block(bounds, chunk_shape, overlap=overlap)
         self.assertEquals((3, 3, 3), block.num_chunks)
 
-        fake_data = GlobalOffsetArray(np.zeros(block.data_size), global_offset=(0, 0, 0))
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0, 0, 0))
         for chunk in block.chunk_iterator((1, 0, 1)):
             for edge_slice in block.overlap_slices(chunk):
                 fake_data[edge_slice] += 1

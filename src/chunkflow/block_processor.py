@@ -67,18 +67,6 @@ class BlockProcessor(object):
             .do_action(self.datasource_manager.load_chunk)
             .map(self.inference_operation)
             .map(self.blend_operation)
-            # .flat_map(
-            #     lambda chunk:
-            #     (
-            #         Observable.just(chunk.data)
-            #         .do_action(lambda x: print('>>>>>> %s--%s %s running inference' % (
-            #                         datetime.now(), current_thread().name, chunk.unit_index)))
-            #         .map(self.inference_operation.run_inference)
-            #         .map(self.blend_operation.run_blend)
-            #         .map(chunk.load_data)
-            #         .map(chunk)
-            #     )
-            # )
             .do_action(self.datasource_manager.dump_chunk)
             # .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
             .do_action(block.checkpoint)
@@ -92,7 +80,7 @@ class BlockProcessor(object):
                 lambda chunk:
                 (
                     self.datasource_stream
-                    .reduce(partial(aggregate, chunk.slices), seed=np.zeros(block.chunk_size))
+                    .reduce(partial(aggregate, chunk.slices), seed=np.zeros(block.chunk_shape))
                     .do_action(chunk.load_data)
                     .map(lambda _: chunk)
                 )
@@ -104,14 +92,14 @@ class BlockProcessor(object):
                           Observable.just(chunk).map(block.core_slices).do_action(
                               partial(self.datasource_manager.upload_core, chunk))
                       )
+                      .map(lambda _: chunk)
                       )
             # .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
             .subscribe(
-                #self.datasource_manager.upload(sub_chunk)
-                print,
+                self.print_done,
                 on_error=lambda error: print('error error *&)*&*&)*\n\n') or traceback.print_exception(
                     None, error, error.__traceback__))
         )
 
-    def upload_chunk(self, chunk, data=None):
-        print('****** %s--%s %s uploading data' % (datetime.now(), current_thread().name, chunk.unit_index,))
+    def print_done(self, chunk, data=None):
+        print('****** %s--%s %s done ' % (datetime.now(), current_thread().name, chunk.unit_index,))

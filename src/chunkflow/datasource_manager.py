@@ -1,9 +1,5 @@
-from functools import partial
-
 from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.iterators import UnitIterator
-
-# from rx.Subjects import Subject
 
 
 def get_mod_index(index):
@@ -26,6 +22,7 @@ class DatasourceManager(object):
     def upload_core(self, chunk, slices):
         chunk.dump_data(self.repository.output_datasource_core, slices)
 
+
 class DatasourceRepository(object):
     def __init__(self, input_datasource):
         self.repository = dict()
@@ -46,6 +43,7 @@ class DatasourceRepository(object):
     def get_datasource(self, index):
         return self.repository[get_mod_index(index)]
 
+
 class NumpyDatasource(DatasourceRepository):
     def __init__(self, input_datasource, *args, **kwargs):
         super().__init__(input_datasource, *args, **kwargs)
@@ -54,4 +52,3 @@ class NumpyDatasource(DatasourceRepository):
 
     def create(self, mod_index, *args, **kwargs):
         return GlobalOffsetArray(self.input_datasource.copy(), global_offset=(0, 0))
-

@@ -470,3 +470,8 @@ class GlobalOffsetArrayTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     operate_param.global_offset = tuple(floor(size/2) + floor(size/4) for size in offset_array.shape)
                     op(left_offset, right_offset)
+
+    def test_aggregate_function(self):
+        for test_array in TEST_ARRAYS:
+            offset_array = GlobalOffsetArray(test_array)
+            self.assertEquals(type(test_array.sum()), type(offset_array.sum()))
