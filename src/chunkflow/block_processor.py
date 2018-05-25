@@ -73,6 +73,8 @@ class BlockProcessor(object):
                                     datetime.now(), current_thread().name, chunk.unit_index)))
                     .map(self.inference_engine.run_inference)
                     #probably need to wrap in global offset array here
+                    # .do_action(lambda data:
+                    #            for
                     .map(self.blend_engine.run_blend)
                     .map(chunk.load_data)
                 )

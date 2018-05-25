@@ -1,10 +1,12 @@
 import unittest
+import itertools
 
 import numpy as np
 
 from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.iterators import Iterator
 from chunkflow.models import Block
+from chunkflow.models import Chunk
 
 
 class IdentityIterator(Iterator):
@@ -13,6 +15,26 @@ class IdentityIterator(Iterator):
 
     def get(self, start, dimensions):
         yield start
+
+
+class ChunkTest(unittest.TestCase):
+    def test_get_border_slices(self):
+        bounds = (slice(0, 70), slice(0, 70))
+        chunk_size = (30, 30)
+        overlap = (10, 10)
+
+        block = Block(bounds, chunk_size, overlap)
+
+        chunk = Chunk(block, (0, 0))
+
+        borders = list(itertools.product(range(0, len(bounds)), [-1, 1]))
+
+        fake_data = np.zeros(chunk.size)
+        for slices in chunk.border_slices(borders):
+            fake_data[slices] += 1
+
+        fake_data[chunk.core_slices(borders)] += 1
+        self.assertEquals(np.product(fake_data.shape), fake_data.sum())
 
 
 class BlockTest(unittest.TestCase):
@@ -70,18 +92,16 @@ class BlockTest(unittest.TestCase):
         chunk_size = (3, 3)
         overlap = (1, 1)
 
-        block = Block(bounds, chunk_size, overlap=overlap)
+        block = Block(bounds, chunk_size, overlap=overlap)#, base_iterator=IdentityIterator())
 
         fake_data = GlobalOffsetArray(np.zeros(block.data_size), global_offset=(0,0))
         self.assertEquals((3, 3), block.num_chunks)
 
         for chunk in block.chunk_iterator((0, 0)):
-            for edge_slice in block.overlap_slices(chunk):
+            for edge_slice in block.block_overlap_slices(chunk):
                 fake_data[edge_slice] += 1
             fake_data[block.core_slices(chunk)] += 1
         self.assertEquals(np.product(fake_data.shape), fake_data.sum())
-        print(fake_data)
-        assert False
 
     def test_overlap_slices_3d(self):
         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
@@ -92,8 +112,8 @@ class BlockTest(unittest.TestCase):
         self.assertEquals((3, 3, 3), block.num_chunks)
 
         fake_data = GlobalOffsetArray(np.zeros(block.data_size), global_offset=(0, 0, 0))
-        for chunk in block.chunk_iterator((0, 0, 0)):
-            for edge_slice in block.overlap_slices(chunk):
+        for chunk in block.chunk_iterator((1, 0, 1)):
+            for edge_slice in block.block_overlap_slices(chunk):
                 fake_data[edge_slice] += 1
             fake_data[block.core_slices(chunk)] += 1
         self.assertEquals(np.product(fake_data.shape), fake_data.sum())
