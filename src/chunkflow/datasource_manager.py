@@ -15,8 +15,7 @@ class DatasourceManager(object):
         chunk.load_data(self.repository.input_datasource)
 
     def dump_chunk(self, chunk):
-        # TODO CHECK output slices
-        chunk.dump_data(self.repository.get_datasource(chunk.unit_index), slices=chunk.output_slices)
+        chunk.dump_data(self.repository.get_datasource(chunk.unit_index))
 
     def load_chunk(self, chunk):
         chunk.load_data(self.repository.get_datasource(chunk.unit_index))
@@ -64,6 +63,15 @@ class NumpyDatasource(DatasourceRepository):
         super().__init__(input_datasource, *args, **kwargs)
 
     def create(self, mod_index, *args, **kwargs):
-        offset = (0,) + self.input_datasource.global_offset
-        # print('creating with offset %s' % (offset,))
-        return GlobalOffsetArray(np.zeros(self.output_shape), global_offset=offset)
+        offset = self.input_datasource.global_offset
+        shape = self.input_datasource.shape
+        # TODO custom output_shape
+        if len(self.output_shape) > len(self.input_datasource.shape):
+            extra_dimensions = len(self.output_shape) - len(self.input_datasource.shape)
+            shape = self.output_shape[0:extra_dimensions] + shape
+
+            offset = (0,) * extra_dimensions + offset
+
+        print('creating with offset %s' % (offset,))
+        print('creating with shape %s' % (shape,))
+        return GlobalOffsetArray(np.zeros(shape), global_offset=offset)

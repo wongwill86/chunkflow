@@ -33,10 +33,8 @@ class Chunk(object):
     def __init__(self, block, unit_index):
         self.unit_index = unit_index
         self.slices = block.unit_index_to_slices(unit_index)
-        self.output_slices = block.to_output_slices(self.slices)
         self.data = None
         self.shape = block.chunk_shape
-        self.output_shape = block.output_shape
         self.overlap = block.overlap
         self.all_borders = all_borders(len(self.shape))
 
@@ -45,16 +43,39 @@ class Chunk(object):
 
         if slices is None:
             slices = self.slices
+
+        print('load data %s ' % (slices, ))
+        print('ds shp %s ' % (datasource.shape, ))
+
         if self.data is None:
-            self.data = datasource[slices]
+            print('is none')
+            print('from %s ' % (datasource[slices].global_offset,))
+            self.data = datasource[slices].copy()
         else:
+            print('load slices')
             self.data[slices] = datasource[slices]
+        print('self data %s ' % (self.data, ))
+        print('self data shp%s ' % (self.data.shape, ))
+
         return self
 
     def dump_data(self, datasource, slices=None):
         print('^^^^^^ %s--%s %s dumping from chunk' % (datetime.now(), current_thread().name, self.unit_index))
         if slices is None:
             slices = self.slices
+
+        print(datasource.shape)
+        print(datasource.global_offset)
+        print(self.data.shape)
+        print(self.data.global_offset)
+        print('old')
+        print(slices)
+        # TODO custom output_shape
+        if len(self.data.shape) > len(slices):
+            extra_dimensions = len(self.data.shape) - len(slices)
+            slices = (slice(None),) + slices
+        print('new')
+        print(slices)
         datasource[slices] = self.data[slices]
         return self
 
@@ -125,12 +146,9 @@ class Chunk(object):
 
 
 class Block(object):
-    def __init__(self, bounds, chunk_shape, output_shape=None, overlap=None, base_iterator=None):
+    def __init__(self, bounds, chunk_shape, overlap=None, base_iterator=None):
         self.bounds = bounds
         self.chunk_shape = chunk_shape
-        if output_shape is None:
-            output_shape = chunk_shape
-        self.output_shape = output_shape
 
         if not overlap:
             overlap = tuple([0] * len(chunk_shape))
@@ -157,8 +175,8 @@ class Block(object):
     def slices_to_unit_index(self, slices):
         return tuple((slice.start - b.start) // s for b, s, slice in zip(self.bounds, self.stride, slices))
 
-    def to_output_slices(self, slices):
-        return (slice(None),) * (len(self.output_shape) - len(slices)) + slices
+    # def to_output_slices(self, slices):
+    #     return (slice(None),) * (len(self.output_shape) - len(slices)) + slices
 
     def verify_size(self):
         for chunks, c_shape, shp, olap in zip(self.num_chunks, self.chunk_shape, self.shape, self.overlap):
