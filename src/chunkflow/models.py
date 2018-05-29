@@ -33,8 +33,10 @@ class Chunk(object):
     def __init__(self, block, unit_index):
         self.unit_index = unit_index
         self.slices = block.unit_index_to_slices(unit_index)
+        self.output_slices = block.to_output_slices(self.slices)
         self.data = None
         self.shape = block.chunk_shape
+        self.output_shape = block.output_shape
         self.overlap = block.overlap
         self.all_borders = all_borders(len(self.shape))
 
@@ -123,9 +125,12 @@ class Chunk(object):
 
 
 class Block(object):
-    def __init__(self, bounds, chunk_shape, overlap=None, base_iterator=None):
+    def __init__(self, bounds, chunk_shape, output_shape=None, overlap=None, base_iterator=None):
         self.bounds = bounds
         self.chunk_shape = chunk_shape
+        if output_shape is None:
+            output_shape = chunk_shape
+        self.output_shape = output_shape
 
         if not overlap:
             overlap = tuple([0] * len(chunk_shape))
@@ -151,6 +156,9 @@ class Block(object):
 
     def slices_to_unit_index(self, slices):
         return tuple((slice.start - b.start) // s for b, s, slice in zip(self.bounds, self.stride, slices))
+
+    def to_output_slices(self, slices):
+        return (slice(None),) * (len(self.output_shape) - len(slices)) + slices
 
     def verify_size(self):
         for chunks, c_shape, shp, olap in zip(self.num_chunks, self.chunk_shape, self.shape, self.overlap):

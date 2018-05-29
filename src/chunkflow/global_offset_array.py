@@ -45,8 +45,16 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
             offset = self.global_offset[dimension]
             length = self.shape[dimension]
 
-            if isinstance(item, slice):
-                new_item = slice(item.start - offset, item.stop - offset, item.step)
+            if item is None:
+                new_item = None
+            elif isinstance(item, slice):
+                start = item.start
+                stop = item.stop
+                if start is None:
+                    start = offset
+                if stop is None:
+                    stop = offset +  length
+                new_item = slice(start - offset, stop - offset, item.step)
                 new_global_offset += (new_item.start + offset,)
 
                 if (new_item.start < 0 or new_item.start >= length or new_item.stop < 1 or new_item.stop > length):

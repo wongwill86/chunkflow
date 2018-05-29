@@ -63,12 +63,10 @@ class BlockProcessor(object):
 
         (
             Observable.from_(block.chunk_iterator(start))
-            # .do_action(lambda chunk: chunk.load_data(self.datasource_manager.input_datasource))
-            .do_action(self.datasource_manager.load_chunk)
+            .do_action(self.datasource_manager.download_input)
             .map(self.inference_operation)
             .map(self.blend_operation)
             .do_action(self.datasource_manager.dump_chunk)
-            # .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
             .do_action(block.checkpoint)
             .flat_map(block.get_all_neighbors)
             .filter(block.all_neighbors_checkpointed)
@@ -80,26 +78,30 @@ class BlockProcessor(object):
                 lambda chunk:
                 (
                     self.datasource_stream
-                    .reduce(partial(aggregate, chunk.slices), seed=np.zeros(block.chunk_shape))
-                    .do_action(chunk.load_data)
+                    .reduce(partial(aggregate, chunk.output_slices), seed=np.zeros(chunk.output_shape))
+                    .do_action(partial(chunk.load_data, slices=chunk.output_slices))
                     .map(lambda _: chunk)
                 )
             )
             .flat_map(lambda chunk:
                       Observable.merge(
-                          Observable.just(chunk).flat_map(block.overlap_slices).do_action(
-                              partial(self.datasource_manager.upload_overlap, chunk)),
-                          Observable.just(chunk).map(block.core_slices).do_action(
-                              partial(self.datasource_manager.upload_core, chunk))
+                          Observable.just(chunk).flat_map(block.overlap_slices).map(block.to_output_slices).do_action(
+                              partial(self.datasource_manager.upload_output_overlap, chunk)),
+                          Observable.just(chunk).map(block.core_slices).map(block.to_output_slices).do_action(
+                              partial(self.datasource_manager.upload_output_core, chunk))
                       )
                       .map(lambda _: chunk)
                       )
-            # .do_action(lambda chunk: chunk.dump_data(self.datasource_manager.get_datasource(chunk.unit_index)))
             .subscribe(
                 self.print_done,
-                on_error=lambda error: print('error error *&)*&*&)*\n\n') or traceback.print_exception(
-                    None, error, error.__traceback__))
+                on_error=self.on_error
+            )
         )
+
+    def on_error(self, error):
+        print('error error *&)*&*&)*\n\n')
+        traceback.print_exception( None, error, error.__traceback__)
+        raise error
 
     def print_done(self, chunk, data=None):
         print('****** %s--%s %s done ' % (datetime.now(), current_thread().name, chunk.unit_index,))
