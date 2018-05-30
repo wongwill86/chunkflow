@@ -39,16 +39,16 @@ class Chunk(object):
         self.overlap = block.overlap
         self.all_borders = all_borders(len(self.shape))
 
+    def match_datasource_dimensions(self, datasource, slices):
+        return (slice(None),) * (len(datasource.shape) - len(slices)) + slices
+
     def load_data(self, datasource, slices=None):
         print('VVVVVV %s--%s %s loading into chunk' % (datetime.now(), current_thread().name, self.unit_index))
 
         if slices is None:
             slices = self.slices
 
-        # TODO custom output_shape
-        if len(datasource.shape) > len(slices):
-            extra_dimensions = len(datasource.shape) - len(slices)
-            slices = (slice(None),) * extra_dimensions + slices
+        slices = self.match_datasource_dimensions(datasource, slices)
 
         if self.data is None:
             self.data = datasource[slices].copy()
@@ -62,10 +62,7 @@ class Chunk(object):
         if slices is None:
             slices = self.slices
 
-        # TODO custom output_shape
-        if len(datasource.shape) > len(slices):
-            extra_dimensions = len(self.data.shape) - len(slices)
-            slices = (slice(None),) * extra_dimensions + slices
+        slices = self.match_datasource_dimensions(datasource, slices)
 
         datasource[slices] = self.data[slices]
         return self

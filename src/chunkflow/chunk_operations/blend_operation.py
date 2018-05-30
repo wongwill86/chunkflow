@@ -38,6 +38,4 @@ class AverageBlend(ChunkOperation):
 
     def run_blend(self, chunk):
         weight_mapping = self.generate_weight_mapping(chunk)
-        # print('before blend \n%s, \n%s \n %s 99999999999999999' % (chunk.data, weight_mapping))
         chunk.data *= weight_mapping
-        # print('after blend: %s' % (chunk.data))

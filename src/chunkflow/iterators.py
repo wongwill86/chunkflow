@@ -6,10 +6,10 @@ all_neighbor_offsets = [-1, 0, 1]
 
 class Iterator(object):
     def get_all_neighbors(self, index, max=None):
-        raise NotImplemented
+        raise NotImplementedError
 
     def iterator(self, index):
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class UnitIterator(Iterator):

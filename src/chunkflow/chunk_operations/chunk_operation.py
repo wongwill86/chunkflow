@@ -3,7 +3,7 @@ class ChunkOperation(object):
         """
         returns processed data
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def __call__(self, chunk):
         self._process(chunk)

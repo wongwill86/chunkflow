@@ -32,7 +32,7 @@ class DatasourceRepository(object):
     def __init__(self, input_datasource, output_datasource_core=None, output_datasource_overlap=None):
         self.repository = dict()
         self.input_datasource = input_datasource
-        outprt_datasource_core = self.create(None)
+
         if output_datasource_core is None:
             output_datasource_core = self.create(None)
 
@@ -51,7 +51,7 @@ class DatasourceRepository(object):
             self.repository[neighbor] = self.create(neighbor)
 
     def create(self, mod_index, *args, **kwargs):
-        raise NotImplemented
+        raise NotImplementedError
 
     def get_datasource(self, index):
         return self.repository[get_mod_index(index)]
@@ -59,13 +59,14 @@ class DatasourceRepository(object):
 
 class NumpyDatasource(DatasourceRepository):
     # TODO cooperative inheritance
-    def __init__(self, input_datasource, output_shape=None, *args, **kwargs):
+    def __init__(self, output_shape=None, *args, **kwargs):
         self.output_shape = output_shape
-        super().__init__(input_datasource, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def create(self, mod_index, *args, **kwargs):
         offset = self.input_datasource.global_offset
         shape = self.input_datasource.shape
+
         # TODO custom output_shape
         if len(self.output_shape) > len(self.input_datasource.shape):
             extra_dimensions = len(self.output_shape) - len(self.input_datasource.shape)
@@ -73,6 +74,4 @@ class NumpyDatasource(DatasourceRepository):
             shape = self.output_shape[0:extra_dimensions] + shape
             offset = (0,) * extra_dimensions + offset
 
-        print('creating with offset %s' % (offset,))
-        print('creating with shape %s' % (shape,))
         return GlobalOffsetArray(np.zeros(shape), global_offset=offset)

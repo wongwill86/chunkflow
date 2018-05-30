@@ -20,6 +20,7 @@ class IncrementInference(ChunkOperation):
     def run_inference(self, chunk):
         chunk.data += self.step
 
+
 class IncrementThreeChannelInference(ChunkOperation):
     def __init__(self, step=1, *args, **kwargs):
         self.step = step

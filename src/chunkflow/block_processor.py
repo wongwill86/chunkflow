@@ -3,8 +3,6 @@ from datetime import datetime
 from functools import partial
 from threading import current_thread
 
-import numpy as np
-from chunkflow.global_offset_array import GlobalOffsetArray
 from rx import Observable
 from rx import config
 # from rx.concurrency import ThreadPoolScheduler
@@ -108,7 +106,7 @@ class BlockProcessor(object):
 
     def on_error(self, error):
         print('error error *&)*&*&)*\n\n')
-        traceback.print_exception( None, error, error.__traceback__)
+        traceback.print_exception(None, error, error.__traceback__)
         raise error
 
     def print_done(self, chunk, data=None):
