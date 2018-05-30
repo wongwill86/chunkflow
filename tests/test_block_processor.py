@@ -31,8 +31,6 @@ class BlockProcessorTest(unittest.TestCase):
 
         processor.process(block)
 
-        print(datasource_manager.repository.output_datasource_core)
-        print(datasource_manager.repository.output_datasource_overlap)
         self.assertEquals(
             np.product(block.shape), datasource_manager.repository.output_datasource_core.sum() +
             datasource_manager.repository.output_datasource_overlap.sum()
@@ -57,8 +55,6 @@ class BlockProcessorTest(unittest.TestCase):
 
         processor.process(block)
 
-        print(datasource_manager.repository.output_datasource_core)
-        print(datasource_manager.repository.output_datasource_overlap)
         self.assertEquals(
             np.product(block.shape) * 111, datasource_manager.repository.output_datasource_core.sum() +
             datasource_manager.repository.output_datasource_overlap.sum()

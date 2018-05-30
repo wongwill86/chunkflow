@@ -24,14 +24,12 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         if global_offset is None:
             global_offset = tuple([0] * input_array.ndim)
 
-        # print(global_offset)
         obj.global_offset = tuple(global_offset)
         return obj
 
     def __array_finalize__(self, obj):
         if obj is None:
             return
-        # print('finailzie %s' % obj)
         self.global_offset = getattr(obj, 'global_offset', None)
 
     def _to_internal_slices(self, index):
@@ -47,8 +45,12 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         if len(index) == 0:
             return internal_index, self.global_offset
 
+        # Fill rest of dimensions of index that were not specified
+        if len(self.shape) > len(index):
+            extra_dimensions = len(self.shape) - len(index)
+            index = index + (slice(None),) * extra_dimensions
+
         for dimension, item in enumerate(index):
-            # print(dimension, item, 'here')
             offset = self.global_offset[dimension]
             length = self.shape[dimension]
 
@@ -80,7 +82,6 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
                                          new_item, dimension, offset, offset + length, shape, self.global_offset))
 
             internal_index += (new_item,)
-        # print('found new global offsets %s for %s' % (new_global_offsets, index))
         return (internal_index, new_global_offsets)
 
     def __getitem__(self, index):
@@ -90,16 +91,12 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         """
         if isinstance(index, tuple):
             internal_index, new_global_offset = self._to_internal_slices(index)
-            # print('is tuple')
         else:
-            # print('other')
             internal_index = index
             new_global_offset = None
 
         new_from_template = super(GlobalOffsetArray, self).__getitem__(internal_index)
-        # print('new from tmplate %s index is %s ngo %s' % (new_from_template, index, new_global_offset))
         if hasattr(new_from_template, 'global_offset'):
-            # print('setting new global_offset')
             new_from_template.global_offset = new_global_offset
         return new_from_template
 

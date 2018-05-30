@@ -48,7 +48,7 @@ class Chunk(object):
         # TODO custom output_shape
         if len(datasource.shape) > len(slices):
             extra_dimensions = len(datasource.shape) - len(slices)
-            slices = (slice(None),) + slices
+            slices = (slice(None),) * extra_dimensions + slices
 
         if self.data is None:
             self.data = datasource[slices].copy()
@@ -65,7 +65,8 @@ class Chunk(object):
         # TODO custom output_shape
         if len(datasource.shape) > len(slices):
             extra_dimensions = len(self.data.shape) - len(slices)
-            slices = (slice(None),) + slices
+            slices = (slice(None),) * extra_dimensions + slices
+
         datasource[slices] = self.data[slices]
         return self
 
