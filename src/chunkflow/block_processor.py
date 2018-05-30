@@ -39,11 +39,13 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None):
 
 
 def aggregate(slices, aggregate, datasource):
-    # TODO custom output_shape
+    # Account for additional output dimensions
     slices = (slice(None),) * (len(datasource.shape) - len(slices)) + slices
+
     if hasattr(aggregate, '__getitem__'):
         aggregate[slices] += datasource[slices]
     else:
+        # no slicing when seeding with 0
         aggregate += datasource[slices]
     return aggregate
 

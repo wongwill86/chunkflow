@@ -1,13 +1,61 @@
 import unittest
 
+import numpy as np
+
 from chunkflow.block_processor import BlockProcessor
 from chunkflow.chunk_operations.blend_operation import AverageBlend
-from chunkflow.chunk_operations.inference_operation import IncrementInference
-from chunkflow.chunk_operations.inference_operation import IncrementThreeChannelInference
+from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkflow.datasource_manager import DatasourceManager
-from chunkflow.datasource_manager import NumpyDatasource
+from chunkflow.datasource_manager import DatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.models import Block
+
+
+class NumpyDatasource(DatasourceRepository):
+    def __init__(self, output_shape=None, *args, **kwargs):
+        self.output_shape = output_shape
+        super().__init__(*args, **kwargs)
+
+    def create(self, mod_index, *args, **kwargs):
+        offset = self.input_datasource.global_offset
+        shape = self.input_datasource.shape
+
+        if len(self.output_shape) > len(self.input_datasource.shape):
+            extra_dimensions = len(self.output_shape) - len(self.input_datasource.shape)
+
+            shape = self.output_shape[0:extra_dimensions] + shape
+            offset = (0,) * extra_dimensions + offset
+
+        return GlobalOffsetArray(np.zeros(shape), global_offset=offset)
+
+
+class IncrementInference(ChunkOperation):
+    def __init__(self, step=1, *args, **kwargs):
+        self.step = step
+        super().__init__(*args, **kwargs)
+
+    def _process(self, chunk):
+        self.run_inference(chunk)
+
+    def run_inference(self, chunk):
+        chunk.data += self.step
+
+
+class IncrementThreeChannelInference(ChunkOperation):
+    def __init__(self, step=1, *args, **kwargs):
+        self.step = step
+        super().__init__(*args, **kwargs)
+
+    def _process(self, chunk):
+        self.run_inference(chunk)
+
+    def run_inference(self, chunk):
+        chunk.data += self.step
+        global_offset = (0,) + chunk.data.global_offset
+        one = chunk.data
+        two = chunk.data * 10
+        three = chunk.data * 100
+        chunk.data = GlobalOffsetArray(np.stack((one, two, three)), global_offset=global_offset)
 
 
 class BlockProcessorTest(unittest.TestCase):

@@ -1,5 +1,3 @@
-import numpy as np
-from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.iterators import UnitIterator
 
 
@@ -55,23 +53,3 @@ class DatasourceRepository(object):
 
     def get_datasource(self, index):
         return self.repository[get_mod_index(index)]
-
-
-class NumpyDatasource(DatasourceRepository):
-    # TODO cooperative inheritance
-    def __init__(self, output_shape=None, *args, **kwargs):
-        self.output_shape = output_shape
-        super().__init__(*args, **kwargs)
-
-    def create(self, mod_index, *args, **kwargs):
-        offset = self.input_datasource.global_offset
-        shape = self.input_datasource.shape
-
-        # TODO custom output_shape
-        if len(self.output_shape) > len(self.input_datasource.shape):
-            extra_dimensions = len(self.output_shape) - len(self.input_datasource.shape)
-
-            shape = self.output_shape[0:extra_dimensions] + shape
-            offset = (0,) * extra_dimensions + offset
-
-        return GlobalOffsetArray(np.zeros(shape), global_offset=offset)
