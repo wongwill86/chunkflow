@@ -33,6 +33,7 @@ class Chunk(object):
     def __init__(self, block, unit_index):
         self.unit_index = unit_index
         self.slices = block.unit_index_to_slices(unit_index)
+        self.global_offset = [s.start for s in self.slices]
         self.data = None
         self.shape = block.chunk_shape
         self.overlap = block.overlap
@@ -44,18 +45,15 @@ class Chunk(object):
         if slices is None:
             slices = self.slices
 
-        print('load data %s ' % (slices, ))
-        print('ds shp %s ' % (datasource.shape, ))
+        # TODO custom output_shape
+        if len(datasource.shape) > len(slices):
+            extra_dimensions = len(datasource.shape) - len(slices)
+            slices = (slice(None),) + slices
 
         if self.data is None:
-            print('is none')
-            print('from %s ' % (datasource[slices].global_offset,))
             self.data = datasource[slices].copy()
         else:
-            print('load slices')
             self.data[slices] = datasource[slices]
-        print('self data %s ' % (self.data, ))
-        print('self data shp%s ' % (self.data.shape, ))
 
         return self
 
@@ -64,18 +62,10 @@ class Chunk(object):
         if slices is None:
             slices = self.slices
 
-        print(datasource.shape)
-        print(datasource.global_offset)
-        print(self.data.shape)
-        print(self.data.global_offset)
-        print('old')
-        print(slices)
         # TODO custom output_shape
-        if len(self.data.shape) > len(slices):
+        if len(datasource.shape) > len(slices):
             extra_dimensions = len(self.data.shape) - len(slices)
             slices = (slice(None),) + slices
-        print('new')
-        print(slices)
         datasource[slices] = self.data[slices]
         return self
 

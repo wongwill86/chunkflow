@@ -48,13 +48,13 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
             return internal_index, self.global_offset
 
         for dimension, item in enumerate(index):
-            print(dimension, item, 'here')
+            # print(dimension, item, 'here')
             offset = self.global_offset[dimension]
             length = self.shape[dimension]
 
             if item is None:
                 new_item = None
-                new_global_offset = offset
+                # don't need to keep track of global offset for collapsed index
             elif isinstance(item, slice):
                 start = item.start
                 stop = item.stop
@@ -63,7 +63,7 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
                 if stop is None:
                     stop = offset + length
                 new_item = slice(start - offset, stop - offset, item.step)
-                new_global_offset = new_item.start + offset
+                new_global_offsets += (new_item.start + offset,)
 
                 if (new_item.start < 0 or new_item.start >= length or new_item.stop < 1 or new_item.stop > length):
                     raise IndexError('Accessing slice [%s, %s) at dimension %s out of data bounds [%s, %s) '
@@ -72,7 +72,7 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
                                          offset, offset + length, shape, self.global_offset))
             else:
                 new_item = item - offset
-                new_global_offset = item
+                # don't need to keep track of global offset for collapsed index
 
                 if new_item < 0 or new_item > length:
                     raise IndexError('Accessing index %s at dimension %s out of data bounds [%s , %s) '
@@ -80,8 +80,7 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
                                          new_item, dimension, offset, offset + length, shape, self.global_offset))
 
             internal_index += (new_item,)
-            new_global_offsets += (new_global_offset,)
-        print('found new global offsets %s for %s' % (new_global_offsets, index))
+        # print('found new global offsets %s for %s' % (new_global_offsets, index))
         return (internal_index, new_global_offsets)
 
     def __getitem__(self, index):
@@ -91,16 +90,16 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         """
         if isinstance(index, tuple):
             internal_index, new_global_offset = self._to_internal_slices(index)
-            print('is tuple')
+            # print('is tuple')
         else:
-            print('other')
+            # print('other')
             internal_index = index
             new_global_offset = None
 
         new_from_template = super(GlobalOffsetArray, self).__getitem__(internal_index)
-        print('new from tmplate %s index is %s ngo %s' % (new_from_template, index, new_global_offset))
+        # print('new from tmplate %s index is %s ngo %s' % (new_from_template, index, new_global_offset))
         if hasattr(new_from_template, 'global_offset'):
-            print('setting new global_offset')
+            # print('setting new global_offset')
             new_from_template.global_offset = new_global_offset
         return new_from_template
 

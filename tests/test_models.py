@@ -23,11 +23,7 @@ class ChunkTest(unittest.TestCase):
         chunk_shape = (30, 30)
         overlap = (10, 10)
 
-        block = Block(
-            bounds=bounds,
-            chunk_shape=chunk_shape,
-            overlap=overlap
-        )
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         chunk = Chunk(block, (0, 0))
 
@@ -45,11 +41,7 @@ class ChunkTest(unittest.TestCase):
         chunk_shape = (30, 30, 30)
         overlap = (10, 10, 10)
 
-        block = Block(
-            bounds=bounds,
-            chunk_shape=chunk_shape,
-            overlap=overlap
-        )
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         chunk = Chunk(block, (0, 0, 0))
 
@@ -69,34 +61,21 @@ class BlockTest(unittest.TestCase):
         chunk_shape = (30, 30)
 
         with self.assertRaises(ValueError):
-            block = Block(
-                bounds=bounds,
-                chunk_shape=chunk_shape,
-            )
+            Block(bounds=bounds, chunk_shape=chunk_shape)
 
     def test_init_wrong_size_overlap(self):
         bounds = (slice(0, 70), slice(0, 70))
         chunk_shape = (30, 30)
-        overlap = (11, 11)
 
         with self.assertRaises(ValueError):
-            block = Block(
-                bounds=bounds,
-                chunk_shape=chunk_shape,
-                overlap=overlap
-            )
+            Block(bounds=bounds, chunk_shape=chunk_shape)
 
     def test_index_to_slices(self):
         bounds = (slice(0, 70), slice(0, 70))
         chunk_shape = (30, 30)
         overlap = (10, 10)
 
-
-        block = Block(
-            bounds=bounds,
-            chunk_shape=chunk_shape,
-            overlap=overlap
-        )
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         self.assertEquals((slice(0, 30), slice(0, 30)), block.unit_index_to_slices((0, 0)))
         self.assertEquals((slice(0, 30), slice(20, 50)), block.unit_index_to_slices((0, 1)))
@@ -107,12 +86,7 @@ class BlockTest(unittest.TestCase):
         chunk_shape = (30, 30)
         overlap = (10, 10)
 
-
-        block = Block(
-            bounds=bounds,
-            chunk_shape=chunk_shape,
-            overlap=overlap
-        )
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         self.assertEquals(block.slices_to_unit_index((slice(0, 30), slice(0, 30))), (0, 0))
         self.assertEquals(block.slices_to_unit_index((slice(0, 30), slice(20, 50))), (0, 1))
@@ -125,12 +99,7 @@ class BlockTest(unittest.TestCase):
         overlap = (10, 10)
 
         start = (0, 0)
-        block = Block(
-            bounds=bounds,
-            chunk_shape=chunk_shape,
-            overlap=overlap,
-            base_iterator=IdentityIterator()
-        )
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap, base_iterator=IdentityIterator())
 
         chunks = list(block.chunk_iterator(start))
         self.assertEqual(1, len(chunks))
@@ -141,12 +110,7 @@ class BlockTest(unittest.TestCase):
         chunk_shape = (3, 3)
         overlap = (1, 1)
 
-
-        block = Block(
-            bounds=bounds,
-            chunk_shape=chunk_shape,
-            overlap=overlap
-        )
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0, 0))
         self.assertEquals((3, 3), block.num_chunks)
@@ -162,11 +126,7 @@ class BlockTest(unittest.TestCase):
         chunk_shape = (3, 3, 3)
         overlap = (1, 1, 1)
 
-        block = Block(
-            bounds=bounds,
-            chunk_shape=chunk_shape,
-            overlap=overlap
-        )
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         self.assertEquals((3, 3, 3), block.num_chunks)
 

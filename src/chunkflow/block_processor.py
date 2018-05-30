@@ -4,6 +4,7 @@ from functools import partial
 from threading import current_thread
 
 import numpy as np
+from chunkflow.global_offset_array import GlobalOffsetArray
 from rx import Observable
 from rx import config
 # from rx.concurrency import ThreadPoolScheduler
@@ -41,8 +42,11 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None):
 
 def aggregate(slices, aggregate, datasource):
     # TODO custom output_shape
-    slices = (slice(None),) * (len(aggregate.shape) - len(slices)) + slices
-    aggregate[slices] += datasource[slices]
+    slices = (slice(None),) * (len(datasource.shape) - len(slices)) + slices
+    if hasattr(aggregate, '__getitem__'):
+        aggregate[slices] += datasource[slices]
+    else:
+        aggregate += datasource[slices]
     return aggregate
 
 
@@ -68,7 +72,6 @@ class BlockProcessor(object):
             .do_action(self.datasource_manager.download_input)
             .map(self.inference_operation)
             .map(self.blend_operation)
-            # .do_action(lambda x: print(x.data))
             .do_action(self.datasource_manager.dump_chunk)
             .do_action(block.checkpoint)
             .flat_map(block.get_all_neighbors)
@@ -81,20 +84,17 @@ class BlockProcessor(object):
                 lambda chunk:
                 (
                     self.datasource_stream
-                    .reduce(partial(aggregate, chunk.slices))
-                    .do_action(lambda c: print('clahhahhh %s' % (c,)))
+                    .reduce(partial(aggregate, chunk.slices), seed=0)
                     .do_action(chunk.load_data)
                     .map(lambda _: chunk)
                 )
             )
-            # .do_action(lambda c: print('blahhh %s' % (c.data,)))
             # .flat_map(partial(self.datasource_manager.dump_chunk))
             .flat_map(lambda chunk:
                       Observable.merge(
-                          # Observable.just(chunk).do_action(lambda c: print('ahhh %s' % (c,))).flat_map(block.overlap_slices).do_action(
-                          #     partial(self.datasource_manager.upload_output_overlap, chunk)),
+                          Observable.just(chunk).flat_map(block.overlap_slices).do_action(
+                              partial(self.datasource_manager.upload_output_overlap, chunk)),
                           Observable.just(chunk) \
-                          # .do_action(lambda c: print('ahhh %s' % (c.data,)))
                           .map(block.core_slices).do_action(
                               partial(self.datasource_manager.upload_output_core, chunk))
                       )

@@ -14,12 +14,7 @@ class AverageBlendTest(unittest.TestCase):
         chunk_shape = (3, 3)
         overlap = (1, 1)
 
-        block = Block(
-            bounds=bounds,
-            chunk_shape=chunk_shape,
-            overlap=overlap
-        )
-
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         chunk = Chunk(block, (0, 0))
 
@@ -36,12 +31,7 @@ class AverageBlendTest(unittest.TestCase):
         chunk_shape = (3, 3, 3)
         overlap = (1, 1, 1)
 
-
-        block = Block(
-            bounds=bounds,
-            chunk_shape=chunk_shape,
-            overlap=overlap
-        )
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         chunk = Chunk(block, (0, 0, 0))
 

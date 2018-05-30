@@ -24,6 +24,7 @@ class DatasourceManager(object):
         chunk.dump_data(self.repository.output_datasource_overlap, slices)
 
     def upload_output_core(self, chunk, slices):
+        # print('\n\n\noutput core chuunk')
         chunk.dump_data(self.repository.output_datasource_core, slices)
 
 
@@ -68,8 +69,8 @@ class NumpyDatasource(DatasourceRepository):
         # TODO custom output_shape
         if len(self.output_shape) > len(self.input_datasource.shape):
             extra_dimensions = len(self.output_shape) - len(self.input_datasource.shape)
-            shape = self.output_shape[0:extra_dimensions] + shape
 
+            shape = self.output_shape[0:extra_dimensions] + shape
             offset = (0,) * extra_dimensions + offset
 
         print('creating with offset %s' % (offset,))

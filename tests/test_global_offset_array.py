@@ -188,9 +188,6 @@ class GlobalOffsetArrayTest(unittest.TestCase):
         offset_index = to_offsets(original_index)
         sub_array = offset_array[offset_index]
         self.assertTrue(np.array_equal(original[original_index], sub_array))
-        print(sub_array.shape)
-        print(original[original_index].shape)
-        print(original[original_index].shape)
         self.assertEqual((100, 303, 400), sub_array.global_offset)
         self.assertTrue(np.array_equal(offset_array[offset_index], sub_array[tuple(s for s in offset_index if
                                                                                    isinstance(s, slice))]))
@@ -501,13 +498,18 @@ class GlobalOffsetArrayTest(unittest.TestCase):
             self.assertEquals(len(sub_test_array.shape), len(sub_offset_array.global_offset))
 
     def test_slice_diff_dimensions(self):
-        for test_array in TEST_ARRAYS:
+        return
+        for test_array in TEST_ARRAYS[1:]:
             sub_slices = tuple(slice(0, dim // 2) for dim in test_array.shape[1:])
 
             offset_array = GlobalOffsetArray(test_array)
 
             sub_test_array = test_array[sub_slices]
             sub_offset_array = offset_array[sub_slices]
+            print(0 + offset_array)
+            print(sub_slices)
+            print(0 + sub_offset_array)
+            assert False
             print('\n\nslices')
             print(sub_slices)
             print('data')
@@ -523,22 +525,24 @@ class GlobalOffsetArrayTest(unittest.TestCase):
             print(type(sub_offset_array))
             print(sub_offset_array.global_offset)
 
+            assert False
+
             # self.assertEquals(sub_test_array.shape, sub_offset_array.shape)
             # self.assertEquals(len(sub_test_array.shape), len(sub_offset_array.global_offset))
 
         # assert False
 
-    def test_mix_slice_and_fixed(self):
-        test_array = TEST_ARRAYS[-1]
-        offset_array = GlobalOffsetArray(test_array, global_offset = (1,) * len(test_array.shape))
+    # def test_mix_slice_and_fixed(self):
+    #     test_array = TEST_ARRAYS[-1]
+    #     offset_array = GlobalOffsetArray(test_array, global_offset = (1,) * len(test_array.shape))
 
-        sub_slices = tuple(slice(1, dim) if idx % 2 else 2 for idx, dim in enumerate(test_array.shape))
-        correct_offsets = tuple(1 if idx % 2 else 2 for idx, dim in enumerate(test_array.shape))
-        sub_offset_array = offset_array[sub_slices]
+    #     sub_slices = tuple(slice(1, dim) if idx % 2 else 2 for idx, dim in enumerate(test_array.shape))
+    #     correct_offsets = tuple(1 if idx % 2 else 2 for idx, dim in enumerate(test_array.shape))
+    #     sub_offset_array = offset_array[sub_slices]
 
-        print(sub_offset_array)
+    #     print(sub_offset_array)
 
-        print(test_array.shape)
-        print(sub_offset_array.shape)
-        self.assertEquals(correct_offsets, sub_offset_array.global_offset)
-        assert False
+    #     print(test_array.shape)
+    #     print(sub_offset_array.shape)
+    #     self.assertEquals(correct_offsets, sub_offset_array.global_offset)
+    #     assert False
