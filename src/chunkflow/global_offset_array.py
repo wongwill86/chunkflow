@@ -106,8 +106,6 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         When we slice, calculate the actual coordinates stored
         """
         # use view instead of super because super will call the overriden __getitem__ function
-
-        # self[index].view(np.ndarray)[:] = value
         if isinstance(index, tuple):
             internal_index, _ = self._to_internal_slices(index)
         else:
