@@ -126,6 +126,20 @@ class GlobalOffsetArrayTest(unittest.TestCase):
             self.assertTrue(np.array_equal(test_array[test_slices], sliced_offset_array))
             self.recurse_compare(test_array[test_slices], sliced_offset_array, test_array.shape)
 
+    def test_bad_offset(self):
+        """
+        Make sure error is thrown when trying to access out of bounds
+
+        """
+        original = np.arange(5 ** 4).reshape(tuple([5] * 4))
+        global_offset = (100, 200, 300, 400)
+
+        with self.assertRaises(ValueError):
+            offset_array = GlobalOffsetArray(original, global_offset=global_offset + (32,))
+
+        with self.assertRaises(ValueError):
+            offset_array = GlobalOffsetArray(original, global_offset=global_offset[1:])
+
     def test_bounds(self):
         """
         Make sure error is thrown when trying to access out of bounds
@@ -154,6 +168,7 @@ class GlobalOffsetArrayTest(unittest.TestCase):
 
         with self.assertRaises(IndexError):
             offset_array[102, 209, 300:303, 400:402]
+
 
     def test_subarray(self):
         """

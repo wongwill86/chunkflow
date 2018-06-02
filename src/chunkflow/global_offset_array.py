@@ -25,6 +25,11 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
             global_offset = tuple([0] * input_array.ndim)
 
         obj.global_offset = tuple(global_offset)
+
+        if len(global_offset) != len(input_array.shape):
+            raise ValueError("Global offset %s does not have same number dimensions as input_array shape %s" % (
+                global_offset, input_array.shape))
+
         return obj
 
     def __array_finalize__(self, obj):
@@ -77,7 +82,6 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
                     raise IndexError('Accessing index %s at dimension %s out of data bounds [%s , %s) '
                                      'shape: %s global_offset: %s ' % (
                                          new_item, dimension, offset, offset + length, shape, self.global_offset))
-
 
             internal_index += (new_item,)
         return (internal_index, new_global_offsets)

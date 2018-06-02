@@ -3,6 +3,7 @@ from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.datasource_manager import DatasourceRepository
 from cloudvolume import CloudVolume
 
+
 class CloudVolumeCZYX(CloudVolume):
     """
     Cloudvolume assumes XYZC Fortran order.  This class hijacks cloud volume indexing to use CZYX C order indexing
@@ -10,7 +11,7 @@ class CloudVolumeCZYX(CloudVolume):
     """
 
     def __getitem__(self, slices):
-        offset = [s.start for s in slices if isinstance(s, slice)]
+        offset = tuple(s.start for s in slices if isinstance(s, slice))
 
         # reverse to Fortran xyzc order
         slices = slices[::-1]
@@ -20,8 +21,12 @@ class CloudVolumeCZYX(CloudVolume):
             item = item.transpose()
             item = np.ascontiguousarray(item)
 
-        return GlobalOffsetArray(item, global_offset=offset)
+        # ugh cloudvolume always adds dimension layer
+        if len(item.shape) > len(offset):
+            offset = (0,) * (len(item.shape) - len(offset)) + offset
 
+        arr = GlobalOffsetArray(item, global_offset=offset)
+        return arr
 
     def __setitem__(self, slices, item):
         slices = slices[::-1]
@@ -41,8 +46,3 @@ class CloudVolumeDatasource(DatasourceRepository):
 
     def create(self, mod_index, *args, **kwargs):
         pass
-        # offset = self.input_datasource.global_offset
-        # shape = self.input_datasource.shape
-
-        # return GlobalOffsetArray(np.zeros(shape), global_offset=offset)
-
