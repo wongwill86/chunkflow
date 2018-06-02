@@ -41,14 +41,11 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         internal_index = ()
         new_global_offsets = ()
 
-        # if the index is an empty tuple, we should return all the data
-        if len(index) == 0:
-            return internal_index, self.global_offset
-
-        # Fill rest of dimensions of index that were not specified
-        if len(self.shape) > len(index):
-            extra_dimensions = len(self.shape) - len(index)
-            index = index + (slice(None),) * extra_dimensions
+        if type(index) == int:
+            index = (index,) + (slice(None),) * (len(self.shape) - 1)
+        elif len(self.shape) > len(index):
+            # Fill rest of dimensions of index that were not specified
+            index = index + (slice(None),) * (len(self.shape) - len(index))
 
         for dimension, item in enumerate(index):
             offset = self.global_offset[dimension]
@@ -81,6 +78,7 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
                                      'shape: %s global_offset: %s ' % (
                                          new_item, dimension, offset, offset + length, shape, self.global_offset))
 
+
             internal_index += (new_item,)
         return (internal_index, new_global_offsets)
 
@@ -89,11 +87,7 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         Access the array based on global coordinates. If we receive a tuple, it means we are slicing.
         When we slice, calculate the actual coordinates stored
         """
-        if isinstance(index, tuple):
-            internal_index, new_global_offset = self._to_internal_slices(index)
-        else:
-            internal_index = index
-            new_global_offset = None
+        internal_index, new_global_offset = self._to_internal_slices(index)
 
         new_from_template = super(GlobalOffsetArray, self).__getitem__(internal_index)
         if hasattr(new_from_template, 'global_offset'):
@@ -105,12 +99,9 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         Access the array based on global coordinates. If we receive a tuple, it means we are slicing.
         When we slice, calculate the actual coordinates stored
         """
-        # use view instead of super because super will call the overriden __getitem__ function
-        if isinstance(index, tuple):
-            internal_index, _ = self._to_internal_slices(index)
-        else:
-            internal_index = index
+        internal_index, _ = self._to_internal_slices(index)
 
+        # use view instead of super because super will call the overriden __getitem__ function
         self.view(np.ndarray).__setitem__(internal_index, value)
 
     def __str__(self):

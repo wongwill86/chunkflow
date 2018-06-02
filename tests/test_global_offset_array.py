@@ -504,3 +504,10 @@ class GlobalOffsetArrayTest(unittest.TestCase):
             offset_array = 0 + GlobalOffsetArray(test_array)
             sub_offset_array = 0 + offset_array[sub_slices]
             self.assertEquals(offset_array.global_offset, sub_offset_array.global_offset)
+
+    def test_autofill_dimensions(self):
+        dimensions = (4, 3, 2, 1)
+        data = np.arange(0, np.product(dimensions)).reshape(dimensions)
+        global_offset_data = GlobalOffsetArray(data, global_offset=(3, 2, 1, 0))
+        self.assertTrue(np.array_equal(data[2], global_offset_data[5]))
+        self.assertTrue(np.array_equal(data[2, 1], global_offset_data[5,3]))
