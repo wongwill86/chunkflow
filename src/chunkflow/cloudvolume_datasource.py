@@ -1,6 +1,9 @@
+from functools import reduce
+
 import numpy as np
-from chunkflow.global_offset_array import GlobalOffsetArray
+
 from chunkflow.datasource_manager import DatasourceRepository
+from chunkflow.global_offset_array import GlobalOffsetArray
 from cloudvolume import CloudVolume
 
 
@@ -37,12 +40,27 @@ class CloudVolumeCZYX(CloudVolume):
 
 
 class CloudVolumeDatasource(DatasourceRepository):
-    def __init__(self, input_cloudvolume, *args, **kwargs):
+    def __init__(self, input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap,
+                 intermediate_protocol='file://', *args, **kwargs):
+        self.intermediate_protocol = intermediate_protocol
         # input_datasource = CloudVolumeWrapper(input_cloudvolume)
-        if not isinstance(input_cloudvolume, CloudVolumeCZYX):
-            raise NotImplementedError('Must use %s class cloudvolume to ensure correct indexing' %
-                                      CloudVolumeCZYX.__class__)
-        super().__init__(input_cloudvolume, *args, **kwargs)
+        if any(not isinstance(volume, CloudVolumeCZYX) for volume in [
+            input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap]):
+            raise ValueError('Must use %s class cloudvolume to ensure correct c order indexing' %
+                                      CloudVolumeCZYX.__name__)
+        super().__init__(input_cloudvolume,
+                         output_cloudvolume_core,
+                         output_cloudvolume_overlap,
+                         *args, **kwargs)
 
     def create(self, mod_index, *args, **kwargs):
-        pass
+        post_protocol_index = self.output_datasource_core.layer_cloudpath.find("//") + 2
+        base_name = self.output_datasource_core.layer_cloudpath[post_protocol_index:]
+        base_info = self.output_datasource_core.info
+        index_name = reduce(lambda x, y: x + '_' + str(y), mod_index, '')
+        print()
+        new_cloudvolume = CloudVolume(self.intermediate_protocol + base_name + index_name,
+                                      info=base_info, cache=False, non_aligned_writes=True, fill_missing=True,
+                                      compress=False)
+        new_cloudvolume.commit_info()
+        return new_cloudvolume

@@ -12,9 +12,19 @@ from chunkflow.models import Block
 
 
 class NumpyDatasource(DatasourceRepository):
-    def __init__(self, output_shape=None, *args, **kwargs):
+    def __init__(self, output_shape,
+                 output_datasource_core=None, output_datasource_overlap=None, *args, **kwargs):
         self.output_shape = output_shape
-        super().__init__(*args, **kwargs)
+        super().__init__(output_datasource_core=output_datasource_core,
+                         output_datasource_overlap=output_datasource_overlap,
+                         *args, **kwargs)
+
+        if self.output_datasource_core is None:
+            self.output_datasource_core = self.create(None)
+
+        if self.output_datasource_overlap is None:
+            self.output_datasource_overlap = self.create(None)
+
 
     def create(self, mod_index, *args, **kwargs):
         offset = self.input_datasource.global_offset
@@ -70,7 +80,8 @@ class BlockProcessorTest(unittest.TestCase):
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(NumpyDatasource(input_datasource=fake_data, output_shape=output_shape))
+        datasource_manager = DatasourceManager(
+            NumpyDatasource(input_datasource=fake_data, output_shape=output_shape, index_dimensions=2))
         processor = BlockProcessor(
             inference_operation=IncrementInference(step=1),
             blend_operation=AverageBlend(block),
@@ -95,7 +106,7 @@ class BlockProcessorTest(unittest.TestCase):
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
         datasource_manager = DatasourceManager(
-            NumpyDatasource(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+            NumpyDatasource(input_datasource=fake_data, output_shape=(3,) + fake_data.shape, index_dimensions=2))
 
         processor = BlockProcessor(
             IncrementThreeChannelInference(step=1), AverageBlend(block), datasource_manager

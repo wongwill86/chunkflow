@@ -22,31 +22,26 @@ class DatasourceManager(object):
         chunk.dump_data(self.repository.output_datasource_overlap, slices)
 
     def upload_output_core(self, chunk, slices):
-        # print('\n\n\noutput core chuunk')
         chunk.dump_data(self.repository.output_datasource_core, slices)
 
 
 class DatasourceRepository(object):
-    def __init__(self, input_datasource, output_datasource_core=None, output_datasource_overlap=None):
+    def __init__(self, input_datasource, output_datasource_core, output_datasource_overlap, index_dimensions,
+                 repository=None):
         self.repository = dict()
         self.input_datasource = input_datasource
-
-        if output_datasource_core is None:
-            output_datasource_core = self.create(None)
-
-        if output_datasource_overlap is None:
-            output_datasource_overlap = self.create(None)
-
         self.output_datasource_core = output_datasource_core
         self.output_datasource_overlap = output_datasource_overlap
 
-        iterator = UnitIterator()
-
-        # prepopulate
-        origin = tuple([1] * len(input_datasource.shape))
-        self.repository[origin] = self.create(origin)
-        for neighbor in iterator.get_all_neighbors(origin):
-            self.repository[neighbor] = self.create(neighbor)
+        if repository is None:
+            # prepopulate
+            iterator = UnitIterator()
+            origin = tuple([1] * index_dimensions)
+            self.repository[origin] = self.create(origin)
+            for neighbor in iterator.get_all_neighbors(origin):
+                self.repository[neighbor] = self.create(neighbor)
+        else:
+            self.repository = repository
 
     def create(self, mod_index, *args, **kwargs):
         raise NotImplementedError

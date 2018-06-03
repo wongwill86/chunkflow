@@ -5,7 +5,6 @@ from cloudvolume import CloudVolume
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
 from chunkflow.cloudvolume_datasource import CloudVolumeDatasource
 
-
 class CloudVolumeCZYXTest(unittest.TestCase):
 
     @pytest.fixture(autouse=True)
@@ -84,11 +83,39 @@ class CloudVolumeCZYXTest(unittest.TestCase):
 
 
 class CloudVolumeDatasourceTest(unittest.TestCase):
+    INPUT_PATH = 'file://input_path'
+    DEFAULT_INFO = CloudVolume.create_new_info(
+        num_channels=1,
+        layer_type='image',
+        data_type='uint16',
+        encoding='raw',
+        chunk_size=[8, 8, 4],
+        volume_size=[24, 24, 12],
+        resolution=[1, 1, 1],
+        voxel_offset=[0, 0, 0]
+    )
 
-    def test_nothing(self):
-        return
-        input_cloudvolume = CloudVolumeCZYX('gs://wwong/sub_pinky40_v11/image/', cache=True)
-        # cloudvolume_datasource = CloudVolumeDatasource(input_cloudvolume)
-        data = input_cloudvolume[0:16, 40960:40960+64, 10240:10240+64]
-        print(data.shape)
-        print(data.flags)
+    @pytest.fixture(autouse=True)
+    def init_input(self, tmpdir):
+        tmpdir.chdir()
+        input_cloudvolume = CloudVolume(self.INPUT_PATH, info=self.DEFAULT_INFO, cache=True)
+        input_cloudvolume.commit_info()
+
+    def test_fail_not_cloudvolumeczyx(self):
+        input_cloudvolume = CloudVolume(self.INPUT_PATH, cache=True)
+        output_cloudvolume_core = CloudVolume(self.INPUT_PATH, cache=True)
+        output_cloudvolume_overlap = CloudVolume(self.INPUT_PATH, cache=True)
+
+        # input_cloudvolume = CloudVolumeCZYX('gs://wwong/sub_pinky40_v11/image/', cache=True)
+        with self.assertRaises(ValueError):
+            cloudvolume_datasource = CloudVolumeDatasource(input_cloudvolume, output_cloudvolume_core,
+                                                        output_cloudvolume_overlap, index_dimensions=3)
+
+    def test_simple(self):
+        input_cloudvolume = CloudVolumeCZYX(self.INPUT_PATH, cache=True)
+        output_cloudvolume_core = CloudVolumeCZYX(self.INPUT_PATH, cache=True)
+        output_cloudvolume_overlap = CloudVolumeCZYX(self.INPUT_PATH, cache=True)
+
+        cloudvolume_datasource = CloudVolumeDatasource(input_cloudvolume, output_cloudvolume_core,
+                                                       output_cloudvolume_overlap, index_dimensions=3)
+
