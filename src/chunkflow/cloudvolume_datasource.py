@@ -44,10 +44,10 @@ class CloudVolumeDatasource(DatasourceRepository):
                  intermediate_protocol='file://', *args, **kwargs):
         self.intermediate_protocol = intermediate_protocol
         # input_datasource = CloudVolumeWrapper(input_cloudvolume)
-        if any(not isinstance(volume, CloudVolumeCZYX) for volume in [
-            input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap]):
+        if any(not isinstance(volume, CloudVolumeCZYX)
+               for volume in [input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap]):
             raise ValueError('Must use %s class cloudvolume to ensure correct c order indexing' %
-                                      CloudVolumeCZYX.__name__)
+                             CloudVolumeCZYX.__name__)
         super().__init__(input_cloudvolume,
                          output_cloudvolume_core,
                          output_cloudvolume_overlap,
@@ -58,7 +58,6 @@ class CloudVolumeDatasource(DatasourceRepository):
         base_name = self.output_datasource_core.layer_cloudpath[post_protocol_index:]
         base_info = self.output_datasource_core.info
         index_name = reduce(lambda x, y: x + '_' + str(y), mod_index, '')
-        print()
         new_cloudvolume = CloudVolume(self.intermediate_protocol + base_name + index_name,
                                       info=base_info, cache=False, non_aligned_writes=True, fill_missing=True,
                                       compress=False)

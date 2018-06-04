@@ -55,7 +55,6 @@ class BlockProcessor(object):
         self.inference_operation = inference_operation
         self.blend_operation = blend_operation
         self.datasource_manager = datasource_manager
-        self.datasource_stream = Observable.from_(self.datasource_manager.repository.repository.values())
 
     def process(self, block, start_slice=None):
         # optimal_thread_count = multiprocessing.cpu_count()
@@ -83,13 +82,13 @@ class BlockProcessor(object):
             .flat_map(
                 lambda chunk:
                 (
-                    self.datasource_stream
+                    # create temp list of repositories values at time of iteration
+                    Observable.from_(list(self.datasource_manager.repository.intermediate_datasources.values()))
                     .reduce(partial(aggregate, chunk.slices), seed=0)
                     .do_action(chunk.load_data)
                     .map(lambda _: chunk)
                 )
             )
-            # .flat_map(partial(self.datasource_manager.dump_chunk))
             .flat_map(lambda chunk:
                       Observable.merge(
                           Observable.just(chunk).flat_map(block.overlap_slices).do_action(

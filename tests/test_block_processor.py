@@ -25,7 +25,6 @@ class NumpyDatasource(DatasourceRepository):
         if self.output_datasource_overlap is None:
             self.output_datasource_overlap = self.create(None)
 
-
     def create(self, mod_index, *args, **kwargs):
         offset = self.input_datasource.global_offset
         shape = self.input_datasource.shape
@@ -81,7 +80,7 @@ class BlockProcessorTest(unittest.TestCase):
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
         datasource_manager = DatasourceManager(
-            NumpyDatasource(input_datasource=fake_data, output_shape=output_shape, index_dimensions=2))
+            NumpyDatasource(input_datasource=fake_data, output_shape=output_shape))
         processor = BlockProcessor(
             inference_operation=IncrementInference(step=1),
             blend_operation=AverageBlend(block),
@@ -106,7 +105,7 @@ class BlockProcessorTest(unittest.TestCase):
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
         datasource_manager = DatasourceManager(
-            NumpyDatasource(input_datasource=fake_data, output_shape=(3,) + fake_data.shape, index_dimensions=2))
+            NumpyDatasource(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
 
         processor = BlockProcessor(
             IncrementThreeChannelInference(step=1), AverageBlend(block), datasource_manager
