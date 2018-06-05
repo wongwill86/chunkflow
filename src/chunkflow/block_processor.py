@@ -50,7 +50,7 @@ def aggregate(slices, aggregate, datasource):
     return aggregate
 
 
-class BlockProcessor(object):
+class BlockProcessor:
     def __init__(self, inference_operation, blend_operation, datasource_manager):
         self.inference_operation = inference_operation
         self.blend_operation = blend_operation

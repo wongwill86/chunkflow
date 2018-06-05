@@ -2,7 +2,7 @@ def get_mod_index(index):
     return tuple(idx % 3 for idx in index)
 
 
-class DatasourceManager(object):
+class DatasourceManager:
     def __init__(self, repository):
         self.repository = repository
 
@@ -21,7 +21,8 @@ class DatasourceManager(object):
     def upload_output_core(self, chunk, slices):
         chunk.dump_data(self.repository.output_datasource_core, slices)
 
-class DatasourceRepository(object):
+
+class DatasourceRepository:
     def __init__(self, input_datasource, output_datasource_core, output_datasource_overlap,
                  intermediate_datasources=None):
         self.input_datasource = input_datasource

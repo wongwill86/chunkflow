@@ -1,10 +1,9 @@
-import unittest
 from collections import deque
 
 from chunkflow import iterators
 
 
-class UnitIteratorTest(unittest.TestCase):
+class TestUnitIterator:
     def test_unit_get_all_neighbors(self):
         iterator = iterators.UnitIterator()
         expected_neighbors = set([
@@ -18,7 +17,7 @@ class UnitIteratorTest(unittest.TestCase):
             (1, -1),
         ])
         neighbors = iterator.get_all_neighbors((0, 0))
-        self.assertEquals(expected_neighbors, set(neighbors))
+        assert set(neighbors) == expected_neighbors
 
     def test_unit_get_all_neighbors_max(self):
         iterator = iterators.UnitIterator()
@@ -28,10 +27,10 @@ class UnitIteratorTest(unittest.TestCase):
             (0, 0),
         ])
         neighbors = iterator.get_all_neighbors((1, 1), max=(2, 2))
-        self.assertEquals(expected_neighbors, set(neighbors))
+        assert set(neighbors) == expected_neighbors
 
 
-class UnitBFSIteratorTest(unittest.TestCase):
+class TestUnitBFSIterator:
 
     def test_bfs_iterator(self):
         expected_bfs_steps = [
@@ -41,10 +40,10 @@ class UnitBFSIteratorTest(unittest.TestCase):
         ]
         iterator = iterators.UnitBFSIterator()
         bfs = deque(iterator.get((0, 0), (3, 3)))
-        self.assertEquals(len(bfs), 9)
+        assert len(bfs) == 9
         for expected_bfs in expected_bfs_steps:
             while len(expected_bfs) and len(bfs):
                 step = bfs.popleft()
                 expected_bfs.remove(step)
-            self.assertEquals(0, len(expected_bfs))
-        self.assertEquals(0, len(bfs))
+            assert len(expected_bfs) == 0
+        assert len(bfs) == 0

@@ -1,5 +1,5 @@
 import operator
-import unittest
+import pytest
 from math import factorial
 from math import floor
 
@@ -48,7 +48,7 @@ IN_PLACE_OPERATORS = {
 }
 
 
-class GlobalOffsetArrayTest(unittest.TestCase):
+class TestGlobalOffsetArray:
 
     def recurse_compare(self, left_array, right_array, shape, index=(), dimension=0):
         if isinstance(left_array, GlobalOffsetArray) and isinstance(right_array, GlobalOffsetArray) and \
@@ -83,7 +83,7 @@ class GlobalOffsetArrayTest(unittest.TestCase):
             else:
                 right_index = index
 
-            self.assertEqual(left_array[left_index], right_array[right_index])
+            assert left_array[left_index] == right_array[right_index]
         else:
             for i in range(0, shape[dimension]):
                 self.recurse_compare(left_array, right_array, shape, index + (i,), dimension + 1)
@@ -94,8 +94,8 @@ class GlobalOffsetArrayTest(unittest.TestCase):
         """
         for test_array in TEST_ARRAYS:
             offset_array = GlobalOffsetArray(test_array)
-            self.assertEqual(tuple([0] * test_array.ndim), offset_array.global_offset)
-            self.assertTrue(np.array_equal(test_array, offset_array))
+            assert offset_array.global_offset == tuple([0] * test_array.ndim)
+            assert np.array_equal(test_array, offset_array)
 
     def test_get_offset_origin(self):
         """
@@ -103,8 +103,8 @@ class GlobalOffsetArrayTest(unittest.TestCase):
         """
         for test_array in TEST_ARRAYS:
             offset_array = GlobalOffsetArray(test_array, global_offset=tuple(0 for _ in range(0, test_array.ndim)))
-            self.assertEqual(tuple([0] * test_array.ndim), offset_array.global_offset)
-            self.assertTrue(np.array_equal(test_array, offset_array))
+            assert offset_array.global_offset == tuple([0] * test_array.ndim)
+            assert np.array_equal(test_array, offset_array)
             self.recurse_compare(test_array, offset_array, test_array.shape)
 
     def test_get_with_offset(self):
@@ -116,14 +116,14 @@ class GlobalOffsetArrayTest(unittest.TestCase):
             offset = tuple([index + 1 for index in range(0, len(test_array.shape))])
             shape = test_array.shape
             offset_array = GlobalOffsetArray(test_array, global_offset=offset)
-            self.assertEqual(offset, offset_array.global_offset)
+            assert offset_array.global_offset == offset
 
             test_slices = tuple(slice(0, shape[dimension]) for dimension in range(0, test_array.ndim))
             # same as test_slices but at offset
             offset_slices = tuple(slice(test_slice.start + offset[dimension], test_slice.stop + offset[dimension])
                                   for dimension, test_slice in enumerate(test_slices))
             sliced_offset_array = offset_array[offset_slices]
-            self.assertTrue(np.array_equal(test_array[test_slices], sliced_offset_array))
+            assert np.array_equal(test_array[test_slices], sliced_offset_array)
             self.recurse_compare(test_array[test_slices], sliced_offset_array, test_array.shape)
 
     def test_bad_offset(self):
@@ -134,11 +134,11 @@ class GlobalOffsetArrayTest(unittest.TestCase):
         original = np.arange(5 ** 4).reshape(tuple([5] * 4))
         global_offset = (100, 200, 300, 400)
 
-        with self.assertRaises(ValueError):
-            offset_array = GlobalOffsetArray(original, global_offset=global_offset + (32,))
+        with pytest.raises(ValueError):
+            GlobalOffsetArray(original, global_offset=global_offset + (32,))
 
-        with self.assertRaises(ValueError):
-            offset_array = GlobalOffsetArray(original, global_offset=global_offset[1:])
+        with pytest.raises(ValueError):
+            GlobalOffsetArray(original, global_offset=global_offset[1:])
 
     def test_bounds(self):
         """
@@ -149,26 +149,25 @@ class GlobalOffsetArrayTest(unittest.TestCase):
         global_offset = (100, 200, 300, 400)
         offset_array = GlobalOffsetArray(original)
 
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             offset_array[5:6, 4:5, 6:7, 7:8]
 
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             offset_array[2, 2:5, 6:8, 0:2]
 
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             offset_array[2, 9, 0:3, 0:2]
 
         offset_array = GlobalOffsetArray(original, global_offset=global_offset)
 
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             offset_array[105:106, 204:205, 306:307, 407:408]
 
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             offset_array[102, 202:205, 306:308, 400:402]
 
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             offset_array[102, 209, 300:303, 400:402]
-
 
     def test_subarray(self):
         """
@@ -190,22 +189,22 @@ class GlobalOffsetArrayTest(unittest.TestCase):
         original_index = (slice(0, 2), slice(2, 5), slice(3, 5), slice(0, 3))
         offset_index = to_offsets(original_index)
         sub_array = offset_array[offset_index]
-        self.assertTrue(np.array_equal(original[original_index], sub_array))
-        self.assertEqual((100, 202, 303, 400), sub_array.global_offset)
-        self.assertTrue(np.array_equal(offset_array[offset_index], sub_array[offset_index]))
+        assert np.array_equal(sub_array, original[original_index])
+        assert sub_array.global_offset == (100, 202, 303, 400)
+        assert np.array_equal(sub_array[offset_index], offset_array[offset_index])
 
         # ensure that returned sub_array is actually a view
         sub_array[sub_array.global_offset] = 1337
-        self.assertEqual(1337, offset_array[sub_array.global_offset])
+        assert offset_array[sub_array.global_offset] == 1337
 
         # test slice with some slices some fixed
         original_index = (slice(0, 2), 3, slice(3, 5), slice(0, 3))
         offset_index = to_offsets(original_index)
         sub_array = offset_array[offset_index]
-        self.assertTrue(np.array_equal(original[original_index], sub_array))
-        self.assertEqual((100, 303, 400), sub_array.global_offset)
-        self.assertTrue(np.array_equal(offset_array[offset_index], sub_array[tuple(s for s in offset_index if
-                                                                                   isinstance(s, slice))]))
+        assert np.array_equal(original[original_index], sub_array)
+        assert sub_array.global_offset == (100, 303, 400)
+        assert np.array_equal(sub_array[tuple(s for s in offset_index if isinstance(s, slice))],
+                              offset_array[offset_index])
 
     def generate_data(self, ndim, length):
         """
@@ -256,16 +255,16 @@ class GlobalOffsetArrayTest(unittest.TestCase):
         offset_array[offset_replace_slice] = replacement
 
         # check replaced values are correctly replaced
-        self.assertTrue(np.array_equal(replacement, offset_array[offset_replace_slice].view(np.ndarray)))
+        assert np.array_equal(offset_array[offset_replace_slice].view(np.ndarray), replacement)
         # check that the expected and the new array has same values
-        self.assertTrue(np.array_equal(expected, offset_array))
+        assert np.array_equal(offset_array, expected)
         self.recurse_compare(expected, offset_array, offset_array.shape)
         # check replaced values are correctly replaced
-        self.assertTrue(np.array_equal(replacement, offset_array[offset_replace_slice].view(np.ndarray)))
+        assert np.array_equal(offset_array[offset_replace_slice].view(np.ndarray), replacement)
 
         # ensure direct index set is correct
         offset_array[offset_array.global_offset] = 1
-        self.assertEqual(1, offset_array[offset_array.global_offset])
+        assert offset_array[offset_array.global_offset] == 1
 
     def test_operator_same_size_ndarray(self):
         """
@@ -307,10 +306,10 @@ class GlobalOffsetArrayTest(unittest.TestCase):
                     actual = offset_array
 
                 # ensure global_offset is preserved
-                self.assertEqual(offset_array.global_offset, actual.global_offset)
+                assert actual.global_offset == offset_array.global_offset
 
                 # ensure actual results match that of a regular ndarray
-                self.assertTrue(np.array_equal(expected, actual))
+                assert np.array_equal(actual, expected)
                 self.recurse_compare(expected, actual, offset_array.shape)
 
                 # ensure the results that are returned are a copy of an array instead of a view just like ndarray
@@ -318,7 +317,7 @@ class GlobalOffsetArrayTest(unittest.TestCase):
                 actual[actual.global_offset] = 1337
 
                 # original arrays were not modified (or they were, compare same result from regular ndarray op)
-                self.assertEqual(np.any(original == 1337), np.any(offset_array == 1337))
+                assert np.any(offset_array == 1337) == np.any(original == 1337)
 
     def test_operator_diff_size_ndarray(self):
         """
@@ -356,7 +355,7 @@ class GlobalOffsetArrayTest(unittest.TestCase):
                 except Exception as e:
                     error = e
 
-                with self.assertRaisesRegexp(error.__class__, str(error).replace('(', '\\(').replace(')', '\\)')):
+                with pytest.raises(error.__class__, match=str(error).replace('(', '\\(').replace(')', '\\)')):
                     op(left_offset, right_offset)
 
     def test_operator_same_size_global_offset_array(self):
@@ -401,27 +400,27 @@ class GlobalOffsetArrayTest(unittest.TestCase):
                     actual = offset_array
 
                 # ensure global_offset is preserved
-                self.assertEqual(offset_array.global_offset, actual.global_offset)
+                assert actual.global_offset == offset_array.global_offset
 
                 # ensure actual results match that of a regular ndarray
-                self.assertTrue(np.array_equal(expected, actual))
+                assert np.array_equal(actual, expected)
 
                 # ensure the results that are returned are a copy of an array instead of a view just like ndarray
                 expected[tuple([0] * ndim)] = 1337
                 actual[actual.global_offset] = 1337
 
                 # original arrays were not modified
-                self.assertEqual(np.any(original == 1337), np.any(offset_array == 1337))
+                assert np.any(offset_array == 1337) == np.any(original == 1337)
 
                 # Try testing with the operate param with a different global_offset
                 operate_param.global_offset = tuple([1337] * ndim)
-                with self.assertRaises(ValueError):
+                with pytest.raises(ValueError):
                     op(left_offset, right_offset)
 
                 # Try testing with the operate param with a partially overlapping data
                 operate_param.global_offset = tuple(floor(size/2) + offset for size, offset in
                                                     zip(offset_array.shape, offset_array.global_offset))
-                with self.assertRaises(ValueError):
+                with pytest.raises(ValueError):
                     op(left_offset, right_offset)
 
     def test_operator_diff_size_global_offset_array(self):
@@ -460,7 +459,7 @@ class GlobalOffsetArrayTest(unittest.TestCase):
 
                     # in place operators should only work if the left param is larger than the right
                     if op in IN_PLACE_OPERATORS:
-                        with self.assertRaises(ValueError):
+                        with pytest.raises(ValueError):
                             op(left_offset, right_offset)
                         continue
 
@@ -479,26 +478,26 @@ class GlobalOffsetArrayTest(unittest.TestCase):
                 expected[half_slice] = expected_sub_array
 
                 # ensure global_offset is preserved
-                self.assertEqual(offset_array.global_offset, actual.global_offset)
+                assert actual.global_offset == offset_array.global_offset
 
-                self.assertTrue(np.array_equal(expected, actual))
+                assert np.array_equal(actual, expected)
 
                 # ensure the results that are returned are a copy of an array instead of a view just like ndarray
                 expected[tuple([0] * ndim)] = 1337
                 actual[actual.global_offset] = 1337
 
                 # original arrays were not modified
-                self.assertEqual(np.any(original == 1337), np.any(offset_array == 1337))
+                assert np.any(original == 1337) == np.any(offset_array == 1337)
 
                 # Fail on partial overlap
-                with self.assertRaises(ValueError):
+                with pytest.raises(ValueError):
                     operate_param.global_offset = tuple(floor(size/2) + floor(size/4) for size in offset_array.shape)
                     op(left_offset, right_offset)
 
     def test_aggregate_function(self):
         for test_array in TEST_ARRAYS:
             offset_array = GlobalOffsetArray(test_array)
-            self.assertEquals(type(test_array.sum()), type(offset_array.sum()))
+            assert type(offset_array.sum()) == type(test_array.sum())
 
     def test_slice_same_dimensions(self):
         for test_array in TEST_ARRAYS:
@@ -509,8 +508,8 @@ class GlobalOffsetArrayTest(unittest.TestCase):
             sub_test_array = test_array[sub_slices]
             sub_offset_array = offset_array[sub_slices]
 
-            self.assertEquals(sub_test_array.shape, sub_offset_array.shape)
-            self.assertEquals(len(sub_test_array.shape), len(sub_offset_array.global_offset))
+            assert sub_offset_array.shape == sub_test_array.shape
+            assert len(sub_offset_array.global_offset) == len(sub_test_array.shape)
 
     def test_slice_fill_missing_dimensions(self):
         for test_array in TEST_ARRAYS[:]:
@@ -518,11 +517,11 @@ class GlobalOffsetArrayTest(unittest.TestCase):
 
             offset_array = 0 + GlobalOffsetArray(test_array)
             sub_offset_array = 0 + offset_array[sub_slices]
-            self.assertEquals(offset_array.global_offset, sub_offset_array.global_offset)
+            assert sub_offset_array.global_offset == offset_array.global_offset
 
     def test_autofill_dimensions(self):
         dimensions = (4, 3, 2, 1)
         data = np.arange(0, np.product(dimensions)).reshape(dimensions)
         global_offset_data = GlobalOffsetArray(data, global_offset=(3, 2, 1, 0))
-        self.assertTrue(np.array_equal(data[2], global_offset_data[5]))
-        self.assertTrue(np.array_equal(data[2, 1], global_offset_data[5,3]))
+        assert np.array_equal(global_offset_data[5], data[2])
+        assert np.array_equal(global_offset_data[5, 3], data[2, 1])

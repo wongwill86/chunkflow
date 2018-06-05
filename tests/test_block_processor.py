@@ -1,10 +1,11 @@
-import unittest
+import pytest
 
 import numpy as np
 
 from chunkflow.block_processor import BlockProcessor
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
+from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
 from chunkflow.datasource_manager import DatasourceManager
 from chunkflow.datasource_manager import DatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
@@ -67,9 +68,9 @@ class IncrementThreeChannelInference(ChunkOperation):
         chunk.data = GlobalOffsetArray(np.stack((one, two, three)), global_offset=global_offset)
 
 
-class BlockProcessorTest(unittest.TestCase):
+class TestBlockProcessor:
 
-    def test_process(self):
+    def test_process_single_channel(self):
         bounds = (slice(0, 7), slice(0, 7))
         chunk_shape = (3, 3)
         output_shape = (3, 3)
@@ -89,13 +90,11 @@ class BlockProcessorTest(unittest.TestCase):
 
         processor.process(block)
 
-        self.assertEquals(
-            np.product(block.shape), datasource_manager.repository.output_datasource_core.sum() +
-            datasource_manager.repository.output_datasource_overlap.sum()
-        )
+        assert datasource_manager.repository.output_datasource_core.sum() + \
+            datasource_manager.repository.output_datasource_overlap.sum() == \
+            np.product(block.shape)
 
     def test_process_multi_channel(self):
-        # return
         bounds = (slice(0, 7), slice(0, 7))
         chunk_shape = (3, 3)
         overlap = (1, 1)
@@ -113,7 +112,38 @@ class BlockProcessorTest(unittest.TestCase):
 
         processor.process(block)
 
-        self.assertEquals(
-            np.product(block.shape) * 111, datasource_manager.repository.output_datasource_core.sum() +
-            datasource_manager.repository.output_datasource_overlap.sum()
-        )
+        assert datasource_manager.repository.output_datasource_core.sum() + \
+            datasource_manager.repository.output_datasource_overlap.sum() == \
+            np.product(block.shape) * 111
+
+    # @pytest.mark.usefixtures('cloud_volume')
+    # def test_process_cloudvolume(self, cloud_volume):
+    #     # sestup data
+    #     input_cloudvolume = CloudVolumeCZYX(INPUT_SINGLE_CHANNEL_PATH, cache=True)
+    #     output_cloudvolume_core = CloudVolumeCZYX(INPUT_SINGLE_CHANNEL_PATH, cache=True)
+    #     output_cloudvolume_overlap = CloudVolumeCZYX(INPUT_SINGLE_CHANNEL_PATH, cache=True)
+    #     repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core,
+    #                                                  output_cloudvolume_overlap)
+
+    #     assert repository.get_datasource((1, 2, 0)) == datasource
+    #     # return
+    #     bounds = (slice(0, 7), slice(0, 7))
+    #     chunk_shape = (3, 3)
+    #     overlap = (1, 1)
+
+    #     import numpy as np
+    #     block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+
+    #     fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+    #     datasource_manager = DatasourceManager(repository)
+
+    #     processor = BlockProcessor(
+    #         IncrementThreeChannelInference(step=1), AverageBlend(block), datasource_manager
+    #     )
+
+    #     processor.process(block)
+
+    #     # assert
+    #     #     np.product(block.shape) * 111, datasource_manager.repository.output_datasource_core.sum() +
+    #     #     datasource_manager.repository.output_datasource_overlap.sum()
+    #     # )

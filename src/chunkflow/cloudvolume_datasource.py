@@ -39,7 +39,7 @@ class CloudVolumeCZYX(CloudVolume):
         super().__setitem__(slices, item)
 
 
-class CloudVolumeDatasource(DatasourceRepository):
+class CloudVolumeDatasourceRepository(DatasourceRepository):
     def __init__(self, input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap,
                  intermediate_protocol='file://', *args, **kwargs):
         self.intermediate_protocol = intermediate_protocol

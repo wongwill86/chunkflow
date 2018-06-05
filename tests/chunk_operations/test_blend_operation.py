@@ -1,5 +1,3 @@
-import unittest
-
 import numpy as np
 
 from chunkflow.chunk_operations.blend_operation import AverageBlend
@@ -8,7 +6,7 @@ from chunkflow.models import Block
 from chunkflow.models import Chunk
 
 
-class AverageBlendTest(unittest.TestCase):
+class TestAverageBlend:
     def test_weight_mapping_2d(self):
         bounds = (slice(0, 7), slice(0, 7))
         chunk_shape = (3, 3)
@@ -24,7 +22,7 @@ class AverageBlendTest(unittest.TestCase):
         for chunk in block.chunk_iterator((0, 0)):
             fake_data[chunk.slices] += blend_operation.generate_weight_mapping(chunk)
 
-        self.assertEquals(np.product(fake_data.shape), fake_data.sum())
+        assert fake_data.sum() == np.product(fake_data.shape)
 
     def test_weight_mapping_3d(self):
         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
@@ -41,4 +39,4 @@ class AverageBlendTest(unittest.TestCase):
         for chunk in block.chunk_iterator((0, 0, 0)):
             fake_data[chunk.slices] += blend_operation.generate_weight_mapping(chunk)
 
-        self.assertEquals(np.product(fake_data.shape), fake_data.sum())
+        assert fake_data.sum() == np.product(fake_data.shape)
