@@ -1,7 +1,7 @@
 import itertools
-import pytest
 
 import numpy as np
+import pytest
 
 from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.iterators import Iterator

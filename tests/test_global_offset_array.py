@@ -1,9 +1,9 @@
 import operator
-import pytest
 from math import factorial
 from math import floor
 
 import numpy as np
+import pytest
 
 from chunkflow.global_offset_array import GlobalOffsetArray
 

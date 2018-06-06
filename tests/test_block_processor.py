@@ -3,9 +3,9 @@ import numpy as np
 from chunkflow.block_processor import BlockProcessor
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
+from chunkflow.cloudvolume_datasource import CloudVolumeDatasourceRepository
 from chunkflow.datasource_manager import DatasourceManager
 from chunkflow.datasource_manager import DatasourceRepository
-from chunkflow.cloudvolume_datasource import CloudVolumeDatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.models import Block
 

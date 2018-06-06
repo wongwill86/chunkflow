@@ -1,8 +1,7 @@
 import pytest
-
 from cloudvolume import CloudVolume
-from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
 
+from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
 
 TEMPLATE_INFO_ARGS = {
     'layer_type': 'image',
