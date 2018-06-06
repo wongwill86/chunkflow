@@ -497,7 +497,7 @@ class TestGlobalOffsetArray:
     def test_aggregate_function(self):
         for test_array in TEST_ARRAYS:
             offset_array = GlobalOffsetArray(test_array)
-            assert type(offset_array.sum()) == type(test_array.sum())
+            assert type(offset_array.sum()) == type(test_array.sum()) #noqa
 
     def test_slice_same_dimensions(self):
         for test_array in TEST_ARRAYS:
