@@ -13,7 +13,7 @@ class TestCloudVolumeCZYX:
         data_shape_fortran = [8, 8, 4]
         cv_fortran = cloudvolume_factory.create('test', chunk_size=data_shape_fortran, volume_size=data_shape_fortran,
                                                 cloudvolume_class=CloudVolume)
-        offset_fortran = cv_fortran.info['scales'][0]['voxel_offset']
+        offset_fortran = cv_fortran.info['scales'][cv_fortran.mip]['voxel_offset']
 
         slices_fortran = tuple(slice(0 + o, d + o) for d, o in zip(data_shape_fortran, offset_fortran))
         slices_c = slices_fortran[::-1]
@@ -39,7 +39,7 @@ class TestCloudVolumeCZYX:
         data_shape_c = data_shape_fortran[::-1]
         cv_c = cloudvolume_factory.create('test', chunk_size=data_shape_c, volume_size=data_shape_c,
                                           cloudvolume_class=CloudVolumeCZYX)
-        offset_fortran = cv_c.info['scales'][0]['voxel_offset']
+        offset_fortran = cv_c.info['scales'][cv_c.mip]['voxel_offset']
 
         slices_fortran = tuple(slice(o, d + o) for d, o in zip(data_shape_fortran, offset_fortran))
         slices_c = slices_fortran[::-1]
@@ -63,7 +63,7 @@ class TestCloudVolumeCZYX:
         input_cloudvolume = cloudvolume_factory.create('input')
         output_cloudvolume = cloudvolume_factory.create('output', num_channels=3)
 
-        offset = input_cloudvolume.info['scales'][0]['voxel_offset'][::-1]
+        offset = input_cloudvolume.info['scales'][input_cloudvolume.mip]['voxel_offset'][::-1]
 
         sizes = (8, 16, 16)
         slices = tuple(slice(o, s + o) for o, s in zip(offset, sizes))
@@ -92,7 +92,7 @@ class TestCloudVolumeDatasource:
     def test_fail_not_cloudvolumeczyx(self, cloudvolume_factory):
         input_cloudvolume = cloudvolume_factory.create('input', cloudvolume_class=CloudVolume)
         output_cloudvolume_core = cloudvolume_factory.create('output_core', cloudvolume_class=CloudVolume)
-        output_cloudvolume_overlap = cloudvolume_factory.create('output_path_overlap', cloudvolume_class=CloudVolume)
+        output_cloudvolume_overlap = cloudvolume_factory.create('output_overlap', cloudvolume_class=CloudVolume)
 
         with pytest.raises(ValueError):
             CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap)
@@ -100,7 +100,7 @@ class TestCloudVolumeDatasource:
     def test_create_mod_index(self, cloudvolume_factory):
         input_cloudvolume = cloudvolume_factory.create('input')
         output_cloudvolume_core = cloudvolume_factory.create('output_core')
-        output_cloudvolume_overlap = cloudvolume_factory.create('output_path_overlap')
+        output_cloudvolume_overlap = cloudvolume_factory.create('output_overlap')
 
         repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core,
                                                      output_cloudvolume_overlap)

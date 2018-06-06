@@ -20,7 +20,7 @@ class AverageBlend(ChunkOperation):
         self.run_blend(chunk)
 
     def generate_weight_mapping(self, chunk):
-        weight_mapping = np.ones(chunk.shape)
+        weight_mapping = np.ones(chunk.shape, dtype=chunk.data.dtype)
         it = np.nditer(weight_mapping, flags=['multi_index'], op_flags=['writeonly'])
         while not it.finished:
             multi_index = it.multi_index

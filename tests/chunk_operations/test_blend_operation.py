@@ -20,6 +20,7 @@ class TestAverageBlend:
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0, 0))
         for chunk in block.chunk_iterator((0, 0)):
+            chunk.data = np.zeros(1, dtype=np.float32)
             fake_data[chunk.slices] += blend_operation.generate_weight_mapping(chunk)
 
         assert fake_data.sum() == np.product(fake_data.shape)
@@ -37,6 +38,7 @@ class TestAverageBlend:
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0, 0, 0))
         for chunk in block.chunk_iterator((0, 0, 0)):
+            chunk.data = np.zeros(1, dtype=np.float32)
             fake_data[chunk.slices] += blend_operation.generate_weight_mapping(chunk)
 
         assert fake_data.sum() == np.product(fake_data.shape)

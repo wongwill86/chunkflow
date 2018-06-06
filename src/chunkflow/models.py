@@ -64,6 +64,9 @@ class Chunk(object):
 
         slices = self.match_datasource_dimensions(datasource, slices)
 
+        print(datasource.info)
+        print(slices)
+        print(self.data[slices].shape)
         datasource[slices] = self.data[slices]
         return self
 
