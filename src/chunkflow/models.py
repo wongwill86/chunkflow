@@ -64,9 +64,6 @@ class Chunk(object):
 
         slices = self.match_datasource_dimensions(datasource, slices)
 
-        print(datasource.info)
-        print(slices)
-        print(self.data[slices].shape)
         datasource[slices] = self.data[slices]
         return self
 
@@ -181,6 +178,9 @@ class Block(object):
     def get_all_neighbors(self, chunk):
         return map(self.unit_index_to_chunk,
                    self.base_iterator.get_all_neighbors(chunk.unit_index, max=self.num_chunks))
+
+    def is_checkpointed(self, chunk):
+        return chunk.unit_index in self.checkpoints
 
     def all_neighbors_checkpointed(self, chunk):
         return all(neighbor.unit_index in self.checkpoints for neighbor in self.get_all_neighbors(chunk))

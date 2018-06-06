@@ -52,7 +52,7 @@ def cloudvolume_factory(tmpdir):
             info_args['num_channels'] = num_channels
             info = CloudVolume.create_new_info(**info_args)
 
-            directory = 'file://' + str(self.tmpdir)
+            directory = 'file://' + str(self.tmpdir) + name
             input_cloudvolume = cloudvolume_class(directory, info=info, cache=False, non_aligned_writes=True,
                                                   fill_missing=True, compress=False)
             input_cloudvolume.commit_info()

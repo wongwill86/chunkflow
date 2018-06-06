@@ -78,7 +78,30 @@ class IncrementThreeChannelInference(ChunkOperation):
 
 class TestBlockProcessor:
 
-    def test_process_single_channel(self):
+    def test_process_single_channel_2x2(self):
+        bounds = (slice(0, 5), slice(0, 5))
+        chunk_shape = (3, 3)
+        output_shape = (3, 3)
+        overlap = (1, 1)
+
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+        datasource_manager = DatasourceManager(
+            NumpyDatasource(input_datasource=fake_data, output_shape=output_shape))
+        processor = BlockProcessor(
+            inference_operation=IncrementInference(step=1),
+            blend_operation=AverageBlend(block),
+            datasource_manager=datasource_manager
+        )
+
+        processor.process(block)
+
+        assert np.product(block.shape) == \
+            datasource_manager.repository.output_datasource_core.sum() + \
+            datasource_manager.repository.output_datasource_overlap.sum()
+
+    def test_process_single_channel_3x3(self):
         bounds = (slice(0, 7), slice(0, 7))
         chunk_shape = (3, 3)
         output_shape = (3, 3)
@@ -89,6 +112,7 @@ class TestBlockProcessor:
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
         datasource_manager = DatasourceManager(
             NumpyDatasource(input_datasource=fake_data, output_shape=output_shape))
+
         processor = BlockProcessor(
             inference_operation=IncrementInference(step=1),
             blend_operation=AverageBlend(block),
@@ -165,29 +189,32 @@ class TestBlockProcessor:
             datasource_manager.repository.output_datasource_overlap.sum()
 
     def test_process_cloudvolume(self, cloudvolume_factory):
-        bounds = (slice(200, 207), slice(100, 107), slice(50, 57))
+        bounds = (slice(200, 205), slice(100, 105), slice(50, 55))
+        voxel_offset = (200, 100, 50)
         chunk_shape = (3, 3, 3)
+        cloud_volume_chunk_size = (2, 2, 2)
         overlap = (1, 1, 1)
         input_data_type = 'uint8'
         output_data_type = 'float32'
 
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
         # Setup data
-        input_cloudvolume = cloudvolume_factory.create('input', data_type=input_data_type, volume_size=block.shape,
-                                                       chunk_size=chunk_shape)
-        output_cloudvolume_core = cloudvolume_factory.create('output_core', data_type=output_data_type,
-                                                             volume_size=block.shape, chunk_size=chunk_shape,
-                                                             num_channels=3)
-        output_cloudvolume_overlap = cloudvolume_factory.create('output_overlap', data_type=output_data_type,
-                                                                volume_size=block.shape, chunk_size=chunk_shape,
-                                                                num_channels=3)
+        input_cloudvolume = cloudvolume_factory.create(
+            'input', data_type=input_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
+            voxel_offset=voxel_offset)
+        output_cloudvolume_core = cloudvolume_factory.create(
+            'output_core', data_type=output_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
+            num_channels=3, voxel_offset=voxel_offset)
+        output_cloudvolume_overlap = cloudvolume_factory.create(
+            'output_overlap', data_type=output_data_type, volume_size=block.shape,
+            chunk_size=cloud_volume_chunk_size, num_channels=3)
 
         repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core,
                                                      output_cloudvolume_overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape, dtype=np.dtype(input_data_type)),
                                       global_offset=(0,) * len(block.shape))
-        input_cloudvolume[bounds] = fake_data
+        input_cloudvolume[(slice(None),) + bounds] = fake_data
 
         datasource_manager = DatasourceManager(repository)
 
@@ -198,11 +225,6 @@ class TestBlockProcessor:
 
         processor.process(block)
 
-        print(output_cloudvolume_overlap[bounds])
-        print(output_cloudvolume_core[bounds])
-        assert False
-
-        # assert
-        #     np.product(block.shape) * 111, datasource_manager.repository.output_datasource_core.sum() +
-        #     datasource_manager.repository.output_datasource_overlap.sum()
-        # )
+        assert np.product(block.shape) * 111 == \
+            datasource_manager.repository.output_datasource_core[bounds].sum() + \
+            datasource_manager.repository.output_datasource_overlap[bounds].sum()

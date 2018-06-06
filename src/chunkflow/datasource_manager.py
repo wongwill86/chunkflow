@@ -10,7 +10,6 @@ class DatasourceManager:
         chunk.load_data(self.repository.input_datasource)
 
     def dump_chunk(self, chunk):
-        print(chunk.unit_index)
         chunk.dump_data(self.repository.get_datasource(chunk.unit_index))
 
     def load_chunk(self, chunk):

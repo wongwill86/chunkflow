@@ -73,7 +73,9 @@ class BlockProcessor:
             .map(self.blend_operation)
             .do_action(self.datasource_manager.dump_chunk)
             .do_action(block.checkpoint)
-            .flat_map(block.get_all_neighbors)
+            # check both the current chunk we just ran inference on as well as the neighboring chunks
+            .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
+            .filter(block.is_checkpointed)
             .filter(block.all_neighbors_checkpointed)
             .distinct()
             # put on new thread
@@ -83,7 +85,8 @@ class BlockProcessor:
                 lambda chunk:
                 (
                     # create temp list of repositories values at time of iteration
-                    Observable.from_(list(self.datasource_manager.repository.intermediate_datasources.values()))
+                    Observable.from_(list(self.datasource_manager.repository.intermediate_datasources.items()))
+                    .map(lambda i: i[1])
                     .reduce(partial(aggregate, chunk.slices), seed=0)
                     .do_action(chunk.load_data)
                     .map(lambda _: chunk)

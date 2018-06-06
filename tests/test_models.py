@@ -17,9 +17,9 @@ class IdentityIterator(Iterator):
         yield start
 
 
-class ChunkTest:
+class TestChunk:
     def test_get_border_slices_2d(self):
-        bounds = (slice(0, 70), slice(0, 70))
+        bounds = (slice(0, 50), slice(0, 50))
         chunk_shape = (30, 30)
         overlap = (10, 10)
 
@@ -55,7 +55,7 @@ class ChunkTest:
         assert fake_data.sum() == np.product(fake_data.shape)
 
 
-class BlockTest:
+class TestBlock:
     def test_init_wrong_size_no_overlap(self):
         bounds = (slice(0, 70), slice(0, 70))
         chunk_shape = (30, 30)
