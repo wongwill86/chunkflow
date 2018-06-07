@@ -1,4 +1,7 @@
+from functools import partial
+
 import numpy as np
+from rx import Observable
 
 from chunkflow.block_processor import BlockProcessor
 from chunkflow.chunk_operations.blend_operation import AverageBlend
@@ -8,6 +11,8 @@ from chunkflow.datasource_manager import DatasourceManager
 from chunkflow.datasource_manager import DatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.models import Block
+from chunkflow.streams import inference_observable
+from chunkflow.streams import aggregate_observable
 
 
 class NumpyDatasource(DatasourceRepository):
@@ -89,142 +94,153 @@ class TestBlockProcessor:
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
         datasource_manager = DatasourceManager(
             NumpyDatasource(input_datasource=fake_data, output_shape=output_shape))
-        processor = BlockProcessor(
+
+        inference = inference_observable(
+            block=block,
             inference_operation=IncrementInference(step=1),
             blend_operation=AverageBlend(block),
             datasource_manager=datasource_manager
         )
 
-        processor.process(block)
-
-        assert np.product(block.shape) == \
-            datasource_manager.repository.output_datasource_core.sum() + \
-            datasource_manager.repository.output_datasource_overlap.sum()
-
-    def test_process_single_channel_3x3(self):
-        bounds = (slice(0, 7), slice(0, 7))
-        chunk_shape = (3, 3)
-        output_shape = (3, 3)
-        overlap = (1, 1)
-
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
-
-        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(
-            NumpyDatasource(input_datasource=fake_data, output_shape=output_shape))
-
-        processor = BlockProcessor(
-            inference_operation=IncrementInference(step=1),
-            blend_operation=AverageBlend(block),
+        aggregate = aggregate_observable(
+            block=block,
             datasource_manager=datasource_manager
         )
 
-        processor.process(block)
+        process_stream = lambda chunk: Observable.just(chunk).flat_map(inference).flat_map(aggregate)
+
+
+        BlockProcessor().process(block, process_stream)
 
         assert np.product(block.shape) == \
             datasource_manager.repository.output_datasource_core.sum() + \
             datasource_manager.repository.output_datasource_overlap.sum()
+        assert False
 
-    def test_process_multi_channel(self):
-        bounds = (slice(0, 7), slice(0, 7))
-        chunk_shape = (3, 3)
-        overlap = (1, 1)
+    # def test_process_single_channel_3x3(self):
+    #     bounds = (slice(0, 7), slice(0, 7))
+    #     chunk_shape = (3, 3)
+    #     output_shape = (3, 3)
+    #     overlap = (1, 1)
 
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+    #     block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(
-            NumpyDatasource(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+    #     fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+    #     datasource_manager = DatasourceManager(
+    #         NumpyDatasource(input_datasource=fake_data, output_shape=output_shape))
 
-        processor = BlockProcessor(
-            IncrementThreeChannelInference(step=1), AverageBlend(block), datasource_manager
-        )
+    #     processor = BlockProcessor(
+    #         inference_operation=IncrementInference(step=1),
+    #         blend_operation=AverageBlend(block),
+    #         datasource_manager=datasource_manager
+    #     )
 
-        processor.process(block)
+    #     processor.process(block)
 
-        assert np.product(block.shape) * 111 == \
-            datasource_manager.repository.output_datasource_core.sum() + \
-            datasource_manager.repository.output_datasource_overlap.sum()
+    #     assert np.product(block.shape) == \
+    #         datasource_manager.repository.output_datasource_core.sum() + \
+    #         datasource_manager.repository.output_datasource_overlap.sum()
 
-    def test_process_single_channel_3d(self):
-        bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-        chunk_shape = (3, 3, 3)
-        overlap = (1, 1, 1)
+    # def test_process_multi_channel(self):
+    #     bounds = (slice(0, 7), slice(0, 7))
+    #     chunk_shape = (3, 3)
+    #     overlap = (1, 1)
 
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+    #     block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(
-            NumpyDatasource(input_datasource=fake_data, output_shape=fake_data.shape))
+    #     fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+    #     datasource_manager = DatasourceManager(
+    #         NumpyDatasource(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
 
-        processor = BlockProcessor(
-            IncrementInference(step=1), AverageBlend(block), datasource_manager
-        )
+    #     processor = BlockProcessor(
+    #         IncrementThreeChannelInference(step=1), AverageBlend(block), datasource_manager
+    #     )
 
-        processor.process(block)
+    #     processor.process(block)
 
-        assert np.product(block.shape) == \
-            datasource_manager.repository.output_datasource_core.sum() + \
-            datasource_manager.repository.output_datasource_overlap.sum()
+    #     assert np.product(block.shape) * 111 == \
+    #         datasource_manager.repository.output_datasource_core.sum() + \
+    #         datasource_manager.repository.output_datasource_overlap.sum()
 
-    def test_process_multi_channel_3d(self):
-        bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-        chunk_shape = (3, 3, 3)
-        overlap = (1, 1, 1)
+    # def test_process_single_channel_3d(self):
+    #     bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
+    #     chunk_shape = (3, 3, 3)
+    #     overlap = (1, 1, 1)
 
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+    #     block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(
-            NumpyDatasource(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+    #     fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+    #     datasource_manager = DatasourceManager(
+    #         NumpyDatasource(input_datasource=fake_data, output_shape=fake_data.shape))
 
-        processor = BlockProcessor(
-            IncrementThreeChannelInference(step=1), AverageBlend(block), datasource_manager
-        )
+    #     processor = BlockProcessor(
+    #         IncrementInference(step=1), AverageBlend(block), datasource_manager
+    #     )
 
-        processor.process(block)
+    #     processor.process(block)
 
-        assert np.product(block.shape) * 111 == \
-            datasource_manager.repository.output_datasource_core.sum() + \
-            datasource_manager.repository.output_datasource_overlap.sum()
+    #     assert np.product(block.shape) == \
+    #         datasource_manager.repository.output_datasource_core.sum() + \
+    #         datasource_manager.repository.output_datasource_overlap.sum()
 
-    def test_process_cloudvolume(self, cloudvolume_factory):
-        bounds = (slice(200, 205), slice(100, 105), slice(50, 55))
-        voxel_offset = (200, 100, 50)
-        chunk_shape = (3, 3, 3)
-        cloud_volume_chunk_size = (2, 2, 2)
-        overlap = (1, 1, 1)
-        input_data_type = 'uint8'
-        output_data_type = 'float32'
+    # def test_process_multi_channel_3d(self):
+    #     bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
+    #     chunk_shape = (3, 3, 3)
+    #     overlap = (1, 1, 1)
 
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
-        # Setup data
-        input_cloudvolume = cloudvolume_factory.create(
-            'input', data_type=input_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
-            voxel_offset=voxel_offset)
-        output_cloudvolume_core = cloudvolume_factory.create(
-            'output_core', data_type=output_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
-            num_channels=3, voxel_offset=voxel_offset)
-        output_cloudvolume_overlap = cloudvolume_factory.create(
-            'output_overlap', data_type=output_data_type, volume_size=block.shape,
-            chunk_size=cloud_volume_chunk_size, num_channels=3)
+    #     block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-        repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core,
-                                                     output_cloudvolume_overlap)
+    #     fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+    #     datasource_manager = DatasourceManager(
+    #         NumpyDatasource(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
 
-        fake_data = GlobalOffsetArray(np.zeros(block.shape, dtype=np.dtype(input_data_type)),
-                                      global_offset=(0,) * len(block.shape))
-        input_cloudvolume[(slice(None),) + bounds] = fake_data
+    #     processor = BlockProcessor(
+    #         IncrementThreeChannelInference(step=1), AverageBlend(block), datasource_manager
+    #     )
 
-        datasource_manager = DatasourceManager(repository)
+    #     processor.process(block)
 
-        processor = BlockProcessor(
-            IncrementThreeChannelInference(step=1, output_dtype=np.dtype(output_data_type)),
-            AverageBlend(block), datasource_manager
-        )
+    #     assert np.product(block.shape) * 111 == \
+    #         datasource_manager.repository.output_datasource_core.sum() + \
+    #         datasource_manager.repository.output_datasource_overlap.sum()
 
-        processor.process(block)
+    # def test_process_cloudvolume(self, cloudvolume_factory):
+    #     bounds = (slice(200, 205), slice(100, 105), slice(50, 55))
+    #     voxel_offset = (200, 100, 50)
+    #     chunk_shape = (3, 3, 3)
+    #     cloud_volume_chunk_size = (2, 2, 2)
+    #     overlap = (1, 1, 1)
+    #     input_data_type = 'uint8'
+    #     output_data_type = 'float32'
 
-        assert np.product(block.shape) * 111 == \
-            datasource_manager.repository.output_datasource_core[bounds].sum() + \
-            datasource_manager.repository.output_datasource_overlap[bounds].sum()
+    #     block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+    #     # Setup data
+    #     input_cloudvolume = cloudvolume_factory.create(
+    #         'input', data_type=input_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
+    #         voxel_offset=voxel_offset)
+    #     output_cloudvolume_core = cloudvolume_factory.create(
+    #         'output_core', data_type=output_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
+    #         num_channels=3, voxel_offset=voxel_offset)
+    #     output_cloudvolume_overlap = cloudvolume_factory.create(
+    #         'output_overlap', data_type=output_data_type, volume_size=block.shape,
+    #         chunk_size=cloud_volume_chunk_size, num_channels=3)
+
+    #     repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core,
+    #                                                  output_cloudvolume_overlap)
+
+    #     fake_data = GlobalOffsetArray(np.zeros(block.shape, dtype=np.dtype(input_data_type)),
+    #                                   global_offset=(0,) * len(block.shape))
+    #     input_cloudvolume[(slice(None),) + bounds] = fake_data
+
+    #     datasource_manager = DatasourceManager(repository)
+
+    #     processor = BlockProcessor(
+    #         IncrementThreeChannelInference(step=1, output_dtype=np.dtype(output_data_type)),
+    #         AverageBlend(block), datasource_manager
+    #     )
+
+    #     processor.process(block)
+
+    #     assert np.product(block.shape) * 111 == \
+    #         datasource_manager.repository.output_datasource_core[bounds].sum() + \
+    #         datasource_manager.repository.output_datasource_overlap[bounds].sum()

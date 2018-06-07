@@ -163,9 +163,6 @@ class Block(object):
     def slices_to_unit_index(self, slices):
         return tuple((slice.start - b.start) // s for b, s, slice in zip(self.bounds, self.stride, slices))
 
-    # def to_output_slices(self, slices):
-    #     return (slice(None),) * (len(self.output_shape) - len(slices)) + slices
-
     def verify_size(self):
         for chunks, c_shape, shp, olap in zip(self.num_chunks, self.chunk_shape, self.shape, self.overlap):
             if chunks * (c_shape - olap) + olap != shp:
