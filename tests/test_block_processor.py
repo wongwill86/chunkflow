@@ -11,8 +11,7 @@ from chunkflow.datasource_manager import DatasourceManager
 from chunkflow.datasource_manager import DatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.models import Block
-from chunkflow.streams import inference_observable
-from chunkflow.streams import aggregate_observable
+from chunkflow.streams import create_inference_task
 
 
 class NumpyDatasource(DatasourceRepository):
@@ -95,22 +94,14 @@ class TestBlockProcessor:
         datasource_manager = DatasourceManager(
             NumpyDatasource(input_datasource=fake_data, output_shape=output_shape))
 
-        inference = inference_observable(
+        inference_task = create_inference_task(
             block=block,
             inference_operation=IncrementInference(step=1),
             blend_operation=AverageBlend(block),
             datasource_manager=datasource_manager
         )
 
-        aggregate = aggregate_observable(
-            block=block,
-            datasource_manager=datasource_manager
-        )
-
-        process_stream = lambda chunk: Observable.just(chunk).flat_map(inference).flat_map(aggregate)
-
-
-        BlockProcessor().process(block, process_stream)
+        BlockProcessor().process(block, inference_task)
 
         assert np.product(block.shape) == \
             datasource_manager.repository.output_datasource_core.sum() + \

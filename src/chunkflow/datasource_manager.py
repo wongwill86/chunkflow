@@ -9,17 +9,29 @@ class DatasourceManager:
     def download_input(self, chunk):
         chunk.load_data(self.repository.input_datasource)
 
-    def dump_chunk(self, chunk):
-        chunk.dump_data(self.repository.get_datasource(chunk.unit_index))
+    def dump_chunk(self, chunk, datasource=None, slices=None):
+        if datasource is None:
+            datasource = self.repository.get_datasource(chunk.unit_index)
+        chunk.dump_data(datasource, slices)
 
-    def load_chunk(self, chunk):
-        chunk.load_data(self.repository.get_datasource(chunk.unit_index))
+    def load_chunk(self, chunk, datasource=None, slices=None):
+        if datasource is None:
+            datasource = self.repository.get_datasource(chunk.unit_index)
+        chunk.load_data(datasource, slices)
 
     def upload_output_overlap(self, chunk, slices):
         chunk.dump_data(self.repository.output_datasource_overlap, slices)
 
     def upload_output_core(self, chunk, slices):
         chunk.dump_data(self.repository.output_datasource_core, slices)
+
+    @property
+    def output_datasource_core(self):
+        return self.repository.output_datasource_core
+
+    @property
+    def output_datasource_overlap(self):
+        return self.repository.output_datasource_overlap
 
 
 class DatasourceRepository:

@@ -5,6 +5,7 @@ from threading import current_thread
 
 from rx import Observable
 
+
 class BlockProcessor:
     def process(self, block, processing_stream, start_slice=None):
         print('num_chunks %s' % (block.num_chunks,))
@@ -13,10 +14,14 @@ class BlockProcessor:
         else:
             start = tuple([0] * len(block.bounds))
 
+        # for chunk in block.chunk_iterator(start):
+        #     processing_stream.on_next(chunk)
+
         (
             Observable.from_(block.chunk_iterator(start))
             .flat_map(processing_stream)
-            .subscribe(self.print_done, on_error=self.on_error)
+            .to_blocking()
+            .blocking_subscribe(self.print_done, on_error=self.on_error)
         )
 
     def on_error(self, error):
