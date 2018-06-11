@@ -101,6 +101,8 @@ class Chunk(object):
         Returns a list of non-intersecting slices that cover the requested borders. Borders is a list of tuples:
             (dimension index of border, border direction)
 
+        When no borders are given, return all borders.
+
         Border direction is specified by -1 to represent the border in the negative index direction and +1 for the
         positive index direction.
         """
@@ -231,20 +233,38 @@ class Block(object):
     def remove_chunk_overlap(self, chunk, overlapped_slices):
         """
         Modify slices to remove the common intersection of the chunks within the block. Common intersections are
-        excluded in a push forward fashion, i.e. the slices do not include the portion of the data that had should be
-        accounted for by the previous chunk ( previous meaning of a lesser index ).
+        excluded in a index first fashion, i.e. the slices do not include the portion of the data that will be
+        accounted for by the next chunk ( next chunk is of a greater index ).
 
-        See py:method::overlap_slices(chunk) for usage
+        See py:method::overlap_slices_with_borders(chunk) for usage
         """
         return tuple(
-            slice(o_slice.start + olap, o_slice.stop) if o_slice.start == s.start and o_slice.start != b.start else
+            slice(o_slice.start, o_slice.stop - olap) if o_slice.stop == s.stop and o_slice.stop != b.stop else
             o_slice
             for s, o_slice, olap, b in zip(chunk.slices, overlapped_slices, self.overlap, self.bounds)
         )
 
     def overlap_slices(self, chunk):
         """
-        Get a list of the slices in the chunk that correspond to the block's overlap region.
+        Get a list of the slices in the chunk that correspond to the block's overlap region (i.e. the borders of the
+        block) with chunk overlaps removed.
+
+        See py:method::overlap_slices(chunk) for more details
+
+        """
+        return self.overlap_slices_with_borders(chunk, self.overlap_borders(chunk))
+
+    def overlap_chunk_slices(self, chunk):
+        """
+        Get a list of the all the chunks overlaps with overlaps across chunks accounted for only once.
+
+        See py:method::overlap_slices_with_borders(chunk, borders) for more details
+        """
+        return self.overlap_slices_with_borders(chunk, all_borders(len(self.shape)))
+
+    def overlap_slices_with_borders(self, chunk, borders):
+        """
+        Get a list of the slices in the chunk that correspond the input borders with chunk overlaps removed.
 
         If we have a block:
             dimensions: 7x7
@@ -252,9 +272,9 @@ class Block(object):
             overlap: 1x1
 
         This should result in 3x3 chunks. When this function is called with each of these chunks, slices that cover the
-        overlap region are returned with no duplicates. Additionally, overlaps across chunks are excluded in a push
-        forward fashion, i.e. the slices do not include the portion of the data that had should be accounted for by the
-        previous chunk ( previous meaning lesser index ).
+        overlap region are returned with no duplicates. Additionally, overlaps across chunks are excluded in a index
+        first fashion, i.e. the slices do not include the portion of the data that had should be accounted for by the
+        next chunk ( next chunk meaning of a greater index ).
 
         At the non corner chunks, we expect to return a single tuple of slices that
         cover the overlap region, i.e.(not actual format, dictionary used for clarity)
@@ -266,9 +286,10 @@ class Block(object):
             x2: slice(0, 1), y2: slice(1, 3)]
 
         WARNING: not tested for dimensions > 3.
-
         """
         return [
-            self.remove_chunk_overlap(chunk, overlapped_slice) for overlapped_slice in chunk.border_slices(
-                self.overlap_borders(chunk))
+            slices for slices in [
+                self.remove_chunk_overlap(chunk, overlapped_slice)
+                for overlapped_slice in chunk.border_slices(borders)
+            ] if all(s.stop != s.start for s in slices)
         ]

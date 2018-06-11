@@ -69,11 +69,6 @@ def create_aggregate_stream(block, datasource_manager):
     return lambda chunk: (
         # sum the different datasources together
         Observable.just(chunk)
-        # check both the current chunk we just ran inference on as well as the neighboring chunks
-        .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
-        .filter(block.is_checkpointed)
-        .filter(block.all_neighbors_checkpointed)
-        .distinct()
         .flat_map(
             lambda chunk:
             (
@@ -109,7 +104,20 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         Observable.just(chunk)
         .flat_map(create_download_stream(block, datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
+        # check both the current chunk we just ran inference on as well as the neighboring chunks
+        .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
+        .filter(block.is_checkpointed)
+        .filter(block.all_neighbors_checkpointed)
+        .distinct()
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .flat_map(create_upload_stream(block, datasource_manager))
+        .map(lambda _: chunk)
+    )
+
+
+def create_blend_stream(block, datasource_manager):
+    return lambda chunk: (
+        Observable.just(chunk)
+        .flat_map(create_aggregate_stream(block, datasource_manager))
         .map(lambda _: chunk)
     )
