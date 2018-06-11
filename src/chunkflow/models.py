@@ -182,11 +182,14 @@ class Block(object):
     def all_neighbors_checkpointed(self, chunk):
         return all(neighbor.unit_index in self.checkpoints for neighbor in self.get_all_neighbors(chunk))
 
-    def chunk_iterator(self, start):
-        if isinstance(start, Chunk):
+    def chunk_iterator(self, start=None):
+        if start is None:
+            start_index = (0,) * len(self.shape)
+        elif isinstance(start, Chunk):
             start_index = start.unit_index
         else:
             start_index = start
+
         yield from map(self.unit_index_to_chunk, self.base_iterator.get(start_index, self.num_chunks))
 
     def core_slices(self, chunk):

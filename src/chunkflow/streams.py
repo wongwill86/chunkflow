@@ -1,17 +1,14 @@
 from collections import namedtuple
 from functools import partial
-import multiprocessing
 
 from rx import Observable
 from rx import config
-from rx.internal import extensionmethod
-from rx.subjects import Subject
+# from rx.concurrency import ThreadPoolScheduler
 from rx.core.blockingobservable import BlockingObservable
-from rx.concurrency import ThreadPoolScheduler
+from rx.internal import extensionmethod
 
 # optimal_thread_count = multiprocessing.cpu_count()
 # scheduler = ThreadPoolScheduler(optimal_thread_count)
-
 
 
 @extensionmethod(BlockingObservable)
@@ -54,11 +51,11 @@ def aggregate(slices, aggregate, datasource):
     return aggregate
 
 
-def create_download_observable(block, datasource_manager):
+def create_download_stream(block, datasource_manager):
     return lambda chunk: Observable.just(chunk).do_action(datasource_manager.download_input)
 
 
-def create_inference_observable(block, inference_operation, blend_operation, datasource_manager):
+def create_inference_stream(block, inference_operation, blend_operation, datasource_manager):
     return lambda chunk: (
         Observable.just(chunk)
         .map(inference_operation)
@@ -68,7 +65,7 @@ def create_inference_observable(block, inference_operation, blend_operation, dat
     )
 
 
-def create_aggregate_observable(block, datasource_manager):
+def create_aggregate_stream(block, datasource_manager):
     return lambda chunk: (
         # sum the different datasources together
         Observable.just(chunk)
@@ -93,7 +90,7 @@ def create_aggregate_observable(block, datasource_manager):
 DumpArguments = namedtuple('DumpArguments', 'datasource slices')
 
 
-def create_upload_observable(block, datasource_manager):
+def create_upload_stream(block, datasource_manager):
     return lambda chunk: (
         Observable.merge(
             Observable.just(chunk).flat_map(block.overlap_slices).map(
@@ -107,12 +104,12 @@ def create_upload_observable(block, datasource_manager):
     )
 
 
-def create_inference_task(block, inference_operation, blend_operation, datasource_manager):
+def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
     return lambda chunk: (
         Observable.just(chunk)
-        .flat_map(create_download_observable(block, datasource_manager))
-        .flat_map(create_inference_observable(block, inference_operation, blend_operation, datasource_manager))
-        .flat_map(create_aggregate_observable(block, datasource_manager))
-        .flat_map(create_upload_observable(block, datasource_manager))
+        .flat_map(create_download_stream(block, datasource_manager))
+        .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
+        .flat_map(create_aggregate_stream(block, datasource_manager))
+        .flat_map(create_upload_stream(block, datasource_manager))
         .map(lambda _: chunk)
     )
