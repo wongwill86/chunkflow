@@ -46,7 +46,7 @@ class GlobalOffsetArray(np.ndarray, NDArrayOperatorsMixin):
         internal_index = ()
         new_global_offsets = ()
 
-        if type(index) == int:
+        if type(index) == int or type(index) == slice:
             index = (index,) + (slice(None),) * (len(self.shape) - 1)
         elif len(self.shape) > len(index):
             # Fill rest of dimensions of index that were not specified

@@ -116,8 +116,22 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
 
 
 def create_blend_stream(block, datasource_manager):
+    """
+    Assume block is a dataset with chunks to represent each task!
+    """
     return lambda chunk: (
         Observable.just(chunk)
-        .flat_map(create_aggregate_stream(block, datasource_manager))
+        .flat_map(block.overlap_chunk_slices)
+        .flat_map(
+            lambda chunk_slices:
+            (
+                # create temp list of repositories values at time of iteration
+                Observable.from_(list(datasource_manager.repository.intermediate_datasources.values()))
+                .reduce(partial(aggregate, chunk_slices), seed=0)
+                .do_action(
+                    partial(chunk.copy_data, destination=datasource_manager.output_datasource_core, slices=chunk_slices)
+                )
+            )
+        )
         .map(lambda _: chunk)
     )

@@ -14,6 +14,13 @@ class CloudVolumeCZYX(CloudVolume):
     """
 
     def __getitem__(self, slices):
+        # print('old', slices)
+        # if type(slices) == int or type(slices) == slice:
+        #     slices = (slices,) + (slice(None),) * (len(self.shape) - 1)
+        # elif len(self.shape) > len(slices):
+        #     # Fill rest of dimensions of slices that were not specified
+        #     slices = slices + (slice(None),) * (len(self.shape) - len(slices))
+        # print('new', slices)
         # convert this from Fortran xyzc order because offset is kept in czyx c-order for this class
         dataset_offset = tuple(self.info['scales'][self.mip]['voxel_offset'][::-1])
         dataset_offset = (0,) * (len(slices) - len(dataset_offset)) + dataset_offset
@@ -25,7 +32,7 @@ class CloudVolumeCZYX(CloudVolume):
         slices = slices[::-1]
 
         item = super().__getitem__(slices)
-        if item.flags['F_CONTIGUOUS']:
+        if hasattr(item, 'flags') and (item.flags['F_CONTIGUOUS'] or not item.flags['C_CONTIGUOUS']):
             item = item.transpose()
             item = np.ascontiguousarray(item)
 
@@ -38,7 +45,7 @@ class CloudVolumeCZYX(CloudVolume):
 
     def __setitem__(self, slices, item):
         slices = slices[::-1]
-        if not item.flags['F_CONTIGUOUS']:
+        if hasattr(item, 'flags') and (not item.flags['F_CONTIGUOUS'] or item.flags['C_CONTIGUOUS']):
             item = item.transpose()
             item = np.asfortranarray(item)
         super().__setitem__(slices, item)

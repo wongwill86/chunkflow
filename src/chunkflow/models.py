@@ -67,6 +67,16 @@ class Chunk(object):
         datasource[slices] = self.data[slices]
         return self
 
+    def copy_data(self, source, destination, slices=None):
+        if slices is None:
+            slices = self.slices
+        print('>>>>>> %s--%s %s copying data, slices: %s' % (datetime.now(), current_thread().name, self.unit_index,
+                                                             slices))
+
+        slices = self.match_datasource_dimensions(destination, slices)
+
+        destination[slices] = source[slices]
+
     def __eq__(self, other):
         return isinstance(other, Chunk) and self.unit_index == other.unit_index
 
