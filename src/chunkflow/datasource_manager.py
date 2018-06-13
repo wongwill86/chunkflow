@@ -26,6 +26,10 @@ class DatasourceManager:
         chunk.dump_data(self.repository.output_datasource_core, slices)
 
     @property
+    def input_datasource(self):
+        return self.repository.input_datasource
+
+    @property
     def output_datasource_core(self):
         return self.repository.output_datasource_core
 

@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from rx import Observable
 
 from chunkflow.chunk_operations.blend_operation import AverageBlend
@@ -79,6 +80,7 @@ class IncrementThreeChannelInference(ChunkOperation):
         chunk.data = GlobalOffsetArray(new_data, global_offset=global_offset)
 
 
+@pytest.mark.skip(reason='skip for slowness')
 class TestInferenceStream:
 
     def test_process_single_channel_2x2(self):
@@ -225,51 +227,29 @@ class TestInferenceStream:
             datasource_manager.repository.output_datasource_core.sum() + \
             datasource_manager.repository.output_datasource_overlap.sum()
 
-    def test_process_cloudvolume(self, cloudvolume_factory):
-        return
+    def test_process_cloudvolume(self, cloudvolume_datasource_manager):
         bounds = (slice(200, 205), slice(100, 105), slice(50, 55))
-        voxel_offset = (200, 100, 50)
         chunk_shape = (3, 3, 3)
-        cloud_volume_chunk_size = (2, 2, 2)
         overlap = (1, 1, 1)
-        input_data_type = 'uint8'
-        output_data_type = 'float32'
 
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
-        # Setup data
-        input_cloudvolume = cloudvolume_factory.create(
-            'input', data_type=input_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
-            voxel_offset=voxel_offset)
-        output_cloudvolume_core = cloudvolume_factory.create(
-            'output_core', data_type=output_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
-            num_channels=3, voxel_offset=voxel_offset)
-        output_cloudvolume_overlap = cloudvolume_factory.create(
-            'output_overlap', data_type=output_data_type, volume_size=block.shape,
-            chunk_size=cloud_volume_chunk_size, num_channels=3)
-
-        repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core,
-                                                     output_cloudvolume_overlap)
-
-        fake_data = GlobalOffsetArray(np.zeros(block.shape, dtype=np.dtype(input_data_type)),
-                                      global_offset=(0,) * len(block.shape))
-        input_cloudvolume[(slice(None),) + bounds] = fake_data
-
-        datasource_manager = DatasourceManager(repository)
 
         task_stream = create_inference_and_blend_stream(
             block=block,
-            inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(output_data_type)),
+            inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
+                cloudvolume_datasource_manager.output_datasource_core.data_type)),
             blend_operation=AverageBlend(block),
-            datasource_manager=datasource_manager
+            datasource_manager=cloudvolume_datasource_manager
         )
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
         assert np.product(block.shape) * 111 == \
-            datasource_manager.repository.output_datasource_core[bounds].sum() + \
-            datasource_manager.repository.output_datasource_overlap[bounds].sum()
+            cloudvolume_datasource_manager.repository.output_datasource_core[bounds].sum() + \
+            cloudvolume_datasource_manager.repository.output_datasource_overlap[bounds].sum()
 
 
+@pytest.mark.skip(reason='skip for slowness')
 class TestBlendStream:
 
     def test_blend(self):
@@ -363,50 +343,34 @@ class TestBlendStream:
             datasource_manager.output_datasource_core.sum()
         # assert False
 
-    def test_blend_multichannel_3d_cloudvolume(self, cloudvolume_factory):
-        dataset_bounds = (slice(200, 207), slice(100, 107), slice(50, 57))
+    def test_blend_multichannel_3d_cloudvolume(self, cloudvolume_datasource_manager):
         task_size = (3, 3, 3)
         overlap = (1, 1, 1)
-        cloud_volume_chunk_size = (2, 2, 2)
-        voxel_offset = (200, 100, 50)
-        input_data_type = 'uint8'
-        output_data_type = 'float32'
         output_shape = (3,) + task_size
 
+        input_datasource = cloudvolume_datasource_manager.repository.input_datasource
+        offsets = input_datasource.voxel_offset[::-1]
+        volume_size = input_datasource.volume_size[::-1]
+
+        dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offsets, volume_size))
+
         block = Block(bounds=dataset_bounds, chunk_shape=task_size, overlap=overlap)
-        assert block.num_chunks == (3, 3, 3)
-
-        input_cloudvolume = cloudvolume_factory.create(
-            'input', data_type=input_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
-            voxel_offset=voxel_offset)
-        output_cloudvolume_core = cloudvolume_factory.create(
-            'output_core', data_type=output_data_type, volume_size=block.shape, chunk_size=cloud_volume_chunk_size,
-            num_channels=3, voxel_offset=voxel_offset)
-        output_cloudvolume_overlap = cloudvolume_factory.create(
-            'output_overlap', data_type=output_data_type, volume_size=block.shape,
-            chunk_size=cloud_volume_chunk_size, num_channels=3)
-
-        repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core,
-                                                     output_cloudvolume_overlap)
-
-        datasource_manager = DatasourceManager(repository)
+        # assert block.num_chunks == (3, 3, 3)
 
         chunk_index = (1, 1, 1)
 
         chunk = block.unit_index_to_chunk(chunk_index)
 
         # set up test data
-        datasource = datasource_manager.repository.get_datasource(chunk_index)
-        datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(output_data_type))
+        datasource = cloudvolume_datasource_manager.repository.get_datasource(chunk_index)
+        datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
         for neighbor in UnitIterator().get_all_neighbors(chunk_index):
-            datasource = datasource_manager.repository.get_datasource(neighbor)
-            datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(output_data_type))
+            datasource = cloudvolume_datasource_manager.repository.get_datasource(neighbor)
+            datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
-        datasource_manager = DatasourceManager(repository)
-
-        blend_stream = create_blend_stream(block, datasource_manager)
+        blend_stream = create_blend_stream(block, cloudvolume_datasource_manager)
 
         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
         assert 3 ** len(chunk_index) * 7 * 3 == \
-            datasource_manager.output_datasource_core[dataset_bounds].sum()
+            cloudvolume_datasource_manager.output_datasource_core[dataset_bounds].sum()

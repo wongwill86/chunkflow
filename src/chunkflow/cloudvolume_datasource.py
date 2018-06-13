@@ -14,13 +14,6 @@ class CloudVolumeCZYX(CloudVolume):
     """
 
     def __getitem__(self, slices):
-        # print('old', slices)
-        # if type(slices) == int or type(slices) == slice:
-        #     slices = (slices,) + (slice(None),) * (len(self.shape) - 1)
-        # elif len(self.shape) > len(slices):
-        #     # Fill rest of dimensions of slices that were not specified
-        #     slices = slices + (slice(None),) * (len(self.shape) - len(slices))
-        # print('new', slices)
         # convert this from Fortran xyzc order because offset is kept in czyx c-order for this class
         dataset_offset = tuple(self.info['scales'][self.mip]['voxel_offset'][::-1])
         dataset_offset = (0,) * (len(slices) - len(dataset_offset)) + dataset_offset

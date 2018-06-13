@@ -2,6 +2,8 @@ import pytest
 from cloudvolume import CloudVolume
 
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
+from chunkflow.cloudvolume_datasource import CloudVolumeDatasourceRepository
+from chunkflow.datasource_manager import DatasourceManager
 
 TEMPLATE_INFO_ARGS = {
     'layer_type': 'image',
@@ -58,3 +60,27 @@ def cloudvolume_factory(tmpdir):
             return input_cloudvolume
 
     return CloudVolumeFactory(tmpdir)
+
+
+@pytest.fixture(scope='function')
+def cloudvolume_datasource_manager(cloudvolume_factory):
+    volume_size = (7, 7, 7)
+    voxel_offset = (200, 100, 50)
+    cloud_volume_chunk_size = (2, 2, 2)
+    input_data_type = 'uint8'
+    output_data_type = 'float32'
+    num_channels = 3
+
+    input_cloudvolume = cloudvolume_factory.create(
+        'input', data_type=input_data_type, volume_size=volume_size, chunk_size=cloud_volume_chunk_size,
+        voxel_offset=voxel_offset)
+    output_cloudvolume_core = cloudvolume_factory.create(
+        'output_core', data_type=output_data_type, volume_size=volume_size, chunk_size=cloud_volume_chunk_size,
+        num_channels=num_channels, voxel_offset=voxel_offset)
+    output_cloudvolume_overlap = cloudvolume_factory.create(
+        'output_overlap', data_type=output_data_type, volume_size=volume_size,
+        chunk_size=cloud_volume_chunk_size, num_channels=num_channels)
+
+    repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap)
+
+    return DatasourceManager(repository)

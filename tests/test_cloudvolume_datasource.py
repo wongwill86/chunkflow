@@ -9,13 +9,22 @@ from chunkflow.global_offset_array import GlobalOffsetArray
 
 class TestCloudVolumeCZYX:
 
+    # def test_offset_and_size(self, cloudvolume_factory):
+    #     data_shape_fortran = [8, 8, 4]
+    #     cv_fortran = cloudvolume_factory.create('test', chunk_size=data_shape_fortran, volume_size=data_shape_fortran,
+    #                                             cloudvolume_class=CloudVolume)
+    #     cv_c = CloudVolumeCZYX(cv_fortran.layer_cloudpath, non_aligned_writes=True, fill_missing=True, compress=False)
+
+    #     assert cv_fortran.volume_size == cv_c.volume_size[::-1]
+    #     assert cv_fortran.voxel_offset == cv_c.voxel_offset[::-1]
+
     def test_get(self, cloudvolume_factory):
         data_shape_fortran = [8, 8, 4]
         cv_fortran = cloudvolume_factory.create('test', chunk_size=data_shape_fortran, volume_size=data_shape_fortran,
                                                 cloudvolume_class=CloudVolume)
-        offset_fortran = cv_fortran.info['scales'][cv_fortran.mip]['voxel_offset']
+        offsets_fortran = cv_fortran.info['scales'][cv_fortran.mip]['voxel_offset']
 
-        slices_fortran = tuple(slice(0 + o, d + o) for d, o in zip(data_shape_fortran, offset_fortran))
+        slices_fortran = tuple(slice(0 + o, d + o) for d, o in zip(data_shape_fortran, offsets_fortran))
         slices_c = slices_fortran[::-1]
 
         # F ordered xyzc
@@ -31,7 +40,7 @@ class TestCloudVolumeCZYX:
             for z in range(slices_fortran[2].start, slices_fortran[2].stop):
                 for y in range(slices_fortran[1].start, slices_fortran[1].stop):
                     for x in range(slices_fortran[0].start, slices_fortran[0].stop):
-                        expected_index = tuple(i - o for i, o in zip((x, y, z, c), offset_fortran)) + (0,)
+                        expected_index = tuple(i - o for i, o in zip((x, y, z, c), offsets_fortran)) + (0,)
                         assert actual[c][z][y][x] == expected[expected_index]
 
     def test_set(self, cloudvolume_factory):
@@ -39,9 +48,9 @@ class TestCloudVolumeCZYX:
         data_shape_c = data_shape_fortran[::-1]
         cv_c = cloudvolume_factory.create('test', chunk_size=data_shape_c, volume_size=data_shape_c,
                                           cloudvolume_class=CloudVolumeCZYX)
-        offset_fortran = cv_c.info['scales'][cv_c.mip]['voxel_offset']
+        offsets_fortran = cv_c.info['scales'][cv_c.mip]['voxel_offset']
 
-        slices_fortran = tuple(slice(o, d + o) for d, o in zip(data_shape_fortran, offset_fortran))
+        slices_fortran = tuple(slice(o, d + o) for d, o in zip(data_shape_fortran, offsets_fortran))
         slices_c = slices_fortran[::-1]
 
         # C ordered czyx
@@ -56,7 +65,7 @@ class TestCloudVolumeCZYX:
             for z in range(slices_fortran[2].start, slices_fortran[2].stop):
                 for y in range(slices_fortran[1].start, slices_fortran[1].stop):
                     for x in range(slices_fortran[0].start, slices_fortran[0].stop):
-                        expected_index = tuple(i - o for i, o in zip((x, y, z), offset_fortran)) + (0,)
+                        expected_index = tuple(i - o for i, o in zip((x, y, z), offsets_fortran)) + (0,)
                         assert actual[expected_index] == data_c[expected_index[::-1]]
 
     def test_multi_dimensional_conversions(self, cloudvolume_factory):
