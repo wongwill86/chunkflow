@@ -1,0 +1,16 @@
+.cache
+.git
+.pytest_cache
+.tox
+ci
+docker
+docs
+tests
+.ackrc
+.bumpversion.cfg
+.cookiecutterrc
+.coverage*
+.dockerignore
+.editorconfig
+.travis.yml
+.tox.ini
