@@ -18,6 +18,16 @@ import ast
 
 import click
 
+from chunkflow.chunk_operations.blend_operation import AverageBlend
+# from chunkflow.block_processor import BlockProcessor
+from chunkflow.chunk_operations.inference_operation import IdentityInference
+from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
+from chunkflow.cloudvolume_datasource import CloudVolumeDatasourceRepository
+from chunkflow.datasource_manager import DatasourceManager
+from chunkflow.models import Block
+from chunkflow.streams import create_blend_stream
+from chunkflow.streams import create_inference_and_blend_stream
+
 
 # https://stackoverflow.com/a/47730333
 class PythonLiteralOption(click.Option):
@@ -29,46 +39,89 @@ class PythonLiteralOption(click.Option):
 
 
 @click.group()
-# @click.option('--output_chunk_start', type=int, help="the start coordinates of final output block",
-#               cls=PythonLiteralOption, required=True)
-# @click.option('--output_chunk_shape', type=int, help="the size of output block",
-#               cls=PythonLiteralOption, default=[112, 1152, 1152])
-# @click.option('--overlap', type=int, help="overlap by number of voxels",
-#               cls=PythonLiteralOption, default=[4, 64, 64])
-# @click.option('--patch_size', type=int, help="convnet input patch size",
-#               cls=PythonLiteralOption, default=[32, 256, 256])
-# # @click.option('--no_eval', action='store_true', help="this is on then using dynamic \ batchnorm, otherwise static.")
-# # @click.option('--output_key', type=str, default='affinity', help="the name of the final output layer")
-def main():
+@click.option('--task_offset_coordinates', type=int, help="the start coordinates to run task (ZYX order)",
+              cls=PythonLiteralOption, required=True)
+@click.option('--task_shape', type=int, help="shape of the input task to run on (ZYX order)",
+              cls=PythonLiteralOption, required=True)
+@click.option('--overlap', type=int, help="overlap across this task with other tasks (ZYX order)",
+              cls=PythonLiteralOption, required=True)
+@click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
+@click.option('--input_image_source', type=str, help="input image source path, i.e. file://, gs://, or s3://.",
+              required=True)
+@click.option('--output_core_destination', type=str, help="destination path for the valid core output of the chunk,\
+              prefixes supported: file://, gs://, s3://.",
+              required=True)
+@click.option('--output_overlap_destination', type=str, help="destination path of the overlap region of the chunk,\
+              prefixes supported: file://, gs://, s3://.",
+              required=True)
+@click.pass_context
+def main(ctx, task_offset_coordinates, task_shape, overlap, output_channels, input_image_source,
+         output_core_destination, output_overlap_destination):
     """
     Set up configuration
     """
-    print('hi')
-# # @click.option('--input_image_source', type=str, help="input image source path, i.e. file://, gs://, or s3://.",
-# #               required=True)
-# # @click.option('--output_core_destination', type=str, help="destination path for the valid core output of the chunk,\
-# #               prefixes supported: file://, gs://, s3://.",
-# #               required=True)
-# # @click.option('--output_overlap_destination', type=str, help="destination path of the overlap region of the chunk,\
-# #               prefixes supported: file://, gs://, s3://.",
-# #               required=True)
-# # @click.option('--model_path', type=str, help="the path of convnet model", required=True)
-# # @click.option('--net_path', type=str, help="the path of convnet weights", required=True)
-# # @click.option('--gpu_ids', type=int, help="ids of cpus to use",
-# #               cls=PythonLiteralOption, default=None)
-# # @click.option('--framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
-# #               default='pytorch')
-# # @click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
-# # @click.option('--input_overlap_sources', type=str, help="input source path(s) for overlap regions to blend \
-# #               prefixes supported: file://, gs://, s3://. i.e. [\"gs://mybucket/left\", \"gs://mybucket/right\"]",
-# #               required=True)
-# # @click.option('--output_final_destination', type=str, help="final destination path of chunkflow blended inference,\
-# #               prefixes supported: file://, gs://, s3://.",
-# #               required=True)
-# @main.command()
-# def blend():
-#     """
-#     Blend chunk using overlap regions
-#     """
-# if __name__ == '__main__':
-#     main()
+    # print('hi')
+    ctx.task_bounds = tuple(slice(o, o + sh) for o, sh in zip(task_offset_coordinates, task_shape))
+
+    input_cloudvolume = CloudVolumeCZYX(input_image_source, cache=False, non_aligned_writes=True, fill_missing=True)
+    output_cloudvolume_core = CloudVolumeCZYX(output_core_destination, cache=False, non_aligned_writes=True,
+                                              fill_missing=True)
+    output_cloudvolume_overlap = CloudVolumeCZYX(output_overlap_destination, cache=False, non_aligned_writes=True,
+                                                 fill_missing=True)
+
+    repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap)
+    datasource_manager = DatasourceManager(repository)
+    ctx.datasource_manager = datasource_manager
+
+    pass
+
+
+@click.option('--patch_shape', type=int, help="convnet input patch shape", cls=PythonLiteralOption, required=True)
+@click.option('--framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
+              default='cpytorch')
+@click.option('--model_path', type=str, help="the path of convnet model")
+@click.option('--net_path', type=str, help="the path of convnet weights")
+@click.option('--accelerator_ids', type=int, help="ids of cpus/gpus to use", cls=PythonLiteralOption, default=None)
+@main.command()
+def inference(ctx, patch_shape, framework, model_path, net_path, accelerator_ids):
+    """
+    Run inference on task
+    """
+    block = Block(bounds=ctx.task_bounds, chunk_shape=patch_shape, overlap=ctx.overlap)
+    task_stream = create_inference_and_blend_stream(
+        block=block,
+        inference_operation=IdentityInference(),
+        blend_operation=AverageBlend(block),
+        datasource_manager=ctx.datasource_manager
+    )
+    print(task_stream)
+    # BlockProcessor().process(block, task_stream)
+    print(block)
+
+
+@main.command()
+def blend(ctx):
+    """
+    Blend chunk using overlap regions
+    """
+    input_datasource = ctx.datasource_manager.repository.input_datasource
+    offset_fortran = input_datasource.info['scales'][input_datasource.mip]['voxel_offset']
+    dataset_shape_fortran = input_datasource.info['volume_size']
+
+    offset_c = offset_fortran[::-1]
+    dataset_shape_c = dataset_shape_fortran[::-1]
+
+    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset_c, dataset_shape_c))
+
+    block = Block(bounds=dataset_bounds, chunk_shape=ctx.task_shape, overlap=ctx.overlap)
+
+    blend_stream = create_blend_stream(block, ctx.datasource_manager)
+
+    print(blend_stream)
+
+    # BlockProcessor().process(block, blend_stream)
+    pass
+
+
+if __name__ == '__main__':
+    main()

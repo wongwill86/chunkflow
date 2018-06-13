@@ -58,8 +58,8 @@ setup(
         'click',
         'cloud-volume',
         'numpy',
-        'rx'
-        # eg: 'aspectlib==1.1.1', 'six>=1.7',
+        'rx',
+        'urllib3==1.22' # remove this when this is fixed in pypi https://github.com/requests/requests/issues/4673
     ],
     extras_require={
         # eg:
