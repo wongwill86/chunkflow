@@ -43,12 +43,13 @@ class Chunk(object):
         return (slice(None),) * (len(datasource.shape) - len(slices)) + slices
 
     def load_data(self, datasource, slices=None):
-        print('VVVVVV %s--%s %s loading into chunk' % (datetime.now(), current_thread().name, self.unit_index))
-
         if slices is None:
             slices = self.slices
 
         slices = self.match_datasource_dimensions(datasource, slices)
+
+        print('VVVVVV %s--%s %s loading into chunk slices %s' % (
+            datetime.now(), current_thread().name, self.unit_index, slices))
 
         if self.data is None:
             self.data = datasource[slices].copy()
@@ -58,11 +59,13 @@ class Chunk(object):
         return self
 
     def dump_data(self, datasource, slices=None):
-        print('^^^^^^ %s--%s %s dumping from chunk' % (datetime.now(), current_thread().name, self.unit_index))
         if slices is None:
             slices = self.slices
 
         slices = self.match_datasource_dimensions(datasource, slices)
+
+        print('^^^^^^ %s--%s %s dumping from chunk slices %s' % (
+            datetime.now(), current_thread().name, self.unit_index, slices))
 
         datasource[slices] = self.data[slices]
         return self

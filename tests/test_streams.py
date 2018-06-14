@@ -1,10 +1,8 @@
 import numpy as np
-import pytest
 from rx import Observable
 
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
-from chunkflow.cloudvolume_datasource import CloudVolumeDatasourceRepository
 from chunkflow.datasource_manager import DatasourceManager
 from chunkflow.datasource_manager import DatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
@@ -80,7 +78,6 @@ class IncrementThreeChannelInference(ChunkOperation):
         chunk.data = GlobalOffsetArray(new_data, global_offset=global_offset)
 
 
-@pytest.mark.skip(reason='skip for slowness')
 class TestInferenceStream:
 
     def test_process_single_channel_2x2(self):
@@ -228,7 +225,7 @@ class TestInferenceStream:
             datasource_manager.repository.output_datasource_overlap.sum()
 
     def test_process_cloudvolume(self, cloudvolume_datasource_manager):
-        bounds = (slice(200, 205), slice(100, 105), slice(50, 55))
+        bounds = (slice(200, 203), slice(100, 103), slice(50, 53))
         chunk_shape = (3, 3, 3)
         overlap = (1, 1, 1)
 
@@ -249,15 +246,14 @@ class TestInferenceStream:
             cloudvolume_datasource_manager.repository.output_datasource_overlap[bounds].sum()
 
 
-@pytest.mark.skip(reason='skip for slowness')
 class TestBlendStream:
 
     def test_blend(self):
         dataset_bounds = (slice(0, 7), slice(0, 7))
-        task_size = (3, 3)
+        task_shape = (3, 3)
         overlap = (1, 1)
 
-        block = Block(bounds=dataset_bounds, chunk_shape=task_size, overlap=overlap)
+        block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
         assert block.num_chunks == (3, 3)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
@@ -283,10 +279,10 @@ class TestBlendStream:
 
     def test_blend_3d(self):
         dataset_bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-        task_size = (3, 3, 3)
+        task_shape = (3, 3, 3)
         overlap = (1, 1, 1)
 
-        block = Block(bounds=dataset_bounds, chunk_shape=task_size, overlap=overlap)
+        block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
         assert block.num_chunks == (3, 3, 3)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
@@ -312,10 +308,10 @@ class TestBlendStream:
 
     def test_blend_multichannel_3d(self):
         dataset_bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-        task_size = (3, 3, 3)
+        task_shape = (3, 3, 3)
         overlap = (1, 1, 1)
 
-        block = Block(bounds=dataset_bounds, chunk_shape=task_size, overlap=overlap)
+        block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
         assert block.num_chunks == (3, 3, 3)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
@@ -344,9 +340,9 @@ class TestBlendStream:
         # assert False
 
     def test_blend_multichannel_3d_cloudvolume(self, cloudvolume_datasource_manager):
-        task_size = (3, 3, 3)
+        task_shape = (3, 3, 3)
         overlap = (1, 1, 1)
-        output_shape = (3,) + task_size
+        output_shape = (3,) + task_shape
 
         input_datasource = cloudvolume_datasource_manager.repository.input_datasource
         offsets = input_datasource.voxel_offset[::-1]
@@ -354,7 +350,7 @@ class TestBlendStream:
 
         dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offsets, volume_size))
 
-        block = Block(bounds=dataset_bounds, chunk_shape=task_size, overlap=overlap)
+        block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
         # assert block.num_chunks == (3, 3, 3)
 
         chunk_index = (1, 1, 1)

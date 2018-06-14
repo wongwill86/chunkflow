@@ -61,10 +61,15 @@ class CloudVolumeDatasourceRepository(DatasourceRepository):
     def create(self, mod_index, *args, **kwargs):
         post_protocol_index = self.output_datasource_core.layer_cloudpath.find("//") + 2
         base_name = self.output_datasource_core.layer_cloudpath[post_protocol_index:]
-        base_info = self.output_datasource_core.info
         index_name = reduce(lambda x, y: x + '_' + str(y), mod_index, '')
-        new_cloudvolume = CloudVolumeCZYX(self.intermediate_protocol + base_name + index_name,
-                                          info=base_info, cache=False, non_aligned_writes=True, fill_missing=True,
-                                          compress=False)
-        new_cloudvolume.commit_info()
+        layer_cloudpath = self.intermediate_protocol + base_name + index_name
+        try:
+            new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, cache=False, non_aligned_writes=True, fill_missing=True,
+                                              compress=False)
+        except ValueError:
+            base_info = self.output_datasource_core.info
+            new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, info=base_info, cache=False, non_aligned_writes=True,
+                                              fill_missing=True, compress=False)
+            new_cloudvolume.commit_info()
+
         return new_cloudvolume
