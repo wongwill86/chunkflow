@@ -103,21 +103,21 @@ def main(ctx, **kwargs):
 @click.option('--net_path', type=str, help="the path of convnet weights")
 @click.option('--accelerator_ids', type=list, help="ids of cpus/gpus to use",
               cls=PythonLiteralOption, callback=validate_literal, default=[1])
-@click.pass_context
-def inference(ctx, patch_shape, framework, model_path, net_path, accelerator_ids):
+@click.pass_obj
+def inference(obj, patch_shape, framework, model_path, net_path, accelerator_ids):
     """
     Run inference on task
     """
     print('Running inference ...')
-    block = Block(bounds=ctx.obj['task_bounds'], chunk_shape=patch_shape, overlap=ctx.obj['overlap'])
+    block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
     task_stream = create_inference_and_blend_stream(
         block=block,
         inference_operation=IdentityInference(
-            output_channels=ctx.obj['output_channels'],
-            output_data_type=ctx.obj['datasource_manager'].output_datasource_core.data_type
+            output_channels=obj['output_channels'],
+            output_data_type=obj['datasource_manager'].output_datasource_core.data_type
         ),
         blend_operation=AverageBlend(block),
-        datasource_manager=ctx.obj['datasource_manager']
+        datasource_manager=obj['datasource_manager']
     )
 
     BlockProcessor().process(block, task_stream)
@@ -125,14 +125,14 @@ def inference(ctx, patch_shape, framework, model_path, net_path, accelerator_ids
 
 
 @main.command()
-@click.pass_context
-def blend(ctx):
+@click.pass_obj
+def blend(obj):
     """
     Blend chunk using overlap regions
     """
     print('Blending ...')
 
-    datasource_manager = ctx.obj['datasource_manager']
+    datasource_manager = obj['datasource_manager']
 
     input_datasource = datasource_manager.repository.input_datasource
     offset_fortran = input_datasource.voxel_offset
@@ -142,12 +142,12 @@ def blend(ctx):
     dataset_shape_c = dataset_shape_fortran[::-1]
 
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset_c, dataset_shape_c))
-    block = Block(bounds=dataset_bounds, chunk_shape=ctx.obj['task_shape'], overlap=ctx.obj['overlap'])
+    block = Block(bounds=dataset_bounds, chunk_shape=obj['task_shape'], overlap=obj['overlap'])
 
-    datasource_manager.repository.create_intermediate_datasources(ctx.obj['task_shape'])
+    datasource_manager.repository.create_intermediate_datasources(obj['task_shape'])
     blend_stream = create_blend_stream(block, datasource_manager)
 
-    chunk_index = block.slices_to_unit_index(ctx.obj['task_bounds'])
+    chunk_index = block.slices_to_unit_index(obj['task_bounds'])
     chunk = block.unit_index_to_chunk(chunk_index)
     Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
