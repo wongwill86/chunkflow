@@ -36,7 +36,7 @@ def valid_cloudvolume(path_or_cv, chunk_shape_options):
         if isinstance(path_or_cv, CloudVolume):
             cloudvolume = path_or_cv
         else:
-            cloudvolume = CloudVolumeCZYX(path_or_cv, cache=False, non_aligned_writes=True, fill_missing=True)
+            cloudvolume = CloudVolumeCZYX(path_or_cv)
 
         actual_chunk_size = tuple(cloudvolume.underlying)
 

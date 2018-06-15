@@ -2,7 +2,7 @@ from chunkflow.iterators import UnitIterator
 
 
 def get_mod_index(index):
-    return tuple(idx % 3 for idx in index)
+    return tuple(abs(idx % 3) for idx in index)
 
 
 class DatasourceManager:

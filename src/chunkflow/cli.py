@@ -69,7 +69,7 @@ def main(ctx, **kwargs):
 @main.group()
 @click.option('--task_offset_coordinates', type=list, help="the start coordinates to run task (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--task_shape', type=list, help="shape of the input task to run on (ZYX order)",
+@click.option('--task_shape', type=list, help="shape of the input task to run (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--overlap', type=list,
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
@@ -79,7 +79,7 @@ def main(ctx, **kwargs):
 @click.pass_obj
 def task(obj, **kwargs):
     """
-    Set up configuration
+    Task related options
     """
     print('Setting up datasource manager')
     obj.update(kwargs)
@@ -131,7 +131,7 @@ def inference(obj, patch_shape, framework, model_path, net_path, accelerator_ids
     )
 
     BlockProcessor().process(block, task_stream)
-    print('Finished inference ...')
+    print('Finished inference!')
 
 
 @task.command()
@@ -161,7 +161,7 @@ def blend(obj):
     chunk = block.unit_index_to_chunk(chunk_index)
     Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
-    print('Finished blend ...')
+    print('Finished blend!')
 
 
 @main.group()
@@ -175,7 +175,7 @@ def blend(obj):
 @click.pass_obj
 def cloudvolume(obj, **kwargs):
     """
-    Prepare output cloudvolume and suggest chunk sizes
+    Cloudvolume related options
     """
     obj.update(kwargs)
 
@@ -190,21 +190,55 @@ def cloudvolume(obj, **kwargs):
 @cloudvolume.command()
 @click.pass_obj
 def check(obj):
+    """
+    Check if output destination exists and if the chunk sizes are correct (use --intermediates to check intermediates)
+    """
+    print('Checking cloudvolume ...')
     output_destination = obj['output_destination']
     assert valid_cloudvolume(output_destination, obj['chunk_shape_options'])
     assert valid_cloudvolume(default_overlap_name(output_destination), obj['chunk_shape_options'])
 
     if obj['intermediates']:
         output_cloudvolume = CloudVolumeCZYX(obj['output_destination'])
-        for neighbor in UnitIterator().get_all_neighbors((0,) * len(output_cloudvolume.voxel_offset)):
+        for neighbor in UnitIterator().get_all_neighbors((0,) * len(obj['patch_shape'])):
             assert valid_cloudvolume(default_intermediate_name(output_destination, get_mod_index(neighbor)),
                                      obj['chunk_shape_options'])
+    print('Done cloudvolume!')
 
 
 @cloudvolume.command()
 @click.pass_obj
 def create(obj):
-    print('Suggesting ...')
+    """
+    Try to create output destinations(use --intermediates to create intermediates)
+    """
+    print('Creating cloudvolume ...')
+    datasource_names = []
+    datasource_names.append(obj['output_destination'])
+    datasource_names.append(default_overlap_name(obj['output_destination']))
+
+    if obj['intermediates']:
+        datasource_names.extend([
+            default_intermediate_name(obj['output_destination'], neighbor)
+            for neighbor in UnitIterator().get_all_neighbors((0,) * len(obj['patch_shape']))
+        ])
+
+    for datasource_name in datasource_names:
+        print(datasource_name)
+
+
+    # try:
+    #     CloudVolumeCZYX(output_destination)
+    #     if not any(tuple(actual_chunk_size) == chunk_shape for chunk_shape in chunk_shape_options):
+    #         print('Warning: %s already has incorrect chunk size %s. Please reformat with one of these chunk sizes: %s' %
+    #               (cloudvolume.layer_cloudpath, actual_chunk_size, chunk_shape_options))
+    # except ValueError:
+
+
+
+    # assert valid_cloudvolume(default_overlap_name(output_destination), obj['chunk_shape_options'])
+
+    print('Done creating cloudvolume!')
 
 
 if __name__ == '__main__':

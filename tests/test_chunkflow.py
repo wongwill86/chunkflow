@@ -41,6 +41,7 @@ def test_inference(cloudvolume_datasource_manager):
 
 
 def test_blend(cloudvolume_datasource_manager):
+    return
     runner = CliRunner()
     offset = cloudvolume_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = cloudvolume_datasource_manager.input_datasource.volume_size[::-1]
@@ -107,3 +108,62 @@ def test_check_bad_chunksize(cloudvolume_datasource_manager, output_cloudvolume_
     ])
     print(result.output)
     assert result.exit_code == -1
+
+
+def test_check_missing_intermediates_not_needed(cloudvolume_datasource_manager):
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
+        'cloudvolume',
+        '--patch_shape', [3, 3, 3],
+        '--overlap', [1, 1, 1],
+        '--output_channels', 3,
+        'check',
+    ])
+    print(result.output)
+    assert result.exit_code == 0
+
+
+def test_check_missing_intermediates_needed(cloudvolume_datasource_manager):
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
+        'cloudvolume',
+        '--patch_shape', [3, 3, 3],
+        '--overlap', [1, 1, 1],
+        '--output_channels', 3,
+        '--intermediates',
+        'check',
+    ])
+    print(result.output)
+    assert result.exit_code == -1
+
+
+def test_check_missing_cloudvolume():
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        '--output_destination', 'badlayer',
+        'cloudvolume',
+        '--patch_shape', [3, 3, 3],
+        '--overlap', [1, 1, 1],
+        '--output_channels', 3,
+        '--intermediates',
+        'check',
+    ])
+    print(result.output)
+    assert result.exit_code == -1
+
+
+def test_create_cloudvolume():
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        '--output_destination', 'new_cloudvolume',
+        'cloudvolume',
+        '--patch_shape', [3, 3, 3],
+        '--overlap', [1, 1, 1],
+        '--output_channels', 3,
+        '--intermediates',
+        'create',
+    ])
+    print(result.output)
+    assert result.exit_code == 1

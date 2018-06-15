@@ -8,15 +8,6 @@ from chunkflow.global_offset_array import GlobalOffsetArray
 
 class TestCloudVolumeCZYX:
 
-    # def test_offset_and_size(self, cloudvolume_factory):
-    #     data_shape_fortran = [8, 8, 4]
-    #     cv_fortran = cloudvolume_factory.create('test', chunk_size=data_shape_fortran, volume_size=data_shape_fortran,
-    #                                             cloudvolume_class=CloudVolume)
-    #     cv_c = CloudVolumeCZYX(cv_fortran.layer_cloudpath, non_aligned_writes=True, fill_missing=True, compress=False)
-
-    #     assert cv_fortran.volume_size == cv_c.volume_size[::-1]
-    #     assert cv_fortran.voxel_offset == cv_c.voxel_offset[::-1]
-
     def test_get(self, cloudvolume_factory):
         data_shape_fortran = [8, 8, 4]
         cv_fortran = cloudvolume_factory.create('test', chunk_size=data_shape_fortran, volume_size=data_shape_fortran,
