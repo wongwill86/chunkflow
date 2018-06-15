@@ -1,8 +1,14 @@
+import itertools
+
 from chunkflow.iterators import UnitIterator
 
 
 def get_mod_index(index):
     return tuple(abs(idx % 3) for idx in index)
+
+
+def get_all_mod_index(index):
+    return itertools.chain([index], map(get_mod_index, UnitIterator().get_all_neighbors(index)))
 
 
 class DatasourceManager:
@@ -44,10 +50,13 @@ class DatasourceRepository:
         self.intermediate_datasources = dict()
 
     def create_intermediate_datasources(self, center_index):
-        # generate intermediate repositories
-        self.get_datasource(center_index)
-        for neighbor in UnitIterator().get_all_neighbors(center_index):
-            self.get_datasource(neighbor)
+        """
+        Create all intermediate datasources.
+        :param center_index: this is needed to find out how many dimensions are used to find the neighbors. We are
+        unable to use the saved datasources because they maybe have multi dimensional outputs.
+        """
+        for mod_index in get_all_mod_index(center_index):
+            self.get_datasource(mod_index)
 
     def create(self, mod_index, *args, **kwargs):
         raise NotImplementedError

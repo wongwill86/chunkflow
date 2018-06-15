@@ -30,8 +30,7 @@ from chunkflow.cloudvolume_datasource import (
     default_overlap_name
 )
 from chunkflow.cloudvolume_helpers import get_possible_chunk_sizes, valid_cloudvolume
-from chunkflow.datasource_manager import DatasourceManager, get_mod_index
-from chunkflow.iterators import UnitIterator
+from chunkflow.datasource_manager import DatasourceManager, get_all_mod_index
 from chunkflow.models import Block
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
@@ -200,8 +199,8 @@ def check(obj):
 
     if obj['intermediates']:
         output_cloudvolume = CloudVolumeCZYX(obj['output_destination'])
-        for neighbor in UnitIterator().get_all_neighbors((0,) * len(obj['patch_shape'])):
-            assert valid_cloudvolume(default_intermediate_name(output_destination, get_mod_index(neighbor)),
+        for mod_index in get_all_mod_index((0,) * len(obj['patch_shape'])):
+            assert valid_cloudvolume(default_intermediate_name(output_destination, mod_index),
                                      obj['chunk_shape_options'])
     print('Done cloudvolume!')
 
@@ -219,24 +218,38 @@ def create(obj):
 
     if obj['intermediates']:
         datasource_names.extend([
-            default_intermediate_name(obj['output_destination'], neighbor)
-            for neighbor in UnitIterator().get_all_neighbors((0,) * len(obj['patch_shape']))
+            default_intermediate_name(obj['output_destination'], mod_index)
+            for mod_index in get_all_mod_index((0,) * len(obj['patch_shape']))
         ])
 
+    existing_chunk_size = None
+
+    missing_datasource_names = []
     for datasource_name in datasource_names:
-        print(datasource_name)
+        print('Examining: ', datasource_name)
+        try:
+            cloudvolume = CloudVolumeCZYX(datasource_name)
+            if existing_chunk_size is None:
+                existing_chunk_size = cloudvolume.underlying
+                pass
+            print('Found existing chunk size of %s for %s' % (existing_chunk_size, datasource_name))
+            assert existing_chunk_size == cloudvolume.underlying
+        except ValueError:
+            print('Missing datasource: ', datasource_name)
+            missing_datasource_names.append(datasource_names)
 
+    chunk_shape_options = obj['chunk_shape_options']
 
-    # try:
-    #     CloudVolumeCZYX(output_destination)
-    #     if not any(tuple(actual_chunk_size) == chunk_shape for chunk_shape in chunk_shape_options):
-    #         print('Warning: %s already has incorrect chunk size %s. Please reformat with one of these chunk sizes: %s' %
-    #               (cloudvolume.layer_cloudpath, actual_chunk_size, chunk_shape_options))
-    # except ValueError:
+    assert any(tuple(existing_chunk_size) == chunk_shape for chunk_shape in chunk_shape_options)
 
+    if existing_chunk_size is None:
+        print('Starting Fresh! No existing cloudvolumes found. What chunksize do you want to use?')
+        for idx, chunk_shape_option in enumerate(chunk_shape_options):
+            print('[%s]: %s' % (idx, chunk_shape_option))
+    index = click.prompt('Please enter a valid integer selection', type=int)
 
+    print(index)
 
-    # assert valid_cloudvolume(default_overlap_name(output_destination), obj['chunk_shape_options'])
 
     print('Done creating cloudvolume!')
 
