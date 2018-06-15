@@ -53,7 +53,7 @@ class CloudVolumeCZYX(CloudVolume):
 
     def __getitem__(self, slices):
         # convert this from Fortran xyzc order because offset is kept in czyx c-order for this class
-        dataset_offset = tuple(self.info['scales'][self.mip]['voxel_offset'][::-1])
+        dataset_offset = tuple(self.voxel_offset[::-1])
         dataset_offset = (0,) * (len(slices) - len(dataset_offset)) + dataset_offset
 
         offset = tuple(d_offset if s.start is None else s.start
@@ -83,21 +83,21 @@ class CloudVolumeCZYX(CloudVolume):
 
 
 class CloudVolumeDatasourceRepository(DatasourceRepository):
-    def __init__(self, input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap,
+    def __init__(self, input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap,
                  intermediate_protocol='file://', *args, **kwargs):
         self.intermediate_protocol = intermediate_protocol
 
         if any(not isinstance(volume, CloudVolumeCZYX)
-               for volume in [input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap]):
+               for volume in [input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap]):
             raise ValueError('Must use %s class cloudvolume to ensure correct c order indexing' %
                              CloudVolumeCZYX.__name__)
         super().__init__(input_cloudvolume,
-                         output_cloudvolume_core,
+                         output_cloudvolume,
                          output_cloudvolume_overlap,
                          *args, **kwargs)
 
     def create(self, mod_index, *args, **kwargs):
-        layer_cloudpath = default_intermediate_name(self.output_datasource_core, mod_index)
+        layer_cloudpath = default_intermediate_name(self.output_datasource, mod_index)
         post_protocol_index = layer_cloudpath.find("//") + 2
         base_name = layer_cloudpath[post_protocol_index:]
         layer_cloudpath = self.intermediate_protocol + base_name
@@ -105,7 +105,7 @@ class CloudVolumeDatasourceRepository(DatasourceRepository):
         try:
             new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, cache=False, non_aligned_writes=True, fill_missing=True)
         except ValueError:
-            base_info = self.output_datasource_core.info
+            base_info = self.output_datasource.info
             new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, info=base_info, cache=False, non_aligned_writes=True,
                                               fill_missing=True)
             new_cloudvolume.commit_info()

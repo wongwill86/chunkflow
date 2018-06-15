@@ -93,7 +93,7 @@ def output_cloudvolume_overlap(cloudvolume_factory):
 
 @pytest.fixture(scope='function')
 def output_cloudvolume_intermediate(cloudvolume_datasource_manager):
-    cloudvolume_datasource_manager.create_intermediate_datasources((0,) * VOXEL_OFFSET)
+    cloudvolume_datasource_manager.repository.create_intermediate_datasources((0,) * len(VOXEL_OFFSET))
     return cloudvolume_datasource_manager.repository.intermediate_datasources.values()
 
 

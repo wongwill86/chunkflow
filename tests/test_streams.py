@@ -11,14 +11,14 @@ from chunkflow.streams import create_blend_stream, create_inference_and_blend_st
 
 class NumpyDatasource(DatasourceRepository):
     def __init__(self, output_shape,
-                 output_datasource_core=None, output_datasource_overlap=None, *args, **kwargs):
+                 output_datasource=None, output_datasource_overlap=None, *args, **kwargs):
         self.output_shape = output_shape
-        super().__init__(output_datasource_core=output_datasource_core,
+        super().__init__(output_datasource=output_datasource,
                          output_datasource_overlap=output_datasource_overlap,
                          *args, **kwargs)
 
-        if self.output_datasource_core is None:
-            self.output_datasource_core = self.create(None)
+        if self.output_datasource is None:
+            self.output_datasource = self.create(None)
 
         if self.output_datasource_overlap is None:
             self.output_datasource_overlap = self.create(None)
@@ -112,7 +112,7 @@ class TestInferenceStream:
         assert block.is_checkpointed(test_chunk_1_0)
 
         assert 0 == \
-            datasource_manager.repository.output_datasource_core.sum() + \
+            datasource_manager.repository.output_datasource.sum() + \
             datasource_manager.repository.output_datasource_overlap.sum()
 
         test_chunk_1_1 = block.unit_index_to_chunk((1, 1))
@@ -121,7 +121,7 @@ class TestInferenceStream:
         assert block.is_checkpointed(test_chunk_1_1)
 
         assert np.product(block.shape) == \
-            datasource_manager.repository.output_datasource_core.sum() + \
+            datasource_manager.repository.output_datasource.sum() + \
             datasource_manager.repository.output_datasource_overlap.sum()
 
     def test_process_single_channel_3x3(self):
@@ -146,7 +146,7 @@ class TestInferenceStream:
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
         assert np.product(block.shape) == \
-            datasource_manager.repository.output_datasource_core.sum() + \
+            datasource_manager.repository.output_datasource.sum() + \
             datasource_manager.repository.output_datasource_overlap.sum()
 
     def test_process_multi_channel(self):
@@ -170,7 +170,7 @@ class TestInferenceStream:
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
         assert np.product(block.shape) * 111 == \
-            datasource_manager.repository.output_datasource_core.sum() + \
+            datasource_manager.repository.output_datasource.sum() + \
             datasource_manager.repository.output_datasource_overlap.sum()
 
     def test_process_single_channel_3d(self):
@@ -194,7 +194,7 @@ class TestInferenceStream:
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
         assert np.product(block.shape) == \
-            datasource_manager.repository.output_datasource_core.sum() + \
+            datasource_manager.repository.output_datasource.sum() + \
             datasource_manager.repository.output_datasource_overlap.sum()
 
     def test_process_multi_channel_3d(self):
@@ -218,7 +218,7 @@ class TestInferenceStream:
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
         assert np.product(block.shape) * 111 == \
-            datasource_manager.repository.output_datasource_core.sum() + \
+            datasource_manager.repository.output_datasource.sum() + \
             datasource_manager.repository.output_datasource_overlap.sum()
 
     def test_process_cloudvolume(self, cloudvolume_datasource_manager):
@@ -231,7 +231,7 @@ class TestInferenceStream:
         task_stream = create_inference_and_blend_stream(
             block=block,
             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
-                cloudvolume_datasource_manager.output_datasource_core.data_type)),
+                cloudvolume_datasource_manager.output_datasource.data_type)),
             blend_operation=AverageBlend(block),
             datasource_manager=cloudvolume_datasource_manager
         )
@@ -239,7 +239,7 @@ class TestInferenceStream:
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
         assert np.product(block.shape) * 111 == \
-            cloudvolume_datasource_manager.repository.output_datasource_core[bounds].sum() + \
+            cloudvolume_datasource_manager.repository.output_datasource[bounds].sum() + \
             cloudvolume_datasource_manager.repository.output_datasource_overlap[bounds].sum()
 
 
@@ -272,7 +272,7 @@ class TestBlendStream:
         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
         assert 3 ** len(chunk_index) * 3 == \
-            datasource_manager.output_datasource_core.sum()
+            datasource_manager.output_datasource.sum()
 
     def test_blend_3d(self):
         dataset_bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
@@ -301,7 +301,7 @@ class TestBlendStream:
         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
         assert 3 ** len(chunk_index) * 7 == \
-            datasource_manager.output_datasource_core.sum()
+            datasource_manager.output_datasource.sum()
 
     def test_blend_multichannel_3d(self):
         dataset_bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
@@ -333,7 +333,7 @@ class TestBlendStream:
         np.set_printoptions(threshold=np.nan)
 
         assert 3 ** len(chunk_index) * 7 * 3 == \
-            datasource_manager.output_datasource_core.sum()
+            datasource_manager.output_datasource.sum()
         # assert False
 
     def test_blend_multichannel_3d_cloudvolume(self, cloudvolume_datasource_manager):
@@ -368,4 +368,4 @@ class TestBlendStream:
         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
         assert 3 ** len(chunk_index) * 7 * 3 == \
-            cloudvolume_datasource_manager.output_datasource_core[dataset_bounds].sum()
+            cloudvolume_datasource_manager.output_datasource[dataset_bounds].sum()

@@ -26,7 +26,7 @@ def get_possible_chunk_sizes(overlap, patch_shape):
     gcd = functools.reduce(fractions.gcd, core_shape)
     factors = get_factors(gcd)
 
-    chunk_shape_options = [tuple(cs / factor for cs in core_shape) for factor in factors]
+    chunk_shape_options = [tuple(cs // factor for cs in core_shape) for factor in factors]
 
     return chunk_shape_options
 
@@ -38,7 +38,7 @@ def valid_cloudvolume(path_or_cv, chunk_shape_options):
         else:
             cloudvolume = CloudVolumeCZYX(path_or_cv, cache=False, non_aligned_writes=True, fill_missing=True)
 
-        actual_chunk_size = cloudvolume.info['scales'][cloudvolume.mip]['chunk_sizes']
+        actual_chunk_size = tuple(cloudvolume.underlying)
 
         if not any(tuple(actual_chunk_size) == chunk_shape for chunk_shape in chunk_shape_options):
             print('Warning: %s already has incorrect chunk size %s. Please reformat with one of these chunk sizes: %s' %

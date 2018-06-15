@@ -55,7 +55,7 @@ def validate_literal(ctx, param, value):
 
 
 @click.group()
-@click.option('--output_destination', type=str, help="destination path for the valid core output of the chunk,\
+@click.option('--output_destination', type=str, help="destination path for the valid output of the chunk,\
               prefixes supported: file://, gs://, s3://.",
               required=True)
 @click.pass_context
@@ -92,12 +92,12 @@ def task(obj, **kwargs):
     input_cloudvolume = CloudVolumeCZYX(
         kwargs['input_image_source'], cache=False, non_aligned_writes=True, fill_missing=True)
 
-    output_cloudvolume_core = CloudVolumeCZYX(
+    output_cloudvolume = CloudVolumeCZYX(
         obj['output_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
 
-    output_cloudvolume_overlap = default_overlap_datasource(output_cloudvolume_core)
+    output_cloudvolume_overlap = default_overlap_datasource(output_cloudvolume)
 
-    repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap)
+    repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap)
 
     datasource_manager = DatasourceManager(repository)
     obj['datasource_manager'] = datasource_manager
@@ -118,13 +118,13 @@ def inference(obj, patch_shape, framework, model_path, net_path, accelerator_ids
     Run inference on task
     """
     print('Running inference ...')
-    output_datasource_core = obj['datasource_manager'].output_datasource_core
+    output_datasource = obj['datasource_manager'].output_datasource
     block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
     task_stream = create_inference_and_blend_stream(
         block=block,
         inference_operation=IdentityInference(
-            output_channels=output_datasource_core.num_channels,
-            output_data_type=output_datasource_core.data_type
+            output_channels=output_datasource.num_channels,
+            output_data_type=output_datasource.data_type
         ),
         blend_operation=AverageBlend(block),
         datasource_manager=obj['datasource_manager']
@@ -171,9 +171,7 @@ def blend(obj):
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
-@click.option('--intermediate_dimensions', type=int,
-              help="Option to consider intermediate datasources. Set value equal to number of dimensions of dataset.",
-              default=0)
+@click.option('--intermediates/--no-intermediates', help="Option to consider intermediate datasources", default=False)
 @click.pass_obj
 def cloudvolume(obj, **kwargs):
     """
@@ -196,8 +194,9 @@ def check(obj):
     assert valid_cloudvolume(output_destination, obj['chunk_shape_options'])
     assert valid_cloudvolume(default_overlap_name(output_destination), obj['chunk_shape_options'])
 
-    if obj['intermediate_dimensions'] > 0:
-        for neighbor in UnitIterator().get_all_neighbors((0,) * obj['intermediate_dimensions']):
+    if obj['intermediates']:
+        output_cloudvolume = CloudVolumeCZYX(obj['output_destination'])
+        for neighbor in UnitIterator().get_all_neighbors((0,) * len(output_cloudvolume.voxel_offset)):
             assert valid_cloudvolume(default_intermediate_name(output_destination, get_mod_index(neighbor)),
                                      obj['chunk_shape_options'])
 

@@ -91,7 +91,7 @@ def create_upload_stream(block, datasource_manager):
                 lambda slices: DumpArguments(datasource_manager.output_datasource_overlap, slices)
             ),
             Observable.just(chunk).map(block.core_slices).map(
-                lambda slices: DumpArguments(datasource_manager.output_datasource_core, slices)
+                lambda slices: DumpArguments(datasource_manager.output_datasource, slices)
             )
         )
         .do_action(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
@@ -129,7 +129,7 @@ def create_blend_stream(block, datasource_manager):
                 Observable.from_(list(datasource_manager.repository.intermediate_datasources.values()))
                 .reduce(partial(aggregate, chunk_slices), seed=0)
                 .do_action(
-                    partial(chunk.copy_data, destination=datasource_manager.output_datasource_core, slices=chunk_slices)
+                    partial(chunk.copy_data, destination=datasource_manager.output_datasource, slices=chunk_slices)
                 )
             )
         )

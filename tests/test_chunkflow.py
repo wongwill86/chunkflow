@@ -16,7 +16,7 @@ def test_inference(cloudvolume_datasource_manager):
         volume_shape, dtype=np.dtype(cloudvolume_datasource_manager.input_datasource.data_type))
 
     result = runner.invoke(main, [
-        '--output_destination', cloudvolume_datasource_manager.output_datasource_core.layer_cloudpath,
+        '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
         # '--output_overlap_destination', cloudvolume_datasource_manager.output_datasource_overlap.layer_cloudpath,
         'task',
         '--task_offset_coordinates', list(offset),
@@ -31,7 +31,7 @@ def test_inference(cloudvolume_datasource_manager):
     np.set_printoptions(threshold=np.inf)
 
     data = (
-        cloudvolume_datasource_manager.output_datasource_core[(slice(0, 3),) + dataset_bounds] +
+        cloudvolume_datasource_manager.output_datasource[(slice(0, 3),) + dataset_bounds] +
         cloudvolume_datasource_manager.output_datasource_overlap[(slice(0, 3),) + dataset_bounds]
     )
     print(result.output)
@@ -55,7 +55,7 @@ def test_blend(cloudvolume_datasource_manager):
         datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
     result = runner.invoke(main, [
-        '--output_destination', cloudvolume_datasource_manager.output_datasource_core.layer_cloudpath,
+        '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
         'task',
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
@@ -71,18 +71,38 @@ def test_blend(cloudvolume_datasource_manager):
     assert result.exit_code == 0
     assert result.exception is None
     assert 3 ** len(task_shape) * 7 * 3 == \
-        cloudvolume_datasource_manager.output_datasource_core[dataset_bounds].sum()
+        cloudvolume_datasource_manager.output_datasource[dataset_bounds].sum()
 
 
-def test_check(cloudvolume_datasource_manager):
+def test_check(cloudvolume_datasource_manager, output_cloudvolume_intermediate):
     runner = CliRunner()
     result = runner.invoke(main, [
-        '--output_destination', cloudvolume_datasource_manager.output_datasource_core.layer_cloudpath,
+        '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
         'cloudvolume',
-        '--patch_shape', [1024, 1024, 256],
-        '--overlap', [32, 32, 8],
+        '--patch_shape', [3, 3, 3],
+        '--overlap', [1, 1, 1],
         '--output_channels', 3,
-        '--intermediate_dimensions', 3,
+        '--intermediates',
+        'check',
+    ])
+    print(result.output)
+    assert result.exit_code == 0
+
+
+def test_check_bad_chunksize(cloudvolume_datasource_manager, output_cloudvolume_intermediate):
+    datasource = cloudvolume_datasource_manager.output_datasource
+    info = datasource.info
+    info['scales'][datasource.mip]['chunk_sizes'][0] = [3, 3, 3]
+    datasource.commit_info()
+
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
+        'cloudvolume',
+        '--patch_shape', [3, 3, 3],
+        '--overlap', [1, 1, 1],
+        '--output_channels', 3,
+        '--intermediates',
         'check',
     ])
     print(result.output)
