@@ -5,7 +5,7 @@ from chunkflow.cli import main
 from chunkflow.iterators import UnitIterator
 
 
-def test_main(cloudvolume_datasource_manager):
+def test_inference(cloudvolume_datasource_manager):
     runner = CliRunner()
     offset = cloudvolume_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = cloudvolume_datasource_manager.input_datasource.volume_size[::-1]
@@ -17,13 +17,13 @@ def test_main(cloudvolume_datasource_manager):
         volume_shape, dtype=np.dtype(cloudvolume_datasource_manager.input_datasource.data_type))
 
     result = runner.invoke(main, [
+        '--output_destination', cloudvolume_datasource_manager.output_datasource_core.layer_cloudpath,
+        # '--output_overlap_destination', cloudvolume_datasource_manager.output_datasource_overlap.layer_cloudpath,
+        'task',
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
         '--overlap', '[1, 1, 1]',
-        '--output_channels', '3',
         '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
-        '--output_core_destination', cloudvolume_datasource_manager.output_datasource_core.layer_cloudpath,
-        '--output_overlap_destination', cloudvolume_datasource_manager.output_datasource_overlap.layer_cloudpath,
         'inference',
         '--patch_shape', '[3, 3, 3]',
         '--framework', 'identity',
@@ -36,9 +36,9 @@ def test_main(cloudvolume_datasource_manager):
         cloudvolume_datasource_manager.output_datasource_overlap[(slice(0, 3),) + dataset_bounds]
     )
     print(result.output)
-    assert data.sum() == np.prod(task_shape) * 3
     assert result.exit_code == 0
     assert result.exception is None
+    assert np.prod(task_shape) * 3 == data.sum()
 
 
 def test_blend(cloudvolume_datasource_manager):
@@ -58,20 +58,35 @@ def test_blend(cloudvolume_datasource_manager):
         datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
     result = runner.invoke(main, [
+        '--output_destination', cloudvolume_datasource_manager.output_datasource_core.layer_cloudpath,
+        'task',
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
         '--overlap', '[1, 1, 1]',
-        '--output_channels', '3',
         '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
-        '--output_core_destination', cloudvolume_datasource_manager.output_datasource_core.layer_cloudpath,
-        '--output_overlap_destination', cloudvolume_datasource_manager.output_datasource_overlap.layer_cloudpath,
+        # '--output_overlap_destination', cloudvolume_datasource_manager.output_datasource_overlap.layer_cloudpath,
         'blend',
     ])
 
     np.set_printoptions(threshold=np.inf)
 
     print(result.output)
-    assert 3 ** len(task_shape) * 7 * 3 == \
-        cloudvolume_datasource_manager.output_datasource_core[dataset_bounds].sum()
     assert result.exit_code == 0
     assert result.exception is None
+    assert 3 ** len(task_shape) * 7 * 3 == \
+        cloudvolume_datasource_manager.output_datasource_core[dataset_bounds].sum()
+
+
+def test_check(cloudvolume_datasource_manager):
+    runner = CliRunner()
+    result = runner.invoke(main, [
+        '--output_destination', cloudvolume_datasource_manager.output_datasource_core.layer_cloudpath,
+        'cloudvolume',
+        '--patch_shape', [1024, 1024, 256],
+        '--overlap', [32, 32, 8],
+        '--output_channels', '3',
+        'check',
+    ])
+    print(result.output)
+    assert result.exit_code == -1
+    # TODO add more use case

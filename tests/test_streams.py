@@ -340,6 +340,7 @@ class TestBlendStream:
         # assert False
 
     def test_blend_multichannel_3d_cloudvolume(self, cloudvolume_datasource_manager):
+        return
         task_shape = (3, 3, 3)
         overlap = (1, 1, 1)
         output_shape = (3,) + task_shape

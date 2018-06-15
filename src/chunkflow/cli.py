@@ -24,6 +24,10 @@ from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.inference_operation import IdentityInference
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
 from chunkflow.cloudvolume_datasource import CloudVolumeDatasourceRepository
+from chunkflow.cloudvolume_helpers import get_cloudvolume_overlap
+from chunkflow.cloudvolume_helpers import get_possible_chunk_sizes
+from chunkflow.cloudvolume_helpers import to_overlap_name
+from chunkflow.cloudvolume_helpers import valid_cloudvolume
 from chunkflow.datasource_manager import DatasourceManager
 from chunkflow.models import Block
 from chunkflow.streams import create_blend_stream
@@ -49,29 +53,34 @@ def validate_literal(ctx, param, value):
 
 
 @click.group()
-@click.option('--task_offset_coordinates', type=list, help="the start coordinates to run task (ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--task_shape', type=list, help="shape of the input task to run on (ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--overlap', type=list, help="overlap across this task with other tasks (ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
-@click.option('--input_image_source', type=str, help="input image source path, i.e. file://, gs://, or s3://.",
-              required=True)
-@click.option('--output_core_destination', type=str, help="destination path for the valid core output of the chunk,\
-              prefixes supported: file://, gs://, s3://.",
-              required=True)
-@click.option('--output_overlap_destination', type=str, help="destination path of the overlap region of the chunk,\
+@click.option('--output_destination', type=str, help="destination path for the valid core output of the chunk,\
               prefixes supported: file://, gs://, s3://.",
               required=True)
 @click.pass_context
 def main(ctx, **kwargs):
+    obj = {}
+    obj.update(kwargs)
+    ctx.obj = obj
+    pass
+
+
+@main.group()
+@click.option('--task_offset_coordinates', type=list, help="the start coordinates to run task (ZYX order)",
+              cls=PythonLiteralOption, callback=validate_literal, required=True)
+@click.option('--task_shape', type=list, help="shape of the input task to run on (ZYX order)",
+              cls=PythonLiteralOption, callback=validate_literal, required=True)
+@click.option('--overlap', type=list,
+              help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
+              cls=PythonLiteralOption, callback=validate_literal, required=True)
+@click.option('--input_image_source', type=str, help="input image source path, i.e. file://, gs://, or s3://.",
+              required=True)
+@click.pass_obj
+def task(obj, **kwargs):
     """
     Set up configuration
     """
-    obj = {}
-
     print('Setting up datasource manager')
+    obj.update(kwargs)
 
     obj['task_bounds'] = tuple(slice(o, o + sh) for o, sh in zip(
         kwargs['task_offset_coordinates'],
@@ -80,21 +89,19 @@ def main(ctx, **kwargs):
 
     input_cloudvolume = CloudVolumeCZYX(
         kwargs['input_image_source'], cache=False, non_aligned_writes=True, fill_missing=True)
+
     output_cloudvolume_core = CloudVolumeCZYX(
-        kwargs['output_core_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
-    output_cloudvolume_overlap = CloudVolumeCZYX(
-        kwargs['output_overlap_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
+        obj['output_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
+
+    output_cloudvolume_overlap = get_cloudvolume_overlap(output_cloudvolume_core)
+
     repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap)
 
     datasource_manager = DatasourceManager(repository)
-
-    obj.update(kwargs)
     obj['datasource_manager'] = datasource_manager
 
-    ctx.obj = obj
 
-
-@main.command()
+@task.command()
 @click.option('--patch_shape', type=list, help="convnet input patch shape",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
@@ -109,12 +116,13 @@ def inference(obj, patch_shape, framework, model_path, net_path, accelerator_ids
     Run inference on task
     """
     print('Running inference ...')
+    output_datasource_core = obj['datasource_manager'].output_datasource_core
     block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
     task_stream = create_inference_and_blend_stream(
         block=block,
         inference_operation=IdentityInference(
-            output_channels=obj['output_channels'],
-            output_data_type=obj['datasource_manager'].output_datasource_core.data_type
+            output_channels=output_datasource_core.num_channels,
+            output_data_type=output_datasource_core.data_type
         ),
         blend_operation=AverageBlend(block),
         datasource_manager=obj['datasource_manager']
@@ -124,7 +132,7 @@ def inference(obj, patch_shape, framework, model_path, net_path, accelerator_ids
     print('Finished inference ...')
 
 
-@main.command()
+@task.command()
 @click.pass_obj
 def blend(obj):
     """
@@ -152,6 +160,43 @@ def blend(obj):
     Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
     print('Finished blend ...')
+
+
+@main.group()
+@click.option('--patch_shape', type=list, help="convnet input patch shape",
+              cls=PythonLiteralOption, callback=validate_literal, required=True)
+@click.option('--overlap', type=list,
+              help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
+              cls=PythonLiteralOption, callback=validate_literal, required=True)
+@click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
+@click.pass_obj
+def cloudvolume(obj, **kwargs):
+    """
+    Prepare output cloudvolume and suggest chunk sizes
+    """
+    obj.update(kwargs)
+
+    overlap = kwargs['overlap']
+    patch_shape = kwargs['patch_shape']
+
+    chunk_shape_options = get_possible_chunk_sizes(overlap, patch_shape)
+    obj['chunk_shape_options'] = chunk_shape_options
+
+    print('Finished Prepare')
+
+
+@cloudvolume.command()
+@click.pass_obj
+def check(obj):
+    output_destination = obj['output_destination']
+    assert valid_cloudvolume(output_destination, obj['chunk_shape_options'])
+    assert valid_cloudvolume(to_overlap_name(output_destination), obj['chunk_shape_options'])
+
+
+@cloudvolume.command()
+@click.pass_obj
+def create(obj):
+    print('Suggesting ...')
 
 
 if __name__ == '__main__':

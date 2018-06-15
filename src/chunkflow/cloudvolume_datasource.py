@@ -48,7 +48,7 @@ class CloudVolumeDatasourceRepository(DatasourceRepository):
     def __init__(self, input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap,
                  intermediate_protocol='file://', *args, **kwargs):
         self.intermediate_protocol = intermediate_protocol
-        # input_datasource = CloudVolumeWrapper(input_cloudvolume)
+
         if any(not isinstance(volume, CloudVolumeCZYX)
                for volume in [input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap]):
             raise ValueError('Must use %s class cloudvolume to ensure correct c order indexing' %

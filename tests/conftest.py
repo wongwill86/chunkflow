@@ -3,6 +3,7 @@ from cloudvolume import CloudVolume
 
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
 from chunkflow.cloudvolume_datasource import CloudVolumeDatasourceRepository
+from chunkflow.cloudvolume_helpers import to_overlap_name
 from chunkflow.datasource_manager import DatasourceManager
 
 TEMPLATE_INFO_ARGS = {
@@ -78,7 +79,7 @@ def cloudvolume_datasource_manager(cloudvolume_factory):
         'output_core', data_type=output_data_type, volume_size=volume_size, chunk_size=cloud_volume_chunk_size,
         num_channels=num_channels, voxel_offset=voxel_offset)
     output_cloudvolume_overlap = cloudvolume_factory.create(
-        'output_overlap', data_type=output_data_type, volume_size=volume_size,
+        to_overlap_name('output_core'), data_type=output_data_type, volume_size=volume_size,
         chunk_size=cloud_volume_chunk_size, num_channels=num_channels)
 
     repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap)
