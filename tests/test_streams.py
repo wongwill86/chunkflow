@@ -5,7 +5,6 @@ from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkflow.datasource_manager import DatasourceManager, DatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
-from chunkflow.iterators import UnitIterator
 from chunkflow.models import Block
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
@@ -264,9 +263,9 @@ class TestBlendStream:
         chunk = block.unit_index_to_chunk(chunk_index)
 
         # set up test data
-        datasource_manager.repository.get_datasource(chunk.unit_index)[chunk.slices] = 1
-        for neighbor in UnitIterator().get_all_neighbors(chunk_index):
-            datasource_manager.repository.get_datasource(neighbor)[chunk.slices] = 1
+        datasource_manager.repository.create_intermediate_datasources(chunk_index)
+        for datasource in datasource_manager.repository.intermediate_datasources.values():
+            datasource[chunk.slices] = 1
 
         blend_stream = create_blend_stream(block, datasource_manager)
 
@@ -293,9 +292,9 @@ class TestBlendStream:
         chunk = block.unit_index_to_chunk(chunk_index)
 
         # set up test data
-        datasource_manager.repository.get_datasource(chunk.unit_index)[chunk.slices] = 1
-        for neighbor in UnitIterator().get_all_neighbors(chunk_index):
-            datasource_manager.repository.get_datasource(neighbor)[chunk.slices] = 1
+        datasource_manager.repository.create_intermediate_datasources(chunk_index)
+        for datasource in datasource_manager.repository.intermediate_datasources.values():
+            datasource[chunk.slices] = 1
 
         blend_stream = create_blend_stream(block, datasource_manager)
 
@@ -323,9 +322,9 @@ class TestBlendStream:
         chunk = block.unit_index_to_chunk(chunk_index)
 
         # set up test data
-        datasource_manager.repository.get_datasource(chunk.unit_index)[(slice(None),) + chunk.slices] = 1
-        for neighbor in UnitIterator().get_all_neighbors(chunk_index):
-            datasource_manager.repository.get_datasource(neighbor)[(slice(None),) + chunk.slices] = 1
+        datasource_manager.repository.create_intermediate_datasources(chunk_index)
+        for datasource in datasource_manager.repository.intermediate_datasources.values():
+            datasource[(slice(None),) + chunk.slices] = 1
 
         blend_stream = create_blend_stream(block, datasource_manager)
 
@@ -357,11 +356,12 @@ class TestBlendStream:
         chunk = block.unit_index_to_chunk(chunk_index)
 
         # set up test data
+        cloudvolume_datasource_manager.repository.create_intermediate_datasources(chunk_index)
+        for datasource in cloudvolume_datasource_manager.repository.intermediate_datasources.values():
+            datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
+
         datasource = cloudvolume_datasource_manager.repository.get_datasource(chunk_index)
         datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
-        for neighbor in UnitIterator().get_all_neighbors(chunk_index):
-            datasource = cloudvolume_datasource_manager.repository.get_datasource(neighbor)
-            datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
         blend_stream = create_blend_stream(block, cloudvolume_datasource_manager)
 

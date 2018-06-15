@@ -2,7 +2,6 @@ import numpy as np
 from click.testing import CliRunner
 
 from chunkflow.cli import main
-from chunkflow.iterators import UnitIterator
 
 
 def test_inference(cloudvolume_datasource_manager):
@@ -42,7 +41,6 @@ def test_inference(cloudvolume_datasource_manager):
 
 
 def test_blend(cloudvolume_datasource_manager):
-    return
     runner = CliRunner()
     offset = cloudvolume_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = cloudvolume_datasource_manager.input_datasource.volume_size[::-1]
@@ -52,10 +50,8 @@ def test_blend(cloudvolume_datasource_manager):
     task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
 
-    datasource = cloudvolume_datasource_manager.repository.get_datasource(task_shape)
-    datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
-    for neighbor in UnitIterator().get_all_neighbors(task_shape):
-        datasource = cloudvolume_datasource_manager.repository.get_datasource(neighbor)
+    cloudvolume_datasource_manager.repository.create_intermediate_datasources(task_shape)
+    for datasource in cloudvolume_datasource_manager.repository.intermediate_datasources.values():
         datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
     result = runner.invoke(main, [

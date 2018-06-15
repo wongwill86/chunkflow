@@ -4,6 +4,15 @@ from cloudvolume import CloudVolume
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository, default_overlap_name
 from chunkflow.datasource_manager import DatasourceManager
 
+VOLUME_SIZE = (7, 7, 7)
+VOXEL_OFFSET = (200, 100, 50)
+CLOUD_VOLUME_CHUNK_SIZE = (2, 2, 2)
+INPUT_DATA_TYPE = 'uint8'
+OUTPUT_DATA_TYPE = 'float32'
+NUM_CHANNELS = 3
+INPUT_NAME = 'input'
+OUTPUT_NAME = 'output'
+
 TEMPLATE_INFO_ARGS = {
     'layer_type': 'image',
     'encoding': 'raw',
@@ -62,24 +71,33 @@ def cloudvolume_factory(tmpdir):
 
 
 @pytest.fixture(scope='function')
-def cloudvolume_datasource_manager(cloudvolume_factory):
-    volume_size = (7, 7, 7)
-    voxel_offset = (200, 100, 50)
-    cloud_volume_chunk_size = (2, 2, 2)
-    input_data_type = 'uint8'
-    output_data_type = 'float32'
-    num_channels = 3
+def input_cloudvolume(cloudvolume_factory):
+    return cloudvolume_factory.create(
+        INPUT_NAME, data_type=INPUT_DATA_TYPE, volume_size=VOLUME_SIZE, chunk_size=CLOUD_VOLUME_CHUNK_SIZE,
+        voxel_offset=VOXEL_OFFSET)
 
-    input_cloudvolume = cloudvolume_factory.create(
-        'input', data_type=input_data_type, volume_size=volume_size, chunk_size=cloud_volume_chunk_size,
-        voxel_offset=voxel_offset)
-    output_cloudvolume_core = cloudvolume_factory.create(
-        'output', data_type=output_data_type, volume_size=volume_size, chunk_size=cloud_volume_chunk_size,
-        num_channels=num_channels, voxel_offset=voxel_offset)
-    output_cloudvolume_overlap = cloudvolume_factory.create(
-        default_overlap_name('output'), data_type=output_data_type, volume_size=volume_size,
-        chunk_size=cloud_volume_chunk_size, num_channels=num_channels)
 
-    repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap)
+@pytest.fixture(scope='function')
+def output_cloudvolume(cloudvolume_factory):
+    return cloudvolume_factory.create(
+        OUTPUT_NAME, data_type=OUTPUT_DATA_TYPE, volume_size=VOLUME_SIZE, chunk_size=CLOUD_VOLUME_CHUNK_SIZE,
+        num_channels=NUM_CHANNELS, voxel_offset=VOXEL_OFFSET)
 
+
+@pytest.fixture(scope='function')
+def output_cloudvolume_overlap(cloudvolume_factory):
+    return cloudvolume_factory.create(
+        default_overlap_name(OUTPUT_NAME), data_type=OUTPUT_DATA_TYPE, volume_size=VOLUME_SIZE,
+        chunk_size=CLOUD_VOLUME_CHUNK_SIZE, num_channels=NUM_CHANNELS)
+
+
+@pytest.fixture(scope='function')
+def output_cloudvolume_intermediate(cloudvolume_datasource_manager):
+    cloudvolume_datasource_manager.create_intermediate_datasources((0,) * VOXEL_OFFSET)
+    return cloudvolume_datasource_manager.repository.intermediate_datasources.values()
+
+
+@pytest.fixture(scope='function')
+def cloudvolume_datasource_manager(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap):
+    repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap)
     return DatasourceManager(repository)
