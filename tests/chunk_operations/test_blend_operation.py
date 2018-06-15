@@ -2,8 +2,7 @@ import numpy as np
 
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.global_offset_array import GlobalOffsetArray
-from chunkflow.models import Block
-from chunkflow.models import Chunk
+from chunkflow.models import Block, Chunk
 
 
 class TestAverageBlend:

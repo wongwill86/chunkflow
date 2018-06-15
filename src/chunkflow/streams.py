@@ -1,8 +1,7 @@
 from collections import namedtuple
 from functools import partial
 
-from rx import Observable
-from rx import config
+from rx import Observable, config
 # from rx.concurrency import ThreadPoolScheduler
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod

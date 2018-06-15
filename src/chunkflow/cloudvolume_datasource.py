@@ -6,6 +6,44 @@ from cloudvolume import CloudVolume
 from chunkflow.datasource_manager import DatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
 
+OVERLAP_POSTFIX = '_overlap/'
+
+
+def default_overlap_name(path_or_cv):
+    if isinstance(path_or_cv, CloudVolume):
+        layer_cloudpath = path_or_cv.layer_cloudpath
+    else:
+        layer_cloudpath = path_or_cv
+
+    if layer_cloudpath.endswith('/'):
+        return layer_cloudpath[:-1] + OVERLAP_POSTFIX
+    else:
+        return layer_cloudpath + OVERLAP_POSTFIX
+
+
+def default_overlap_datasource(path_or_cv):
+    return CloudVolumeCZYX(default_overlap_name(path_or_cv.layer_cloudpath), cache=False, non_aligned_writes=True,
+                           fill_missing=True)
+
+
+def default_intermediate_name(path_or_cv, mod_index):
+    if isinstance(path_or_cv, CloudVolume):
+        layer_cloudpath = path_or_cv.layer_cloudpath
+    else:
+        layer_cloudpath = path_or_cv
+
+    index_name = reduce(lambda x, y: x + '_' + str(y), mod_index, '') + '/'
+
+    if layer_cloudpath.endswith('/'):
+        return layer_cloudpath[:-1] + index_name
+    else:
+        return layer_cloudpath + index_name
+
+
+def default_intermediate_datasource(path_or_cv, mod_index):
+    return CloudVolumeCZYX(default_intermediate_name(path_or_cv.layer_cloudpath, mod_index), cache=False,
+                           non_aligned_writes=True, fill_missing=True)
+
 
 class CloudVolumeCZYX(CloudVolume):
     """
@@ -59,17 +97,17 @@ class CloudVolumeDatasourceRepository(DatasourceRepository):
                          *args, **kwargs)
 
     def create(self, mod_index, *args, **kwargs):
-        post_protocol_index = self.output_datasource_core.layer_cloudpath.find("//") + 2
-        base_name = self.output_datasource_core.layer_cloudpath[post_protocol_index:]
-        index_name = reduce(lambda x, y: x + '_' + str(y), mod_index, '')
-        layer_cloudpath = self.intermediate_protocol + base_name + index_name
+        layer_cloudpath = default_intermediate_name(self.output_datasource_core, mod_index)
+        post_protocol_index = layer_cloudpath.find("//") + 2
+        base_name = layer_cloudpath[post_protocol_index:]
+        layer_cloudpath = self.intermediate_protocol + base_name
+
         try:
-            new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, cache=False, non_aligned_writes=True, fill_missing=True,
-                                              compress=False)
+            new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, cache=False, non_aligned_writes=True, fill_missing=True)
         except ValueError:
             base_info = self.output_datasource_core.info
             new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, info=base_info, cache=False, non_aligned_writes=True,
-                                              fill_missing=True, compress=False)
+                                              fill_missing=True)
             new_cloudvolume.commit_info()
 
         return new_cloudvolume

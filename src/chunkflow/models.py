@@ -1,7 +1,6 @@
 import itertools
 from datetime import datetime
-from functools import lru_cache
-from functools import partial
+from functools import lru_cache, partial
 from threading import current_thread
 
 from chunkflow.iterators import UnitBFSIterator

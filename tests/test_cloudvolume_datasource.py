@@ -2,8 +2,7 @@ import numpy as np
 import pytest
 from cloudvolume import CloudVolume
 
-from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
-from chunkflow.cloudvolume_datasource import CloudVolumeDatasourceRepository
+from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
 
 

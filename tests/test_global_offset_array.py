@@ -1,6 +1,5 @@
 import operator
-from math import factorial
-from math import floor
+from math import factorial, floor
 
 import numpy as np
 import pytest

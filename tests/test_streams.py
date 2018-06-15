@@ -3,13 +3,11 @@ from rx import Observable
 
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
-from chunkflow.datasource_manager import DatasourceManager
-from chunkflow.datasource_manager import DatasourceRepository
+from chunkflow.datasource_manager import DatasourceManager, DatasourceRepository
 from chunkflow.global_offset_array import GlobalOffsetArray
 from chunkflow.iterators import UnitIterator
 from chunkflow.models import Block
-from chunkflow.streams import create_blend_stream
-from chunkflow.streams import create_inference_and_blend_stream
+from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 
 class NumpyDatasource(DatasourceRepository):

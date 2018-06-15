@@ -22,16 +22,18 @@ from rx import Observable
 from chunkflow.block_processor import BlockProcessor
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.inference_operation import IdentityInference
-from chunkflow.cloudvolume_datasource import CloudVolumeCZYX
-from chunkflow.cloudvolume_datasource import CloudVolumeDatasourceRepository
-from chunkflow.cloudvolume_helpers import get_cloudvolume_overlap
-from chunkflow.cloudvolume_helpers import get_possible_chunk_sizes
-from chunkflow.cloudvolume_helpers import to_overlap_name
-from chunkflow.cloudvolume_helpers import valid_cloudvolume
-from chunkflow.datasource_manager import DatasourceManager
+from chunkflow.cloudvolume_datasource import (
+    CloudVolumeCZYX,
+    CloudVolumeDatasourceRepository,
+    default_intermediate_name,
+    default_overlap_datasource,
+    default_overlap_name
+)
+from chunkflow.cloudvolume_helpers import get_possible_chunk_sizes, valid_cloudvolume
+from chunkflow.datasource_manager import DatasourceManager, get_mod_index
+from chunkflow.iterators import UnitIterator
 from chunkflow.models import Block
-from chunkflow.streams import create_blend_stream
-from chunkflow.streams import create_inference_and_blend_stream
+from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 
 # https://stackoverflow.com/a/47730333
@@ -93,7 +95,7 @@ def task(obj, **kwargs):
     output_cloudvolume_core = CloudVolumeCZYX(
         obj['output_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
 
-    output_cloudvolume_overlap = get_cloudvolume_overlap(output_cloudvolume_core)
+    output_cloudvolume_overlap = default_overlap_datasource(output_cloudvolume_core)
 
     repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume_core, output_cloudvolume_overlap)
 
@@ -169,6 +171,9 @@ def blend(obj):
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
+@click.option('--intermediate_dimensions', type=int,
+              help="Option to consider intermediate datasources. Set value equal to number of dimensions of dataset.",
+              default=0)
 @click.pass_obj
 def cloudvolume(obj, **kwargs):
     """
@@ -178,7 +183,6 @@ def cloudvolume(obj, **kwargs):
 
     overlap = kwargs['overlap']
     patch_shape = kwargs['patch_shape']
-
     chunk_shape_options = get_possible_chunk_sizes(overlap, patch_shape)
     obj['chunk_shape_options'] = chunk_shape_options
 
@@ -190,7 +194,12 @@ def cloudvolume(obj, **kwargs):
 def check(obj):
     output_destination = obj['output_destination']
     assert valid_cloudvolume(output_destination, obj['chunk_shape_options'])
-    assert valid_cloudvolume(to_overlap_name(output_destination), obj['chunk_shape_options'])
+    assert valid_cloudvolume(default_overlap_name(output_destination), obj['chunk_shape_options'])
+
+    if obj['intermediate_dimensions'] > 0:
+        for neighbor in UnitIterator().get_all_neighbors((0,) * obj['intermediate_dimensions']):
+            assert valid_cloudvolume(default_intermediate_name(output_destination, get_mod_index(neighbor)),
+                                     obj['chunk_shape_options'])
 
 
 @cloudvolume.command()
