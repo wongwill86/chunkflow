@@ -59,9 +59,6 @@ def valid_cloudvolume(path_or_cv, chunk_shape_options, input_datasource):
             return False
 
         for attribute in ATTRIBUTE_COMPARISONS:
-            print('attribute', attribute)
-            print(getattr(input_datasource, attribute))
-            print(getattr(cloudvolume, attribute))
             if str(getattr(input_datasource, attribute)) != str(getattr(cloudvolume, attribute)):
                 print('Warning: %s already has incorrect property %s compared to %s with %s.' % (
                           cloudvolume.layer_cloudpath, getattr(input_datasource, attribute),
@@ -76,14 +73,11 @@ def valid_cloudvolume(path_or_cv, chunk_shape_options, input_datasource):
 
 
 def create_cloudvolume(layer_cloudpath, chunk_size, input_datasource, **kwargs):
-    print(kwargs)
     info_args = TEMPLATE_INFO_ARGS.copy()
     info_args['resolution'] = input_datasource.resolution
     info_args['chunk_size'] = chunk_size
 
     for argument in TEMPLATE_ARGS:
-        if argument == 'num_channels':
-            print('for num_channels', kwargs)
         if argument not in kwargs or kwargs[argument] is None:
             info_args[argument] = getattr(input_datasource, argument)
         else:
