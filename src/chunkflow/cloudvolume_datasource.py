@@ -22,7 +22,7 @@ def default_overlap_name(path_or_cv):
 
 
 def default_overlap_datasource(path_or_cv):
-    return CloudVolumeCZYX(default_overlap_name(path_or_cv.layer_cloudpath), cache=False, non_aligned_writes=True,
+    return CloudVolumeCZYX(default_overlap_name(path_or_cv), cache=False, non_aligned_writes=True,
                            fill_missing=True)
 
 
@@ -41,7 +41,7 @@ def default_intermediate_name(path_or_cv, mod_index):
 
 
 def default_intermediate_datasource(path_or_cv, mod_index):
-    return CloudVolumeCZYX(default_intermediate_name(path_or_cv.layer_cloudpath, mod_index), cache=False,
+    return CloudVolumeCZYX(default_intermediate_name(path_or_cv, mod_index), cache=False,
                            non_aligned_writes=True, fill_missing=True)
 
 

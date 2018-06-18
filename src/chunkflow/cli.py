@@ -29,7 +29,7 @@ from chunkflow.cloudvolume_datasource import (
     default_overlap_datasource,
     default_overlap_name
 )
-from chunkflow.cloudvolume_helpers import get_possible_chunk_sizes, valid_cloudvolume
+from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk_sizes, valid_cloudvolume
 from chunkflow.datasource_manager import DatasourceManager, get_all_mod_index
 from chunkflow.models import Block
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
@@ -48,12 +48,18 @@ class PythonLiteralOption(click.Option):
 
 
 def validate_literal(ctx, param, value):
+    if not param.required and value is None:
+        return value
+
     if not isinstance(value, param.type.func):
         raise click.BadParameter(value)
+
     return value
 
 
 @click.group()
+@click.option('--input_image_source', type=str, help="input image source path, i.e. file://, gs://, or s3://.",
+              required=True)
 @click.option('--output_destination', type=str, help="destination path for the valid output of the chunk,\
               prefixes supported: file://, gs://, s3://.",
               required=True)
@@ -73,8 +79,6 @@ def main(ctx, **kwargs):
 @click.option('--overlap', type=list,
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--input_image_source', type=str, help="input image source path, i.e. file://, gs://, or s3://.",
-              required=True)
 @click.pass_obj
 def task(obj, **kwargs):
     """
@@ -89,7 +93,7 @@ def task(obj, **kwargs):
     ))
 
     input_cloudvolume = CloudVolumeCZYX(
-        kwargs['input_image_source'], cache=False, non_aligned_writes=True, fill_missing=True)
+        obj['input_image_source'], cache=False, non_aligned_writes=True, fill_missing=True)
 
     output_cloudvolume = CloudVolumeCZYX(
         obj['output_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
@@ -183,7 +187,7 @@ def cloudvolume(obj, **kwargs):
     chunk_shape_options = get_possible_chunk_sizes(overlap, patch_shape)
     obj['chunk_shape_options'] = chunk_shape_options
 
-    print('Finished Prepare')
+    print('Finished cloudvolume prepare')
 
 
 @cloudvolume.command()
@@ -193,25 +197,34 @@ def check(obj):
     Check if output destination exists and if the chunk sizes are correct (use --intermediates to check intermediates)
     """
     print('Checking cloudvolume ...')
+    input_datasource = CloudVolumeCZYX(obj['input_image_source'])
     output_destination = obj['output_destination']
-    assert valid_cloudvolume(output_destination, obj['chunk_shape_options'])
-    assert valid_cloudvolume(default_overlap_name(output_destination), obj['chunk_shape_options'])
+    assert valid_cloudvolume(output_destination, obj['chunk_shape_options'], input_datasource)
+    assert valid_cloudvolume(default_overlap_name(output_destination), obj['chunk_shape_options'], input_datasource)
 
     if obj['intermediates']:
-        output_cloudvolume = CloudVolumeCZYX(obj['output_destination'])
         for mod_index in get_all_mod_index((0,) * len(obj['patch_shape'])):
             assert valid_cloudvolume(default_intermediate_name(output_destination, mod_index),
-                                     obj['chunk_shape_options'])
+                                     obj['chunk_shape_options'], input_datasource)
     print('Done cloudvolume!')
 
 
 @cloudvolume.command()
+@click.option('--layer_type', type=str, help="Option to consider intermediate datasources", default='image')
+@click.option('--data_type', type=str, help="Option to consider intermediate datasources", default='float32')
+@click.option('--volume_size', type=list, help="Option to consider intermediate datasources",
+              cls=PythonLiteralOption, callback=validate_literal, default=None)
+@click.option('--voxel_offset', type=list, help="Option to consider intermediate datasources",
+              cls=PythonLiteralOption, callback=validate_literal, default=None)
+@click.option('--num_channels', type=str, help="Option to consider intermediate datasources", default=3)
 @click.pass_obj
-def create(obj):
+def create(obj, **kwargs):
     """
     Try to create output destinations(use --intermediates to create intermediates)
     """
     print('Creating cloudvolume ...')
+    obj.update(kwargs)
+
     datasource_names = []
     datasource_names.append(obj['output_destination'])
     datasource_names.append(default_overlap_name(obj['output_destination']))
@@ -222,36 +235,48 @@ def create(obj):
             for mod_index in get_all_mod_index((0,) * len(obj['patch_shape']))
         ])
 
-    existing_chunk_size = None
-
+    chunk_size = None
     missing_datasource_names = []
     for datasource_name in datasource_names:
         print('Examining: ', datasource_name)
         try:
             cloudvolume = CloudVolumeCZYX(datasource_name)
-            if existing_chunk_size is None:
-                existing_chunk_size = cloudvolume.underlying
+            if chunk_size is None:
+                chunk_size = cloudvolume.underlying
                 pass
-            print('Found existing chunk size of %s for %s' % (existing_chunk_size, datasource_name))
-            assert existing_chunk_size == cloudvolume.underlying
+            print('Found existing chunk size of %s' % (chunk_size,))
+            assert tuple(chunk_size) == tuple(cloudvolume.underlying)
         except ValueError:
-            print('Missing datasource: ', datasource_name)
-            missing_datasource_names.append(datasource_names)
+            missing_datasource_names.append(datasource_name)
 
     chunk_shape_options = obj['chunk_shape_options']
 
-    assert any(tuple(existing_chunk_size) == chunk_shape for chunk_shape in chunk_shape_options)
+    if chunk_size is not None:
+        assert any(tuple(chunk_size) == tuple(chunk_shape) for chunk_shape in chunk_shape_options)
+    else:
+        chunk_size = prompt_for_chunk_size(chunk_shape_options)
 
-    if existing_chunk_size is None:
-        print('Starting Fresh! No existing cloudvolumes found. What chunksize do you want to use?')
-        for idx, chunk_shape_option in enumerate(chunk_shape_options):
-            print('[%s]: %s' % (idx, chunk_shape_option))
-    index = click.prompt('Please enter a valid integer selection', type=int)
+    if len(missing_datasource_names) > 0:
+        print('Will use chunk sizes %s to create datasources: %s' % (chunk_size, '\n'.join(missing_datasource_names)))
 
-    print(index)
-
+        input_datasource = CloudVolumeCZYX(obj['input_image_source'])
+        for datasource_name in missing_datasource_names:
+            create_cloudvolume(datasource_name, chunk_size, input_datasource, **kwargs)
+    else:
+        print('Datasources already created with suitable chunk sizes')
 
     print('Done creating cloudvolume!')
+
+
+def prompt_for_chunk_size(chunk_shape_options):
+    print('Starting Fresh! No existing cloudvolumes found. What chunksize do you want to use?')
+    for idx, chunk_shape_option in enumerate(chunk_shape_options):
+        print('[%s]: %s' % (idx, chunk_shape_option))
+    index = -1
+    while not (index >= 0 and index < len(chunk_shape_options)):
+        index = click.prompt('Please enter a valid integer selection', type=int)
+
+    return chunk_shape_options[index]
 
 
 if __name__ == '__main__':

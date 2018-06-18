@@ -2,6 +2,12 @@ import numpy as np
 from click.testing import CliRunner
 
 from chunkflow.cli import main
+from chunkflow.cloudvolume_datasource import (
+    CloudVolumeCZYX,
+    default_intermediate_datasource,
+    default_overlap_datasource
+)
+from chunkflow.datasource_manager import get_all_mod_index
 
 
 def test_inference(cloudvolume_datasource_manager):
@@ -16,13 +22,12 @@ def test_inference(cloudvolume_datasource_manager):
         volume_shape, dtype=np.dtype(cloudvolume_datasource_manager.input_datasource.data_type))
 
     result = runner.invoke(main, [
+        '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
-        # '--output_overlap_destination', cloudvolume_datasource_manager.output_datasource_overlap.layer_cloudpath,
         'task',
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
         '--overlap', '[1, 1, 1]',
-        '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
         'inference',
         '--patch_shape', '[3, 3, 3]',
         '--framework', 'identity',
@@ -56,12 +61,12 @@ def test_blend(cloudvolume_datasource_manager):
         datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
     result = runner.invoke(main, [
+        '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
         'task',
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
         '--overlap', '[1, 1, 1]',
-        '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
         # '--output_overlap_destination', cloudvolume_datasource_manager.output_datasource_overlap.layer_cloudpath,
         'blend',
     ])
@@ -78,6 +83,7 @@ def test_blend(cloudvolume_datasource_manager):
 def test_check(cloudvolume_datasource_manager, output_cloudvolume_intermediate):
     runner = CliRunner()
     result = runner.invoke(main, [
+        '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
@@ -98,6 +104,7 @@ def test_check_bad_chunksize(cloudvolume_datasource_manager, output_cloudvolume_
 
     runner = CliRunner()
     result = runner.invoke(main, [
+        '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
@@ -113,6 +120,7 @@ def test_check_bad_chunksize(cloudvolume_datasource_manager, output_cloudvolume_
 def test_check_missing_intermediates_not_needed(cloudvolume_datasource_manager):
     runner = CliRunner()
     result = runner.invoke(main, [
+        '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
@@ -127,6 +135,7 @@ def test_check_missing_intermediates_not_needed(cloudvolume_datasource_manager):
 def test_check_missing_intermediates_needed(cloudvolume_datasource_manager):
     runner = CliRunner()
     result = runner.invoke(main, [
+        '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
@@ -142,6 +151,7 @@ def test_check_missing_intermediates_needed(cloudvolume_datasource_manager):
 def test_check_missing_cloudvolume():
     runner = CliRunner()
     result = runner.invoke(main, [
+        '--input_image_source', 'badlayer',
         '--output_destination', 'badlayer',
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
@@ -154,16 +164,120 @@ def test_check_missing_cloudvolume():
     assert result.exit_code == -1
 
 
-def test_create_cloudvolume():
+def test_create_cloudvolume(input_cloudvolume):
+    output_destination = input_cloudvolume.layer_cloudpath + 'output/'
     runner = CliRunner()
-    result = runner.invoke(main, [
-        '--output_destination', 'new_cloudvolume',
-        'cloudvolume',
-        '--patch_shape', [3, 3, 3],
-        '--overlap', [1, 1, 1],
-        '--output_channels', 3,
-        '--intermediates',
-        'create',
-    ])
+    result = runner.invoke(
+        main,
+        [
+            '--input_image_source', input_cloudvolume.layer_cloudpath,
+            '--output_destination', output_destination,
+            'cloudvolume',
+            '--patch_shape', [3, 3, 3],
+            '--overlap', [1, 1, 1],
+            '--output_channels', 3,
+            '--intermediates',
+            'create'
+        ],
+        input='yes\n1'
+    )
+
     print(result.output)
-    assert result.exit_code == 1
+
+    voxel_offset = input_cloudvolume.voxel_offset
+    volume_size = input_cloudvolume.volume_size
+    resolution = input_cloudvolume.resolution
+    chunk_size = [1, 1, 1]  # runner input chooses option 1 for [1, 1, 1]
+    num_channels = 3
+    data_type = 'float32'
+
+    output_cloudvolume = CloudVolumeCZYX(output_destination)
+    output_overlap_cloudvolume = default_overlap_datasource(output_cloudvolume)
+
+    cloudvolumes = [output_cloudvolume, output_overlap_cloudvolume]
+
+    for mod_index in get_all_mod_index((0,) * len(chunk_size)):
+        cloudvolumes.append(default_intermediate_datasource(output_cloudvolume, mod_index))
+
+    for cloudvolume in cloudvolumes:
+        assert tuple(voxel_offset) == tuple(cloudvolume.voxel_offset)
+        assert tuple(volume_size) == tuple(cloudvolume.volume_size)
+        assert tuple(resolution) == tuple(cloudvolume.resolution)
+        assert tuple(chunk_size) == tuple(cloudvolume.underlying)
+        assert num_channels == cloudvolume.num_channels
+        assert data_type == cloudvolume.data_type
+
+    assert result.exit_code == 0
+
+
+def test_create_only_some_cloudvolume(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap):
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '--input_image_source', input_cloudvolume.layer_cloudpath,
+            '--output_destination', output_cloudvolume.layer_cloudpath,
+            'cloudvolume',
+            '--patch_shape', [3, 3, 3],
+            '--overlap', [1, 1, 1],
+            '--output_channels', 3,
+            '--intermediates',
+            'create'
+        ],
+        # no input because we use the chunk size from existing cloudvolumes
+    )
+
+    print(result.output)
+
+    voxel_offset = input_cloudvolume.voxel_offset
+    volume_size = input_cloudvolume.volume_size
+    resolution = input_cloudvolume.resolution
+    chunk_size = output_cloudvolume.underlying
+    num_channels = 3
+    data_type = 'float32'
+
+    output_overlap_cloudvolume = default_overlap_datasource(output_cloudvolume)
+
+    cloudvolumes = [output_cloudvolume, output_overlap_cloudvolume]
+
+    for mod_index in get_all_mod_index((0,) * len(chunk_size)):
+        cloudvolumes.append(default_intermediate_datasource(output_cloudvolume, mod_index))
+
+    for cloudvolume in cloudvolumes:
+        assert tuple(voxel_offset) == tuple(cloudvolume.voxel_offset)
+        assert tuple(volume_size) == tuple(cloudvolume.volume_size)
+        assert tuple(resolution) == tuple(cloudvolume.resolution)
+        assert tuple(chunk_size) == tuple(cloudvolume.underlying)
+        assert num_channels == cloudvolume.num_channels
+        assert data_type == cloudvolume.data_type
+
+    assert result.exit_code == 0
+
+
+def test_create_cloudvolume_mixed_chunk_size(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap):
+    # force output_cloudvolume to use a weird chunk size
+    new_chunk_size = [3, 3, 3]
+    output_cloudvolume.info['scales'][output_cloudvolume.mip]['chunk_sizes'][0] = new_chunk_size
+    output_cloudvolume.commit_info()
+    # just make sure the changes are propagated correctly
+    assert tuple(new_chunk_size) == tuple(output_cloudvolume.underlying)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '--input_image_source', input_cloudvolume.layer_cloudpath,
+            '--output_destination', output_cloudvolume.layer_cloudpath,
+            'cloudvolume',
+            '--patch_shape', [3, 3, 3],
+            '--overlap', [1, 1, 1],
+            '--output_channels', 3,
+            '--intermediates',
+            'create'
+        ],
+        input='yes\n1'
+    )
+
+    print(result.output)
+
+    assert result.exit_code == -1
