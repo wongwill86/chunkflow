@@ -39,3 +39,16 @@ class AverageBlend(ChunkOperation):
     def run_blend(self, chunk):
         weight_mapping = self.generate_weight_mapping(chunk)
         chunk.data *= weight_mapping
+
+
+class BlendFactory:
+    def __init__(self, block):
+        self.block = block
+
+    def get_operation(self, framework):
+        if framework == 'average':
+            return AverageBlend(self.block)
+        elif framework == 'identity':
+            return IdentityBlend()
+        else:
+            return AverageBlend(self.block)

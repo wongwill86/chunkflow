@@ -20,8 +20,8 @@ import click
 from rx import Observable
 
 from chunkflow.block_processor import BlockProcessor
-from chunkflow.chunk_operations.blend_operation import AverageBlend
-from chunkflow.chunk_operations.inference_operation import IdentityInference
+from chunkflow.chunk_operations.blend_operation import BlendFactory
+from chunkflow.chunk_operations.inference_operation import InferenceFactory
 from chunkflow.cloudvolume_datasource import (
     CloudVolumeCZYX,
     CloudVolumeDatasourceRepository,
@@ -94,12 +94,9 @@ def task(obj, **kwargs):
 
     input_cloudvolume = CloudVolumeCZYX(
         obj['input_image_source'], cache=False, non_aligned_writes=True, fill_missing=True)
-
     output_cloudvolume = CloudVolumeCZYX(
         obj['output_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
-
     output_cloudvolume_overlap = default_overlap_datasource(output_cloudvolume)
-
     repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap)
 
     datasource_manager = DatasourceManager(repository)
@@ -109,27 +106,30 @@ def task(obj, **kwargs):
 @task.command()
 @click.option('--patch_shape', type=list, help="convnet input patch shape",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
+@click.option('--inference_framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
               default='cpytorch')
+@click.option('--blend_framework', type=str, help="What blend method to use",
+              default='average')
 @click.option('--model_path', type=str, help="the path of convnet model")
 @click.option('--net_path', type=str, help="the path of convnet weights")
 @click.option('--accelerator_ids', type=list, help="ids of cpus/gpus to use",
               cls=PythonLiteralOption, callback=validate_literal, default=[1])
 @click.pass_obj
-def inference(obj, patch_shape, framework, model_path, net_path, accelerator_ids):
+def inference(obj, patch_shape, inference_framework, blend_framework, model_path, net_path, accelerator_ids):
     """
     Run inference on task
     """
     print('Running inference ...')
     output_datasource = obj['datasource_manager'].output_datasource
     block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
+    inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
+                                         output_data_type=output_datasource.data_type)
+    blend_factory = BlendFactory(block)
+
     task_stream = create_inference_and_blend_stream(
         block=block,
-        inference_operation=IdentityInference(
-            output_channels=output_datasource.num_channels,
-            output_data_type=output_datasource.data_type
-        ),
-        blend_operation=AverageBlend(block),
+        inference_operation=inference_factory.get_operation(inference_framework, model_path, net_path, accelerator_ids),
+        blend_operation=blend_factory.get_operation(blend_framework),
         datasource_manager=obj['datasource_manager']
     )
 

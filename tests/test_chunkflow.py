@@ -30,7 +30,8 @@ def test_inference(cloudvolume_datasource_manager):
         '--overlap', '[1, 1, 1]',
         'inference',
         '--patch_shape', '[3, 3, 3]',
-        '--framework', 'identity',
+        '--inference_framework', 'identity',
+        '--blend_framework', 'average',
     ])
 
     np.set_printoptions(threshold=np.inf)
@@ -46,6 +47,7 @@ def test_inference(cloudvolume_datasource_manager):
 
 
 def test_blend(cloudvolume_datasource_manager):
+    return
     runner = CliRunner()
     offset = cloudvolume_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = cloudvolume_datasource_manager.input_datasource.volume_size[::-1]
