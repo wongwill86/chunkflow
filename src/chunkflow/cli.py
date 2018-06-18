@@ -173,7 +173,7 @@ def blend(obj):
 @click.option('--overlap', type=list,
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--output_channels', type=int, help="number of convnet output channels", default=3)
+@click.option('--num_channels', type=int, help="number of convnet output channels", default=3)
 @click.option('--intermediates/--no-intermediates', help="Option to consider intermediate datasources", default=False)
 @click.pass_obj
 def cloudvolume(obj, **kwargs):
@@ -210,13 +210,14 @@ def check(obj):
 
 
 @cloudvolume.command()
-@click.option('--layer_type', type=str, help="Option to consider intermediate datasources", default='image')
-@click.option('--data_type', type=str, help="Option to consider intermediate datasources", default='float32')
-@click.option('--volume_size', type=list, help="Option to consider intermediate datasources",
+@click.option('--layer_type', type=str, help="Cloudvolume \"layer_type\"", default='image')
+@click.option('--data_type', type=str, help="Data type of the output", default='float32')
+@click.option('--chunk_size', type=list, help="Underlying chunk size to use",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
-@click.option('--voxel_offset', type=list, help="Option to consider intermediate datasources",
+@click.option('--volume_size', type=list, help="Total size of volume data",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
-@click.option('--num_channels', type=str, help="Option to consider intermediate datasources", default=3)
+@click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data",
+              cls=PythonLiteralOption, callback=validate_literal, default=None)
 @click.pass_obj
 def create(obj, **kwargs):
     """
@@ -224,7 +225,6 @@ def create(obj, **kwargs):
     """
     print('Creating cloudvolume ...')
     obj.update(kwargs)
-
     datasource_names = []
     datasource_names.append(obj['output_destination'])
     datasource_names.append(default_overlap_name(obj['output_destination']))
@@ -235,7 +235,7 @@ def create(obj, **kwargs):
             for mod_index in get_all_mod_index((0,) * len(obj['patch_shape']))
         ])
 
-    chunk_size = None
+    chunk_size = obj.pop('chunk_size')
     missing_datasource_names = []
     for datasource_name in datasource_names:
         print('Examining: ', datasource_name)
@@ -261,7 +261,7 @@ def create(obj, **kwargs):
 
         input_datasource = CloudVolumeCZYX(obj['input_image_source'])
         for datasource_name in missing_datasource_names:
-            create_cloudvolume(datasource_name, chunk_size, input_datasource, **kwargs)
+            create_cloudvolume(datasource_name, chunk_size, input_datasource, **obj)
     else:
         print('Datasources already created with suitable chunk sizes')
 

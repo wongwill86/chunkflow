@@ -87,7 +87,7 @@ def test_check(cloudvolume_datasource_manager, output_cloudvolume_intermediate):
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
         '--overlap', [1, 1, 1],
-        '--output_channels', 3,
+        '--num_channels', 3,
         '--intermediates',
         'check',
     ])
@@ -108,7 +108,7 @@ def test_check_bad_chunksize(cloudvolume_datasource_manager, output_cloudvolume_
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
         '--overlap', [1, 1, 1],
-        '--output_channels', 3,
+        '--num_channels', 3,
         '--intermediates',
         'check',
     ])
@@ -124,7 +124,7 @@ def test_check_missing_intermediates_not_needed(cloudvolume_datasource_manager):
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
         '--overlap', [1, 1, 1],
-        '--output_channels', 3,
+        '--num_channels', 3,
         'check',
     ])
     print(result.output)
@@ -139,7 +139,7 @@ def test_check_missing_intermediates_needed(cloudvolume_datasource_manager):
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
         '--overlap', [1, 1, 1],
-        '--output_channels', 3,
+        '--num_channels', 3,
         '--intermediates',
         'check',
     ])
@@ -155,7 +155,7 @@ def test_check_missing_cloudvolume():
         'cloudvolume',
         '--patch_shape', [3, 3, 3],
         '--overlap', [1, 1, 1],
-        '--output_channels', 3,
+        '--num_channels', 3,
         '--intermediates',
         'check',
     ])
@@ -174,7 +174,7 @@ def test_create_cloudvolume(input_cloudvolume):
             'cloudvolume',
             '--patch_shape', [3, 3, 3],
             '--overlap', [1, 1, 1],
-            '--output_channels', 3,
+            '--num_channels', 3,
             '--intermediates',
             'create'
         ],
@@ -219,7 +219,7 @@ def test_create_only_some_cloudvolume(input_cloudvolume, output_cloudvolume, out
             'cloudvolume',
             '--patch_shape', [3, 3, 3],
             '--overlap', [1, 1, 1],
-            '--output_channels', 3,
+            '--num_channels', 3,
             '--intermediates',
             'create'
         ],
@@ -270,7 +270,7 @@ def test_create_cloudvolume_mixed_chunk_size(input_cloudvolume, output_cloudvolu
             'cloudvolume',
             '--patch_shape', [3, 3, 3],
             '--overlap', [1, 1, 1],
-            '--output_channels', 3,
+            '--num_channels', 3,
             '--intermediates',
             'create'
         ],

@@ -82,6 +82,8 @@ def create_cloudvolume(layer_cloudpath, chunk_size, input_datasource, **kwargs):
     info_args['chunk_size'] = chunk_size
 
     for argument in TEMPLATE_ARGS:
+        if argument == 'num_channels':
+            print('for num_channels', kwargs)
         if argument not in kwargs or kwargs[argument] is None:
             info_args[argument] = getattr(input_datasource, argument)
         else:
