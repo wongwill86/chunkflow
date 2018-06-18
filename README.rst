@@ -57,7 +57,7 @@ Overview
 
 Convnet Inference
 
-* Free software: Apache Software License 2.0
+* Free software: MIT license
 
 Installation
 ============

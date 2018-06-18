@@ -33,7 +33,7 @@ default_context:
     full_name:                 'Will Wong'
     github_username:           'wongwill86'
     landscape:                 'no'
-    license:                   'Apache Software License 2.0'
+    license:                   'MIT license'
     linter:                    'pylama'
     package_name:              'chunkflow'
     project_name:              'chunkflow'

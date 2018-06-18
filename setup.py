@@ -20,7 +20,7 @@ def read(*names, **kwargs):
 setup(
     name='chunkflow',
     version='0.1.0',
-    license='Apache Software License 2.0',
+    license='MIT license',
     description='Convnet Inference',
     long_description='%s\n%s' % (
         re.compile('^.. start-badges.*^.. end-badges', re.M | re.S).sub('', read('README.rst')),
@@ -38,7 +38,7 @@ setup(
         # complete classifier list: http://pypi.python.org/pypi?%3Aaction=list_classifiers
         'Development Status :: 2 - Pre-Alpha Development Status',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: Apache Software License',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: Unix',
         'Operating System :: POSIX',
         'Programming Language :: Python',
