@@ -47,7 +47,6 @@ def test_inference(cloudvolume_datasource_manager):
 
 
 def test_blend(cloudvolume_datasource_manager):
-    return
     runner = CliRunner()
     offset = cloudvolume_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = cloudvolume_datasource_manager.input_datasource.volume_size[::-1]
