@@ -1,11 +1,11 @@
 import numpy as np
+from chunkblocks.global_offset_array import GlobalOffsetArray
+from chunkblocks.models import Block
 from rx import Observable
 
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkflow.datasource_manager import DatasourceManager, DatasourceRepository
-from chunkflow.global_offset_array import GlobalOffsetArray
-from chunkflow.models import Block
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 

@@ -1,10 +1,10 @@
 from functools import reduce
 
 import numpy as np
+from chunkblocks.global_offset_array import GlobalOffsetArray
 from cloudvolume import CloudVolume
 
 from chunkflow.datasource_manager import DatasourceRepository
-from chunkflow.global_offset_array import GlobalOffsetArray
 
 OVERLAP_POSTFIX = '_overlap/'
 

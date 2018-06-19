@@ -1,6 +1,6 @@
 import itertools
 
-from chunkflow.iterators import UnitIterator
+from chunkblocks.iterators import UnitIterator
 
 
 def get_mod_index(index):

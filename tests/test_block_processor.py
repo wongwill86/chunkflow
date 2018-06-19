@@ -1,8 +1,8 @@
 import pytest
+from chunkblocks.models import Block
 from rx import Observable
 
 from chunkflow.block_processor import BlockProcessor
-from chunkflow.models import Block
 
 
 class TestBlockProcessor:

@@ -17,6 +17,7 @@ Why does this file exist, and why not put this in __main__?
 import ast
 
 import click
+from chunkblocks.models import Block
 from rx import Observable
 
 from chunkflow.block_processor import BlockProcessor
@@ -31,7 +32,6 @@ from chunkflow.cloudvolume_datasource import (
 )
 from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk_sizes, valid_cloudvolume
 from chunkflow.datasource_manager import DatasourceManager, get_all_mod_index
-from chunkflow.models import Block
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 

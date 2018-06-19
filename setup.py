@@ -54,7 +54,8 @@ setup(
         'cloud-volume',
         'numpy',
         'rx',
-        'urllib3'
+        'urllib3',
+        'chunkblocks'
     ],
     extras_require={
         # eg:

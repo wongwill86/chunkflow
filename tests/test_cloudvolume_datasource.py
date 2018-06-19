@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
+from chunkblocks.global_offset_array import GlobalOffsetArray
 from cloudvolume import CloudVolume
 
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository, default_overlap_name
-from chunkflow.global_offset_array import GlobalOffsetArray
 
 
 class TestCloudVolumeCZYX:
