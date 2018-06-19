@@ -41,14 +41,12 @@ after_failure:
 after_success:
   - "curl -H \"Content-Type: application/json\"
     -d '{
-        \"dockerfile_location\": \"/docker/Dockerfile\", \"source_type\": \"Branch\",
-        \"source_name\": \"${TRAVIS_BRANCH}\", \"docker_tag\": \"${TRAVIS_BRANCH}\"
+        \"source_type\": \"Branch\", \"source_name\": \"${TRAVIS_BRANCH}\", \"docker_tag\": \"${TRAVIS_BRANCH}\"
         }'
     -X POST https://registry.hub.docker.com/u/wongwill86/chunkflow/trigger/${DOCKER_HUB_REMOTE}/"
   - "curl -H \"Content-Type: application/json\"
     -d '{
-        \"dockerfile_location\": \"/docker/pytorch/Dockerfile\", \"source_type\": \"Branch\",
-        \"source_name\": \"${TRAVIS_BRANCH}\", \"docker_tag\": \"${TRAVIS_BRANCH}-pytorch\"
+        \"source_type\": \"Branch\", \"source_name\": \"${TRAVIS_BRANCH}\", \"docker_tag\": \"${TRAVIS_BRANCH}-pytorch\"
         }'
     -X POST https://registry.hub.docker.com/u/wongwill86/chunkflow/trigger/${DOCKER_HUB_REMOTE}/"
 notifications:
