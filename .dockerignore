@@ -3,7 +3,6 @@
 .pytest_cache
 .tox
 ci
-docker
 docs
 tests
 .ackrc
@@ -14,3 +13,6 @@ tests
 .editorconfig
 .travis.yml
 .tox.ini
+**/chunkflow.egg-info/
+**/__pycache__
+**/dist
