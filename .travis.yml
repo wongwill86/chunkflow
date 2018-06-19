@@ -23,6 +23,13 @@ matrix:
     - python: '3.6'
       env:
         - TOXENV=3.6-nocov
+    - stage: after_deploy
+      script: "curl -H 'Content-Type: application/json' -d '{
+        'source_type': 'Branch', 'source_name': \"${TRAVIS_BRANCH}\", 'docker_tag': \"${TRAVIS_BRANCH}\"
+        }'
+        -X POST https://registry.hub.docker.com/u/wongwill86/chunkflow/trigger/${DOCKER_HUB_REMOTE}/"
+      python: 3.6
+      env: TOXENV=check
 before_install:
   - python --version
   - uname -a
@@ -38,17 +45,6 @@ script:
 after_failure:
   - more .tox/log/* | cat
   - more .tox/*/log/* | cat
-after_success:
-  - "curl -H \"Content-Type: application/json\"
-    -d '{
-        \"source_type\": \"Branch\", \"source_name\": \"${TRAVIS_BRANCH}\", \"docker_tag\": \"${TRAVIS_BRANCH}\"
-        }'
-    -X POST https://registry.hub.docker.com/u/wongwill86/chunkflow/trigger/${DOCKER_HUB_REMOTE}/"
-  - "curl -H \"Content-Type: application/json\"
-    -d '{
-        \"source_type\": \"Branch\", \"source_name\": \"${TRAVIS_BRANCH}\", \"docker_tag\": \"${TRAVIS_BRANCH}-pytorch\"
-        }'
-    -X POST https://registry.hub.docker.com/u/wongwill86/chunkflow/trigger/${DOCKER_HUB_REMOTE}/"
 notifications:
   email:
     on_success: never

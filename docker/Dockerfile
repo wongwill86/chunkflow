@@ -26,7 +26,6 @@ RUN set -ex \
         zlib-dev \
         shadow \
     && pip install --upgrade pip \
-    && pip install http://download.pytorch.org/whl/cpu/torch-0.4.0-cp36-cp36m-linux_x86_64.whl \
     && pip install chunkflow/ \
     && groupadd -r ${CHUNKFLOW_USER} \
     && useradd -r -d ${CHUNKFLOW_HOME} -g ${CHUNKFLOW_USER} -s /bin/bash ${CHUNKFLOW_USER} \
