@@ -16,5 +16,5 @@ include README.rst
 
 include tox.ini .travis.yml appveyor.yml
 
-global-exclude *.py[cod] __pycache__ *.so *.dylib
-global-exclude *Dockerfile .dockerignore
+global-exclude *.py[cod] __pycache__ *.so *.dylib *.dockerignore docker
+recursive-exclude docker * Dockerfile
