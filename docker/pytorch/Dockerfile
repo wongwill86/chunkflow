@@ -56,3 +56,5 @@ RUN cat .git/refs/$(cat .git/HEAD | sed -e's/ref: refs\///g') > version/COMMIT \
     && grep $(cat version/COMMIT) .git/refs/tags/* -l | xargs -n 1 -r basename > version/TAGS \
     && mv version/COMMIT version/base.COMMIT.slim \
     && mv version/TAGS version/base.TAGS.slim
+
+USER ${CHUNKFLOW_USER}
