@@ -27,10 +27,10 @@ def test_inference(cloudvolume_datasource_manager):
         'task',
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
-        '--overlap', '[1, 1, 1]',
+        '--overlap', [1, 1, 1],
         '--intermediate_protocol', 'file://',
         'inference',
-        '--patch_shape', '[3, 3, 3]',
+        '--patch_shape', [3, 3, 3],
         '--inference_framework', 'identity',
         '--blend_framework', 'average',
     ])
@@ -67,7 +67,7 @@ def test_blend(cloudvolume_datasource_manager):
         'task',
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
-        '--overlap', '[1, 1, 1]',
+        '--overlap', [1, 1, 1],
         # '--output_overlap_destination', cloudvolume_datasource_manager.output_datasource_overlap.layer_cloudpath,
         'blend',
     ])
