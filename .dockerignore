@@ -16,3 +16,8 @@ tests
 **/chunkflow.egg-info/
 **/__pycache__
 **/dist
+!.git/refs/heads/*
+.git/refs/heads/*/*
+!.git/refs/tags/*
+.git/refs/tags/*/*
+!.git/HEAD
