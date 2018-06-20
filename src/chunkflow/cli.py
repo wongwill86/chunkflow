@@ -79,6 +79,8 @@ def main(ctx, **kwargs):
 @click.option('--overlap', type=list,
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
+@click.option('--intermediate_protocol', type=str, help="cloudvolume protocol to use for intermediate cloudvolumes",
+              default=None)
 @click.pass_obj
 def task(obj, **kwargs):
     """
@@ -97,7 +99,9 @@ def task(obj, **kwargs):
     output_cloudvolume = CloudVolumeCZYX(
         obj['output_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
     output_cloudvolume_overlap = default_overlap_datasource(output_cloudvolume)
-    repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap)
+    repository = CloudVolumeDatasourceRepository(
+        input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap,
+        intermediate_protocol=obj['intermediate_protocol'])
 
     datasource_manager = DatasourceManager(repository)
     obj['datasource_manager'] = datasource_manager
@@ -120,7 +124,9 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     Run inference on task
     """
     print('Running inference ...')
-    output_datasource = obj['datasource_manager'].output_datasource
+    datasource_manager = obj['datasource_manager']
+
+    output_datasource = datasource_manager.output_datasource
     block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
     inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
                                          output_data_type=output_datasource.data_type)
@@ -130,7 +136,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         block=block,
         inference_operation=inference_factory.get_operation(inference_framework, model_path, net_path, accelerator_ids),
         blend_operation=blend_factory.get_operation(blend_framework),
-        datasource_manager=obj['datasource_manager']
+        datasource_manager=datasource_manager
     )
 
     BlockProcessor().process(block, task_stream)

@@ -28,6 +28,7 @@ def test_inference(cloudvolume_datasource_manager):
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
         '--overlap', '[1, 1, 1]',
+        '--intermediate_protocol', 'file://',
         'inference',
         '--patch_shape', '[3, 3, 3]',
         '--inference_framework', 'identity',

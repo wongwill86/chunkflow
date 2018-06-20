@@ -84,8 +84,11 @@ class CloudVolumeCZYX(CloudVolume):
 
 class CloudVolumeDatasourceRepository(DatasourceRepository):
     def __init__(self, input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap,
-                 intermediate_protocol='file://', *args, **kwargs):
-        self.intermediate_protocol = intermediate_protocol
+                 intermediate_protocol=None, *args, **kwargs):
+        if intermediate_protocol is None:
+            self.intermediate_protocol = output_cloudvolume.path.protocol + '://'
+        else:
+            self.intermediate_protocol = intermediate_protocol
 
         if any(not isinstance(volume, CloudVolumeCZYX)
                for volume in [input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap]):
