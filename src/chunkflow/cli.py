@@ -90,8 +90,8 @@ def task(obj, **kwargs):
     obj.update(kwargs)
 
     obj['task_bounds'] = tuple(slice(o, o + sh) for o, sh in zip(
-        kwargs['task_offset_coordinates'],
-        kwargs['task_shape']
+        obj['task_offset_coordinates'],
+        obj['task_shape']
     ))
 
     input_cloudvolume = CloudVolumeCZYX(
@@ -144,23 +144,38 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
 
 
 @task.command()
+@click.option('--volume_size', type=list, help="Total size of volume data. Used to determine if overlap region needs "
+              "to be merged, i.e. if current task is at the boundary of region of interest or completely inside. MUST "
+              "be specified with --voxel_offset",
+              cls=PythonLiteralOption, callback=validate_literal, default=None)
+@click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data. Used to determine if "
+              "overlap region needs to be merged, i.e. if current task is at the boundary of the region of interest or "
+              "completely inside. MUST be specified with --voxel_offset",
+              cls=PythonLiteralOption, callback=validate_literal, default=None)
 @click.pass_obj
-def blend(obj):
+def blend(obj, **kwargs):
     """
     Blend chunk using overlap regions
     """
     print('Blending ...')
+    obj.update(kwargs)
+    task_shape = obj['task_shape']
+
+    if obj['volume_size'] is not None and obj['voxel_offset'] is not None:
+        dataset_bounds = tuple(slice(o, o + s) for o, s in zip(obj['volume_offset'], obj['volume_size']))
+    elif obj['volume_size'] is not None or obj['voxel_offset'] is not None:
+        raise ValueError("MUST specify both volume_size AND volume_offset")
+    else:
+        # assume this task is completely inside so we blend all overlap regions
+        task_offset = obj['task_offset_coordinates']
+        task_shape = obj['task_shape']
+        overlap = obj['overlap']
+        dataset_bounds = tuple(slice(o - (s - olap), o + (s - olap) + s) for o, s, olap in zip(
+            task_offset, task_shape, overlap))
+        print(dataset_bounds)
 
     datasource_manager = obj['datasource_manager']
 
-    input_datasource = datasource_manager.repository.input_datasource
-    offset_fortran = input_datasource.voxel_offset
-    dataset_shape_fortran = input_datasource.volume_size
-
-    offset_c = offset_fortran[::-1]
-    dataset_shape_c = dataset_shape_fortran[::-1]
-
-    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset_c, dataset_shape_c))
     block = Block(bounds=dataset_bounds, chunk_shape=obj['task_shape'], overlap=obj['overlap'])
 
     datasource_manager.repository.create_intermediate_datasources(obj['task_shape'])

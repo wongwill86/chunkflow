@@ -243,7 +243,7 @@ class TestInferenceStream:
             cloudvolume_datasource_manager.repository.output_datasource_overlap[bounds].sum()
 
 
-class TestBlendStream:
+class aTestBlendStream:
 
     def test_blend(self):
         dataset_bounds = (slice(0, 7), slice(0, 7))
