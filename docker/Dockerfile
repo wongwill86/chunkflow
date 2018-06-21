@@ -11,12 +11,12 @@ ENV CHUNKFLOW_USER=chunkflow
 ENV CHUNKFLOW_HOME=/usr/local/chunkflow
 
 WORKDIR ${CHUNKFLOW_HOME}/chunkflow
+COPY MANIFEST.in .
 COPY CHANGELOG.rst .
 COPY LICENSE .
 COPY README.rst .
 COPY setup.py .
 COPY src/ src/
-RUN ls ${CHUNKFLOW_HOME}/chunkflow
 
 WORKDIR ${CHUNKFLOW_HOME}
 RUN apt-get update \
