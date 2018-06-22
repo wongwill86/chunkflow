@@ -47,7 +47,7 @@ def test_inference(cloudvolume_datasource_manager):
     assert np.prod(task_shape) * 3 == data.sum()
 
 
-def test_blend_with_offset(cloudvolume_datasource_manager):
+def test_blend_with_offset_top_edge_task(cloudvolume_datasource_manager):
     runner = CliRunner()
     offset = cloudvolume_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = cloudvolume_datasource_manager.input_datasource.volume_size[::-1]
@@ -68,14 +68,48 @@ def test_blend_with_offset(cloudvolume_datasource_manager):
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
         '--overlap', [1, 1, 1],
-        '--voxel_offset', [0, 0, 0],
-        '--volume_size', [3, 3, 3],
         'blend',
+        '--voxel_offset', list(offset),
+        '--volume_size', [3, 3, 3],
     ])
 
-    np.set_printoptions(threshold=np.inf)
+    print(result.output)
+    print(cloudvolume_datasource_manager.output_datasource[dataset_bounds])
+    assert result.exit_code == 0
+    assert result.exception is None
+    # Includes top left edge task
+    assert (3 ** len(task_shape)) * (3 ** len(task_shape) - 1) * 3 == \
+        cloudvolume_datasource_manager.output_datasource[dataset_bounds].sum()
+
+
+def test_blend_with_offset_non_top_edge_task(cloudvolume_datasource_manager):
+    runner = CliRunner()
+    offset = cloudvolume_datasource_manager.input_datasource.voxel_offset[::-1]
+    volume_shape = cloudvolume_datasource_manager.input_datasource.volume_size[::-1]
+    task_shape = (3, 3, 3)
+    output_shape = (3,) + task_shape
+
+    task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
+    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
+
+    cloudvolume_datasource_manager.repository.create_intermediate_datasources(task_shape)
+    for datasource in cloudvolume_datasource_manager.repository.intermediate_datasources.values():
+        datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
+
+    result = runner.invoke(main, [
+        '--input_image_source', cloudvolume_datasource_manager.input_datasource.layer_cloudpath,
+        '--output_destination', cloudvolume_datasource_manager.output_datasource.layer_cloudpath,
+        'task',
+        '--task_offset_coordinates', list(offset),
+        '--task_shape', list(task_shape),
+        '--overlap', [1, 1, 1],
+        'blend',
+        '--voxel_offset', list(o - s + 1 for o, s in zip(offset, task_shape)),
+        '--volume_size', [7, 7, 7],
+    ])
 
     print(result.output)
+    print(cloudvolume_datasource_manager.output_datasource[dataset_bounds])
     assert result.exit_code == 0
     assert result.exception is None
     assert 3 ** len(task_shape) * 7 * 3 == \
@@ -109,6 +143,7 @@ def test_blend_no_offset(cloudvolume_datasource_manager):
     np.set_printoptions(threshold=np.inf)
 
     print(result.output)
+    print(cloudvolume_datasource_manager.output_datasource[dataset_bounds])
     assert result.exit_code == 0
     assert result.exception is None
     assert 3 ** len(task_shape) * 7 * 3 == \
@@ -118,12 +153,10 @@ def test_blend_no_offset(cloudvolume_datasource_manager):
 def test_blend_bad_param(cloudvolume_datasource_manager):
     runner = CliRunner()
     offset = cloudvolume_datasource_manager.input_datasource.voxel_offset[::-1]
-    volume_shape = cloudvolume_datasource_manager.input_datasource.volume_size[::-1]
     task_shape = (3, 3, 3)
     output_shape = (3,) + task_shape
 
     task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
-    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
 
     cloudvolume_datasource_manager.repository.create_intermediate_datasources(task_shape)
     for datasource in cloudvolume_datasource_manager.repository.intermediate_datasources.values():
@@ -136,8 +169,8 @@ def test_blend_bad_param(cloudvolume_datasource_manager):
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
         '--overlap', [1, 1, 1],
-        '--voxel_offset', [1, 1, 1],
         'blend',
+        '--voxel_offset', [1, 1, 1],
     ])
 
     np.set_printoptions(threshold=np.inf)

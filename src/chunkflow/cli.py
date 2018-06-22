@@ -145,12 +145,12 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
 
 @task.command()
 @click.option('--volume_size', type=list, help="Total size of volume data. Used to determine if overlap region needs "
-              "to be merged, i.e. if current task is at the boundary of region of interest or completely inside. MUST "
-              "be specified with --voxel_offset",
+              "to be included at dataset boundaries, i.e. if current task is at the boundary of region of interest or "
+              "completely inside. MUST be specified with --voxel_offset",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
 @click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data. Used to determine if "
-              "overlap region needs to be merged, i.e. if current task is at the boundary of the region of interest or "
-              "completely inside. MUST be specified with --voxel_offset",
+              "overlap region needs to be included at dataset_boundaries, i.e. if current task is at the boundary of "
+              "the region of interest or completely inside. MUST be specified with --voxel_offset",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
 @click.pass_obj
 def blend(obj, **kwargs):
@@ -162,9 +162,9 @@ def blend(obj, **kwargs):
     task_shape = obj['task_shape']
 
     if obj['volume_size'] is not None and obj['voxel_offset'] is not None:
-        dataset_bounds = tuple(slice(o, o + s) for o, s in zip(obj['volume_offset'], obj['volume_size']))
+        dataset_bounds = tuple(slice(o, o + s) for o, s in zip(obj['voxel_offset'], obj['volume_size']))
     elif obj['volume_size'] is not None or obj['voxel_offset'] is not None:
-        raise ValueError("MUST specify both volume_size AND volume_offset")
+        raise ValueError("MUST specify both volume_size AND voxel_offset")
     else:
         # assume this task is completely inside so we blend all overlap regions
         task_offset = obj['task_offset_coordinates']

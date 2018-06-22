@@ -121,7 +121,6 @@ def create_blend_stream(block, datasource_manager):
     return lambda chunk: (
         Observable.just(chunk)
         .flat_map(block.overlap_chunk_slices)
-        .do_action(print)
         .flat_map(
             lambda chunk_slices:
             (
