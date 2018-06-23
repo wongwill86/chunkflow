@@ -3,6 +3,12 @@ import itertools
 from chunkblocks.iterators import UnitIterator
 
 
+def get_absolute_index(offset, overlap, shape):
+    return tuple(o // stride for o, stride in zip(
+        offset, tuple(olap - s for olap, s in zip(overlap, shape))
+    ))
+
+
 def get_mod_index(index):
     return tuple(abs(idx % 3) for idx in index)
 
@@ -37,21 +43,21 @@ class DatasourceManager:
         return self.repository.output_datasource
 
     @property
-    def output_datasource_overlap(self):
-        return self.repository.output_datasource_overlap
+    def output_datasource_final(self):
+        return self.repository.output_datasource_final
 
 
 class DatasourceRepository:
-    def __init__(self, input_datasource, output_datasource, output_datasource_overlap,
-                 intermediate_datasources=None):
+    def __init__(self, input_datasource, output_datasource, output_datasource_final=None,
+                 overlap_datasources=None):
         self.input_datasource = input_datasource
         self.output_datasource = output_datasource
-        self.output_datasource_overlap = output_datasource_overlap
-        self.intermediate_datasources = dict()
+        self.output_datasource_final = output_datasource_final
+        self.overlap_datasources = dict()
 
-    def create_intermediate_datasources(self, center_index):
+    def create_overlap_datasources(self, center_index):
         """
-        Create all intermediate datasources.
+        Create all overlap datasources.
         :param center_index: this is needed to find out how many dimensions are used to find the neighbors. We are
         unable to use the saved datasources because they maybe have multi dimensional outputs.
         """
@@ -63,6 +69,6 @@ class DatasourceRepository:
 
     def get_datasource(self, index):
         mod_index = get_mod_index(index)
-        if mod_index not in self.intermediate_datasources:
-            self.intermediate_datasources[mod_index] = self.create(mod_index)
-        return self.intermediate_datasources[mod_index]
+        if mod_index not in self.overlap_datasources:
+            self.overlap_datasources[mod_index] = self.create(mod_index)
+        return self.overlap_datasources[mod_index]

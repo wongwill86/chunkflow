@@ -6,43 +6,30 @@ from cloudvolume import CloudVolume
 
 from chunkflow.datasource_manager import DatasourceRepository
 
-OVERLAP_POSTFIX = '_overlap/'
+OVERLAP_POSTFIX = '_overlap%s/'
 
 
-def default_overlap_name(path_or_cv):
+def get_index_name(index):
+    return reduce(lambda x, y: x + '_' + str(y), index, '') + '/'
+
+
+def default_overlap_name(path_or_cv, mod_index):
     if isinstance(path_or_cv, CloudVolume):
         layer_cloudpath = path_or_cv.layer_cloudpath
     else:
         layer_cloudpath = path_or_cv
 
+    index_name = get_index_name(mod_index)
+
     if layer_cloudpath.endswith('/'):
-        return layer_cloudpath[:-1] + OVERLAP_POSTFIX
+        return layer_cloudpath[:-1] + OVERLAP_POSTFIX % index_name
     else:
-        return layer_cloudpath + OVERLAP_POSTFIX
+        return layer_cloudpath + OVERLAP_POSTFIX % index_name
 
 
-def default_overlap_datasource(path_or_cv):
-    return CloudVolumeCZYX(default_overlap_name(path_or_cv), cache=False, non_aligned_writes=True,
+def default_overlap_datasource(path_or_cv, mod_index):
+    return CloudVolumeCZYX(default_overlap_name(path_or_cv, mod_index), cache=False, non_aligned_writes=True,
                            fill_missing=True)
-
-
-def default_intermediate_name(path_or_cv, mod_index):
-    if isinstance(path_or_cv, CloudVolume):
-        layer_cloudpath = path_or_cv.layer_cloudpath
-    else:
-        layer_cloudpath = path_or_cv
-
-    index_name = reduce(lambda x, y: x + '_' + str(y), mod_index, '') + '/'
-
-    if layer_cloudpath.endswith('/'):
-        return layer_cloudpath[:-1] + index_name
-    else:
-        return layer_cloudpath + index_name
-
-
-def default_intermediate_datasource(path_or_cv, mod_index):
-    return CloudVolumeCZYX(default_intermediate_name(path_or_cv, mod_index), cache=False,
-                           non_aligned_writes=True, fill_missing=True)
 
 
 class CloudVolumeCZYX(CloudVolume):
@@ -83,27 +70,27 @@ class CloudVolumeCZYX(CloudVolume):
 
 
 class CloudVolumeDatasourceRepository(DatasourceRepository):
-    def __init__(self, input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap,
-                 intermediate_protocol=None, *args, **kwargs):
-        if intermediate_protocol is None:
-            self.intermediate_protocol = output_cloudvolume.path.protocol + '://'
+    def __init__(self, input_cloudvolume, output_cloudvolume, output_cloudvolume_final=None,
+                 overlap_protocol=None, *args, **kwargs):
+        if overlap_protocol is None:
+            self.overlap_protocol = output_cloudvolume.path.protocol + '://'
         else:
-            self.intermediate_protocol = intermediate_protocol
+            self.overlap_protocol = overlap_protocol
 
-        if any(not isinstance(volume, CloudVolumeCZYX)
-               for volume in [input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap]):
+        if any(not isinstance(volume, CloudVolumeCZYX) for volume in [input_cloudvolume, output_cloudvolume]) or \
+                (output_cloudvolume_final is not None and not isinstance(output_cloudvolume_final, CloudVolumeCZYX)):
             raise ValueError('Must use %s class cloudvolume to ensure correct c order indexing' %
                              CloudVolumeCZYX.__name__)
-        super().__init__(input_cloudvolume,
-                         output_cloudvolume,
-                         output_cloudvolume_overlap,
+        super().__init__(input_datasource=input_cloudvolume,
+                         output_datasource=output_cloudvolume,
+                         output_datasource_final=output_cloudvolume_final,
                          *args, **kwargs)
 
     def create(self, mod_index, *args, **kwargs):
-        layer_cloudpath = default_intermediate_name(self.output_datasource, mod_index)
+        layer_cloudpath = default_overlap_name(self.output_datasource, mod_index)
         post_protocol_index = layer_cloudpath.find("//") + 2
         base_name = layer_cloudpath[post_protocol_index:]
-        layer_cloudpath = self.intermediate_protocol + base_name
+        layer_cloudpath = self.overlap_protocol + base_name
 
         try:
             new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, cache=False, non_aligned_writes=True, fill_missing=True)

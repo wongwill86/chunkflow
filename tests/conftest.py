@@ -87,17 +87,34 @@ def output_cloudvolume(cloudvolume_factory):
 @pytest.fixture(scope='function')
 def output_cloudvolume_overlap(cloudvolume_factory):
     return cloudvolume_factory.create(
-        default_overlap_name(OUTPUT_NAME), data_type=OUTPUT_DATA_TYPE, volume_size=VOLUME_SIZE,
-        chunk_size=CLOUD_VOLUME_CHUNK_SIZE, num_channels=NUM_CHANNELS)
+        default_overlap_name(OUTPUT_NAME, (0,) * len(VOXEL_OFFSET)),
+        data_type=OUTPUT_DATA_TYPE,
+        volume_size=VOLUME_SIZE,
+        chunk_size=CLOUD_VOLUME_CHUNK_SIZE,
+        num_channels=NUM_CHANNELS
+    )
 
 
 @pytest.fixture(scope='function')
-def output_cloudvolume_intermediate(cloudvolume_datasource_manager):
-    cloudvolume_datasource_manager.repository.create_intermediate_datasources((0,) * len(VOXEL_OFFSET))
-    return cloudvolume_datasource_manager.repository.intermediate_datasources.values()
+def output_cloudvolume_overlaps(block_datasource_manager):
+    block_datasource_manager.repository.create_overlap_datasources((0,) * len(VOXEL_OFFSET))
+    return block_datasource_manager.repository.overlap_datasources.values()
 
 
 @pytest.fixture(scope='function')
-def cloudvolume_datasource_manager(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap):
-    repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap)
+def chunk_datasource_manager(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap):
+    repository = CloudVolumeDatasourceRepository(
+        input_cloudvolume=input_cloudvolume,
+        output_cloudvolume=output_cloudvolume_overlap,
+        output_cloudvolume_final=output_cloudvolume
+    )
+    return DatasourceManager(repository)
+
+
+@pytest.fixture(scope='function')
+def block_datasource_manager(input_cloudvolume, output_cloudvolume):
+    repository = CloudVolumeDatasourceRepository(
+        input_cloudvolume=input_cloudvolume,
+        output_cloudvolume=output_cloudvolume,
+    )
     return DatasourceManager(repository)

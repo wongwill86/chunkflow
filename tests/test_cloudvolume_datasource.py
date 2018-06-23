@@ -7,7 +7,6 @@ from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasou
 
 
 class TestCloudVolumeCZYX:
-
     def test_get(self, cloudvolume_factory):
         data_shape_fortran = [8, 8, 4]
         cv_fortran = cloudvolume_factory.create('test', chunk_size=data_shape_fortran, volume_size=data_shape_fortran,
@@ -88,19 +87,41 @@ class TestCloudVolumeCZYX:
 
 
 class TestCloudVolumeDatasource:
+    def test_create_with_final(self, cloudvolume_factory):
+        input_cloudvolume = cloudvolume_factory.create('input')
+        output_cloudvolume = cloudvolume_factory.create('output')
+        output_cloudvolume_final = cloudvolume_factory.create('output_final')
+
+        CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume=output_cloudvolume,
+                                        output_cloudvolume_final=output_cloudvolume_final)
+
+    def test_create_without_final(self, cloudvolume_factory):
+        input_cloudvolume = cloudvolume_factory.create('input')
+        output_cloudvolume = cloudvolume_factory.create('output')
+
+        CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume=output_cloudvolume)
+
+    def test_create_with_final_wrong_cloudvolume(self, cloudvolume_factory):
+        input_cloudvolume = cloudvolume_factory.create('input')
+        output_cloudvolume = cloudvolume_factory.create('output')
+        output_cloudvolume_final = cloudvolume_factory.create('output_final', cloudvolume_class=CloudVolume)
+
+        with pytest.raises(ValueError):
+            CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume=output_cloudvolume,
+                                            output_cloudvolume_final=output_cloudvolume_final)
+
     def test_fail_not_cloudvolumeczyx(self, cloudvolume_factory):
         input_cloudvolume = cloudvolume_factory.create('input', cloudvolume_class=CloudVolume)
         output_cloudvolume = cloudvolume_factory.create('output', cloudvolume_class=CloudVolume)
-        output_cloudvolume_overlap = cloudvolume_factory.create(default_overlap_name(output_cloudvolume),
-                                                                cloudvolume_class=CloudVolume)
 
         with pytest.raises(ValueError):
-            CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap)
+            CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume)
 
     def test_create_mod_index(self, cloudvolume_factory):
         input_cloudvolume = cloudvolume_factory.create('input')
         output_cloudvolume = cloudvolume_factory.create('output')
-        output_cloudvolume_overlap = cloudvolume_factory.create(default_overlap_name(output_cloudvolume))
+        output_cloudvolume_overlap = cloudvolume_factory.create(
+            default_overlap_name(output_cloudvolume, (0,) * len(input_cloudvolume.volume_size)))
 
         repository = CloudVolumeDatasourceRepository(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap)
 

@@ -23,15 +23,9 @@ from rx import Observable
 from chunkflow.block_processor import BlockProcessor
 from chunkflow.chunk_operations.blend_operation import BlendFactory
 from chunkflow.chunk_operations.inference_operation import InferenceFactory
-from chunkflow.cloudvolume_datasource import (
-    CloudVolumeCZYX,
-    CloudVolumeDatasourceRepository,
-    default_intermediate_name,
-    default_overlap_datasource,
-    default_overlap_name
-)
+from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository, default_overlap_name
 from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk_sizes, valid_cloudvolume
-from chunkflow.datasource_manager import DatasourceManager, get_all_mod_index
+from chunkflow.datasource_manager import DatasourceManager, get_absolute_index, get_all_mod_index
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 
@@ -79,7 +73,7 @@ def main(ctx, **kwargs):
 @click.option('--overlap', type=list,
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--intermediate_protocol', type=str, help="cloudvolume protocol to use for intermediate cloudvolumes",
+@click.option('--overlap_protocol', type=str, help="cloudvolume protocol to use for overlap cloudvolumes",
               default=None)
 @click.pass_obj
 def task(obj, **kwargs):
@@ -96,15 +90,23 @@ def task(obj, **kwargs):
 
     input_cloudvolume = CloudVolumeCZYX(
         obj['input_image_source'], cache=False, non_aligned_writes=True, fill_missing=True)
-    output_cloudvolume = CloudVolumeCZYX(
+    output_cloudvolume_final = CloudVolumeCZYX(
         obj['output_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
-    output_cloudvolume_overlap = default_overlap_datasource(output_cloudvolume)
-    repository = CloudVolumeDatasourceRepository(
-        input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap,
-        intermediate_protocol=obj['intermediate_protocol'])
+    block_repository = CloudVolumeDatasourceRepository(
+        input_cloudvolume=input_cloudvolume, output_cloudvolume=output_cloudvolume_final)
 
-    datasource_manager = DatasourceManager(repository)
-    obj['datasource_manager'] = datasource_manager
+    absolute_index = get_absolute_index(obj['task_offset_coordinates'], obj['overlap'], obj['task_shape'])
+    output_cloudvolume_overlap = block_repository.get_datasource(absolute_index)
+
+    chunk_repository = CloudVolumeDatasourceRepository(
+        input_cloudvolume,
+        output_cloudvolume=output_cloudvolume_overlap,
+        output_cloudvolume_final=output_cloudvolume_final,
+        overlap_protocol=obj['overlap_protocol']
+    )
+
+    obj['block_datasource_manager'] = DatasourceManager(block_repository)
+    obj['chunk_datasource_manager'] = DatasourceManager(chunk_repository)
 
 
 @task.command()
@@ -124,7 +126,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     Run inference on task
     """
     print('Running inference ...')
-    datasource_manager = obj['datasource_manager']
+    datasource_manager = obj['chunk_datasource_manager']
 
     output_datasource = datasource_manager.output_datasource
     block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
@@ -174,11 +176,11 @@ def blend(obj, **kwargs):
             task_offset, task_shape, overlap))
         print(dataset_bounds)
 
-    datasource_manager = obj['datasource_manager']
+    datasource_manager = obj['block_datasource_manager']
 
     block = Block(bounds=dataset_bounds, chunk_shape=obj['task_shape'], overlap=obj['overlap'])
 
-    datasource_manager.repository.create_intermediate_datasources(obj['task_shape'])
+    datasource_manager.repository.create_overlap_datasources(obj['task_shape'])
     blend_stream = create_blend_stream(block, datasource_manager)
 
     chunk_index = block.slices_to_unit_index(obj['task_bounds'])
@@ -195,7 +197,7 @@ def blend(obj, **kwargs):
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--num_channels', type=int, help="number of convnet output channels", default=3)
-@click.option('--intermediates/--no-intermediates', help="Option to consider intermediate datasources", default=False)
+@click.option('--check_overlaps/--no-check_overlaps', help="Option to consider overlap datasources", default=False)
 @click.pass_obj
 def cloudvolume(obj, **kwargs):
     """
@@ -215,17 +217,16 @@ def cloudvolume(obj, **kwargs):
 @click.pass_obj
 def check(obj):
     """
-    Check if output destination exists and if the chunk sizes are correct (use --intermediates to check intermediates)
+    Check if output destination exists and if the chunk sizes are correct (use --check_overlaps to check overlaps)
     """
     print('Checking cloudvolume ...')
     input_datasource = CloudVolumeCZYX(obj['input_image_source'])
     output_destination = obj['output_destination']
     assert valid_cloudvolume(output_destination, obj['chunk_shape_options'], input_datasource)
-    assert valid_cloudvolume(default_overlap_name(output_destination), obj['chunk_shape_options'], input_datasource)
 
-    if obj['intermediates']:
+    if obj['check_overlaps']:
         for mod_index in get_all_mod_index((0,) * len(obj['patch_shape'])):
-            assert valid_cloudvolume(default_intermediate_name(output_destination, mod_index),
+            assert valid_cloudvolume(default_overlap_name(output_destination, mod_index),
                                      obj['chunk_shape_options'], input_datasource)
     print('Done cloudvolume!')
 
@@ -242,17 +243,16 @@ def check(obj):
 @click.pass_obj
 def create(obj, **kwargs):
     """
-    Try to create output destinations(use --intermediates to create intermediates)
+    Try to create output destinations(use --check_overlaps to create check_overlaps)
     """
     print('Creating cloudvolume ...')
     obj.update(kwargs)
     datasource_names = []
     datasource_names.append(obj['output_destination'])
-    datasource_names.append(default_overlap_name(obj['output_destination']))
 
-    if obj['intermediates']:
+    if obj['check_overlaps']:
         datasource_names.extend([
-            default_intermediate_name(obj['output_destination'], mod_index)
+            default_overlap_name(obj['output_destination'], mod_index)
             for mod_index in get_all_mod_index((0,) * len(obj['patch_shape']))
         ])
 

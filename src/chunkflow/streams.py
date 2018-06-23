@@ -72,7 +72,7 @@ def create_aggregate_stream(block, datasource_manager):
             lambda chunk:
             (
                 # create temp list of repositories values at time of iteration
-                Observable.from_(list(datasource_manager.repository.intermediate_datasources.values()))
+                Observable.from_(list(datasource_manager.repository.overlap_datasources.values()))
                 .reduce(partial(aggregate, chunk.slices), seed=0)
                 .do_action(chunk.load_data)
                 .map(lambda _: chunk)
@@ -87,12 +87,13 @@ DumpArguments = namedtuple('DumpArguments', 'datasource slices')
 def create_upload_stream(block, datasource_manager):
     return lambda chunk: (
         Observable.merge(
-            Observable.just(chunk).flat_map(block.overlap_slices).map(
-                lambda slices: DumpArguments(datasource_manager.output_datasource_overlap, slices)
-            ),
+            # core slices can bypass to the final datasource
             Observable.just(chunk).map(block.core_slices).map(
+                lambda slices: DumpArguments(datasource_manager.output_datasource_final, slices)
+            ),
+            Observable.just(chunk).flat_map(block.overlap_slices).map(
                 lambda slices: DumpArguments(datasource_manager.output_datasource, slices)
-            )
+            ),
         )
         .do_action(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
     )
@@ -125,7 +126,7 @@ def create_blend_stream(block, datasource_manager):
             lambda chunk_slices:
             (
                 # create temp list of repositories values at time of iteration
-                Observable.from_(list(datasource_manager.repository.intermediate_datasources.values()))
+                Observable.from_(list(datasource_manager.repository.overlap_datasources.values()))
                 .reduce(partial(aggregate, chunk_slices), seed=0)
                 .do_action(
                     partial(chunk.copy_data, destination=datasource_manager.output_datasource, slices=chunk_slices)
