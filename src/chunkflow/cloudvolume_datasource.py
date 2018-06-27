@@ -10,7 +10,7 @@ OVERLAP_POSTFIX = '_overlap%s/'
 
 
 def get_index_name(index):
-    return reduce(lambda x, y: x + '_' + str(y), index, '') + '/'
+    return reduce(lambda x, y: x + '_' + str(y), index, '')
 
 
 def default_overlap_name(path_or_cv, mod_index):
