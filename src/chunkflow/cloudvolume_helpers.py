@@ -12,12 +12,13 @@ TEMPLATE_INFO_ARGS = {
     'encoding': 'raw',
     'resolution': [1, 1, 1],
 }
-TEMPLATE_ARGS = [
-    'data_type',
-    'volume_size',
-    'voxel_offset',
-    'num_channels'
-]
+# dict from argument name to whether or not the value should be reversed
+TEMPLATE_ARGS = {
+    'data_type': False,
+    'volume_size': True,
+    'voxel_offset': True,
+    'num_channels': False
+}
 
 
 def get_factors(n):
@@ -51,7 +52,8 @@ def valid_cloudvolume(path_or_cv, chunk_shape_options, input_datasource):
         else:
             cloudvolume = CloudVolumeCZYX(path_or_cv)
 
-        actual_chunk_size = tuple(cloudvolume.underlying)
+        # cloudvolume is in xyzc
+        actual_chunk_size = tuple(cloudvolume.underlying)[::-1]
 
         if not any(tuple(actual_chunk_size) == chunk_shape for chunk_shape in chunk_shape_options):
             print('Warning: %s already has incorrect chunk size %s. Please reformat with one of these chunk sizes: %s' %
@@ -75,13 +77,18 @@ def valid_cloudvolume(path_or_cv, chunk_shape_options, input_datasource):
 def create_cloudvolume(layer_cloudpath, chunk_size, input_datasource, **kwargs):
     info_args = TEMPLATE_INFO_ARGS.copy()
     info_args['resolution'] = input_datasource.resolution
-    info_args['chunk_size'] = chunk_size
+
+    # convert back to xyzc for cloudvolume
+    info_args['chunk_size'] = chunk_size[::-1]
 
     for argument in TEMPLATE_ARGS:
         if argument not in kwargs or kwargs[argument] is None:
             info_args[argument] = getattr(input_datasource, argument)
         else:
             info_args[argument] = kwargs[argument]
+            if TEMPLATE_ARGS[argument]:
+                # convert back to xyzc for cloudvolume
+                info_args[argument] = info_args[argument][::-1]
 
     info = CloudVolume.create_new_info(**info_args)
 

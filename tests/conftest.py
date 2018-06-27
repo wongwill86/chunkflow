@@ -4,9 +4,9 @@ from cloudvolume import CloudVolume
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository, default_overlap_name
 from chunkflow.datasource_manager import DatasourceManager
 
-VOLUME_SIZE = (7, 7, 7)
+VOLUME_SIZE = (7, 70, 70)
 VOXEL_OFFSET = (200, 100, 50)
-CLOUD_VOLUME_CHUNK_SIZE = (2, 2, 2)
+CLOUD_VOLUME_CHUNK_SIZE = (2, 20, 20)
 INPUT_DATA_TYPE = 'uint8'
 OUTPUT_DATA_TYPE = 'float32'
 NUM_CHANNELS = 3
@@ -40,10 +40,10 @@ def cloudvolume_factory(tmpdir):
                    num_channels=1,
                    cloudvolume_class=CloudVolumeCZYX):
             if chunk_size is None:
-                chunk_size = [4, 8, 8]
+                chunk_size = [4, 80, 80]
 
             if volume_size is None:
-                volume_size = [12, 24, 24]
+                volume_size = [12, 240, 240]
 
             if voxel_offset is None:
                 voxel_offset = [200, 100, 50]

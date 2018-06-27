@@ -110,7 +110,7 @@ def task(obj, **kwargs):
 
 
 @task.command()
-@click.option('--patch_shape', type=list, help="convnet input patch shape",
+@click.option('--patch_shape', type=list, help="convnet input patch shape (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--inference_framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
               default='cpytorch')
@@ -146,13 +146,13 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
 
 
 @task.command()
-@click.option('--volume_size', type=list, help="Total size of volume data. Used to determine if overlap region needs "
-              "to be included at dataset boundaries, i.e. if current task is at the boundary of region of interest or "
-              "completely inside. MUST be specified with --voxel_offset",
+@click.option('--volume_size', type=list, help="Total size of volume data (ZYX order). Used to determine if overlap "
+              "region needs to be included at dataset boundaries, i.e. if current task is at the boundary of region of "
+              "interest or completely inside. MUST be specified with --voxel_offset",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
-@click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data. Used to determine if "
-              "overlap region needs to be included at dataset_boundaries, i.e. if current task is at the boundary of "
-              "the region of interest or completely inside. MUST be specified with --voxel_offset",
+@click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data (ZYX order). Used to "
+              "determine if overlap region needs to be included at dataset_boundaries, i.e. if current task is at the "
+              "boundary of the region of interest or completely inside. MUST be specified with --voxel_offset",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
 @click.pass_obj
 def blend(obj, **kwargs):
@@ -178,6 +178,9 @@ def blend(obj, **kwargs):
 
     datasource_manager = obj['block_datasource_manager']
 
+    print(obj['voxel_offset'])
+    print(obj['volume_size'])
+    print('dataset_bounds', dataset_bounds)
     block = Block(bounds=dataset_bounds, chunk_shape=obj['task_shape'], overlap=obj['overlap'])
 
     datasource_manager.repository.create_overlap_datasources(obj['task_shape'])
@@ -191,7 +194,7 @@ def blend(obj, **kwargs):
 
 
 @main.group()
-@click.option('--patch_shape', type=list, help="convnet input patch shape",
+@click.option('--patch_shape', type=list, help="convnet input patch shape (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--overlap', type=list,
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
@@ -234,11 +237,11 @@ def check(obj):
 @cloudvolume.command()
 @click.option('--layer_type', type=str, help="Cloudvolume \"layer_type\"", default='image')
 @click.option('--data_type', type=str, help="Data type of the output", default='float32')
-@click.option('--chunk_size', type=list, help="Underlying chunk size to use",
+@click.option('--chunk_size', type=list, help="Underlying chunk size to use (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
-@click.option('--volume_size', type=list, help="Total size of volume data",
+@click.option('--volume_size', type=list, help="Total size of volume data (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
-@click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data",
+@click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
 @click.pass_obj
 def create(obj, **kwargs):
@@ -263,10 +266,11 @@ def create(obj, **kwargs):
         try:
             cloudvolume = CloudVolumeCZYX(datasource_name)
             if chunk_size is None:
-                chunk_size = cloudvolume.underlying
+                # cloudvolume is xyz, chunkflow is zyx
+                chunk_size = cloudvolume.underlying[::-1]
                 pass
             print('Found existing chunk size of %s' % (chunk_size,))
-            assert tuple(chunk_size) == tuple(cloudvolume.underlying)
+            assert tuple(chunk_size) == tuple(cloudvolume.underlying[::-1])
         except ValueError:
             missing_datasource_names.append(datasource_name)
 

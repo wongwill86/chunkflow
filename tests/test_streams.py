@@ -339,8 +339,8 @@ class TestBlendStream:
         # assert False
 
     def test_blend_multichannel_3d_cloudvolume(self, block_datasource_manager):
-        task_shape = (3, 3, 3)
-        overlap = (1, 1, 1)
+        task_shape = (3, 30, 30)
+        overlap = (1, 10, 10)
         output_shape = (3,) + task_shape
 
         input_datasource = block_datasource_manager.repository.input_datasource
@@ -368,5 +368,5 @@ class TestBlendStream:
 
         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
-        assert 3 ** len(chunk_index) * 7 * 3 == \
+        assert np.product(task_shape) * 7 * 3 == \
             block_datasource_manager.output_datasource[dataset_bounds].sum()
