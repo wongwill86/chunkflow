@@ -7,8 +7,12 @@
 FROM python:3.6-slim
 LABEL maintainer=wongwill86
 
-ENV CHUNKFLOW_USER=chunkflow
-ENV CHUNKFLOW_HOME=/usr/local/chunkflow
+ARG GOSU_VERSION=1.10
+ARG CHUNKFLOW_USER=chunkflow
+ARG CHUNKFLOW_HOME=/usr/local/chunkflow
+
+ENV CHUNKFLOW_USER ${CHUNKFLOW_USER}
+ENV CHUNKFLOW_HOME ${CHUNKFLOW_HOME}
 
 WORKDIR ${CHUNKFLOW_HOME}/chunkflow
 COPY MANIFEST.in .
@@ -16,7 +20,11 @@ COPY CHANGELOG.rst .
 COPY LICENSE .
 COPY README.rst .
 COPY setup.py .
+COPY docker/entrypoint.sh docker/entrypoint.sh
 COPY src/ src/
+
+# Will drop to chunkflow user from gosu in entrypoint script
+USER root
 
 WORKDIR ${CHUNKFLOW_HOME}
 RUN apt-get update \
@@ -27,13 +35,14 @@ RUN apt-get update \
         liblapack-dev \
         libpq-dev \
         software-properties-common \
-        curl \
+        wget \
     ' \
     && apt-get install $buildDeps git vim sudo apt-transport-https -y \
+    && dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')" \
+    && wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch" \
     && pip install chunkflow/ \
-    && groupadd -r ${CHUNKFLOW_USER} \
-    && useradd -r -d ${CHUNKFLOW_HOME} -g ${CHUNKFLOW_USER} -s /bin/bash ${CHUNKFLOW_USER} \
-    && chown -R ${CHUNKFLOW_USER}: ${CHUNKFLOW_HOME} \
+    && chmod +x /usr/local/bin/gosu \
+    && gosu nobody true \
     && apt-get remove --purge -yqq $buildDeps \
     && apt-get clean -y \
     && apt-get autoremove -y \
@@ -56,4 +65,4 @@ RUN cat .git/refs/$(cat .git/HEAD | sed -e's/ref: refs\///g') > version/COMMIT \
     && mv version/COMMIT version/base.COMMIT.slim \
     && mv version/TAGS version/base.TAGS.slim
 
-USER ${CHUNKFLOW_USER}
+ENTRYPOINT ["chunkflow/docker/entrypoint.sh"]
