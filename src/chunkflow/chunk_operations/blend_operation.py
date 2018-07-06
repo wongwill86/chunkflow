@@ -11,33 +11,56 @@ class IdentityBlend(ChunkOperation):
 class AverageBlend(ChunkOperation):
     """
     This blends by weighting using the average across overlaps.
+
+    :param block: dataset block for computing borders
+    :param weight_borders: def
     """
-    def __init__(self, block, *args, **kwargs):
+    def __init__(self, block, weight_borders=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.block = block
+        self.weight_cache = {}
+        self.weight_borders = weight_borders
 
     def _process(self, chunk):
         self.run_blend(chunk)
 
+    def remove_offsets(self, chunk, slices, offset):
+        return
+
+    def is_border_slice(self, slices):
+        for s, b, olap in zip(slices, self.block.bounds, self.block.overlap):
+            if not ((s.start > b.start + olap and s.start < b.stop - olap) or \
+                    (s.stop > b.start + olap and s.stop < b.stop - olap)):
+                return True
+        return False
+
     def generate_weight_mapping(self, chunk):
         weight_mapping = np.ones(chunk.shape, dtype=chunk.data.dtype)
         it = np.nditer(weight_mapping, flags=['multi_index'], op_flags=['writeonly'])
-        while not it.finished:
-            multi_index = it.multi_index
-            offset_index = [s.start + m_index for s, m_index in zip(chunk.slices, multi_index)]
-            for s, b, olap, m_index in zip(chunk.slices, self.block.bounds, chunk.overlap, multi_index):
-                offset_index = s.start + m_index
-                if (
-                    (s.start != b.start and offset_index < s.start + olap) or
-                    (s.stop != b.stop and offset_index >= s.stop - olap)
-                ):
-                    it[0] *= 2
-            it.iternext()
 
-        return 1 / weight_mapping
+        # remove the offset for these slice ranges
+        overlap_slices = [slices for slices in chunk.border_slices(nonintersecting=False) if not self.is_border_slice(
+            slices)]
+
+        overlap_slices = [
+            tuple(slice(s.start - o, s.stop - o) for s, o in zip(
+                slices, chunk.offset)) for slices in overlap_slices]
+
+        for slices in overlap_slices:
+            weight_mapping[slices] *= 2
+
+        weight_mapping = 1 / weight_mapping
+
+        return weight_mapping
+
+    def get_weight_mapping(self, chunk):
+        key = chunk.shape + (chunk.data.dtype,) + tuple(set(self.block.overlap_borders(chunk)))
+        if key not in self.weight_cache:
+            self.weight_cache[key] = self.generate_weight_mapping(chunk)
+        return self.weight_cache[key]
 
     def run_blend(self, chunk):
-        weight_mapping = self.generate_weight_mapping(chunk)
+        weight_mapping = self.get_weight_mapping(chunk)
         chunk.data *= weight_mapping
 
 

@@ -370,3 +370,99 @@ class TestBlendStream:
 
         assert np.product(task_shape) * 7 * 3 == \
             block_datasource_manager.output_datasource[dataset_bounds].sum()
+
+
+class TestInferencePerformance:
+
+    def test_process_multi_channel_3d(self, chunk_datasource_manager):
+        bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
+        chunk_shape = (3, 3, 3)
+        overlap = (1, 1, 1)
+        offset = (0, 0, 0)
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+
+        bounds = (slice(0, 40), slice(0, 320), slice(0, 320))
+        chunk_shape = (16, 128, 128)
+        overlap = (4, 32, 32)
+        offset = (200, 100, 50)
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+
+        num_chunks = (2, 2, 2)
+        patch_shape = (16, 128, 128)
+        overlap = (4, 32, 32)
+        bounds = tuple(slice(o, o + c * (s - olap) + olap) for o, c, s, olap in zip(offset, num_chunks, patch_shape,
+                                                                                    overlap))
+        block = Block(offset=offset, num_chunks=num_chunks, chunk_shape=patch_shape, overlap=overlap)
+
+        fake_data = GlobalOffsetArray(np.zeros(block.shape, dtype=np.float32), global_offset=offset)
+        datasource_manager = DatasourceManager(
+            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+
+        chunk_datasource_manager.repository.create_overlap_datasources(patch_shape)
+        task_stream = create_inference_and_blend_stream(
+            block=block,
+            inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.float32),
+            blend_operation=AverageBlend(block),
+            datasource_manager=datasource_manager
+            # datasource_manager=chunk_datasource_manager
+        )
+        import time
+
+        stats = dict()
+        stats['completed'] = 0
+        stats['start'] = time.time()
+        stats['previous_time'] = stats['start']
+        stats['running_sum'] = 0.0
+        import threading
+
+        lock = threading.Lock()
+        def on_subscribe(item):
+            lock.acquire()
+            now = time.time()
+            stats['completed'] += 1
+            if (stats['completed'] == 0):
+                return True
+            elapsed = now - stats['previous_time']
+            stats['previous_time'] = now
+            stats['running_sum'] += elapsed
+            print(stats['running_sum']/stats['completed'], '\t', stats['completed'])
+            lock.release()
+            return True
+
+        import cProfile
+        prof = cProfile.Profile()
+
+        import traceback
+        def on_error(error):
+            print('\n\n\n\nerror error *&)*&*&)*\n\n')
+            self.error = error
+            traceback.print_exception(None, error, error.__traceback__)
+            raise error
+
+        # prof.enable()
+
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(
+            on_subscribe, on_error=on_error)
+            # lambda x: on_subscribe(x) and print('\t\tgot ', x.unit_index, ' after ', (time.time() - stats['start'])))
+            # on_subscribe)
+        print('completed ', len(list(block.chunk_iterator())), ' chunks in ', time.time() - stats['start'])
+        # prof.disable()
+        # prof.dump_stats('/home/wwong/src/chunkflow/prof.cprof')
+
+        assert np.product(block.shape) * 111 == \
+            datasource_manager.repository.output_datasource.sum() + \
+            datasource_manager.repository.output_datasource_final.sum()
+
+        # print(chunk_datasource_manager.repository.input_datasource[bounds])
+        # print(chunk_datasource_manager.repository.output_datasource[bounds])
+        # print(chunk_datasource_manager.repository.output_datasource_final[bounds])
+
+        # assert np.product(block.shape) * 111 == \
+        #     chunk_datasource_manager.repository.output_datasource[bounds].sum() + \
+        #     chunk_datasource_manager.repository.output_datasource_final[bounds].sum()
+
+        # assert np.product(block.shape) * 111 == \
+        #     datasource_manager.repository.output_datasource.sum() + \
+        #     datasource_manager.repository.output_datasource_final.sum()
+
+
