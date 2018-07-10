@@ -1,13 +1,14 @@
+import multiprocessing
 from collections import namedtuple
 from functools import partial
 
 from rx import Observable, config
-# from rx.concurrency import ThreadPoolScheduler
+from rx.concurrency import ThreadPoolScheduler
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod
 
-# optimal_thread_count = multiprocessing.cpu_count()
-# scheduler = ThreadPoolScheduler(optimal_thread_count)
+optimal_thread_count = multiprocessing.cpu_count()
+scheduler = ThreadPoolScheduler(optimal_thread_count)
 
 
 @extensionmethod(BlockingObservable)
@@ -102,6 +103,7 @@ def create_upload_stream(block, datasource_manager):
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
     return lambda chunk: (
         Observable.just(chunk)
+        # .observe_on(scheduler)
         .flat_map(create_download_stream(block, datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
         # check both the current chunk we just ran inference on as well as the neighboring chunks

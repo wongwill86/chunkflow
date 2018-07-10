@@ -2,7 +2,8 @@ from functools import reduce
 
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
-from cloudvolume import CloudVolume
+from cloudvolume import CloudVolume, txrx
+from cloudvolume.lib import Bbox, generate_slices, Vec, extract_path
 
 from chunkflow.datasource_manager import DatasourceRepository
 
@@ -49,7 +50,10 @@ class CloudVolumeCZYX(CloudVolume):
         # reverse to Fortran xyzc order
         slices = slices[::-1]
 
+        # replace this thing here!!
+        self._get_slices(slices)
         item = super().__getitem__(slices)
+
         if hasattr(item, 'flags') and (item.flags['F_CONTIGUOUS'] or not item.flags['C_CONTIGUOUS']):
             item = item.transpose()
             item = np.ascontiguousarray(item)
@@ -60,6 +64,54 @@ class CloudVolumeCZYX(CloudVolume):
 
         arr = GlobalOffsetArray(item, global_offset=offset)
         return arr
+
+    def _get_slices(self, slices):
+        '''
+        Overriding CV internal get item
+        '''
+        # stolen from cloudvolume.volume.__getitem__
+        (requested_bbox, steps, channel_slice) = self.__interpret_slices(slices)
+        # stolen from cloudvolume.txrx.cutout
+        cloudpath_bbox = requested_bbox.expand_to_chunk_size(self.underlying, offset=self.voxel_offset)
+        cloudpath_bbox = Bbox.clamp(cloudpath_bbox, self.bounds)
+        cloudpaths = txrx.chunknames(cloudpath_bbox, self.bounds, self.key, self.underlying)
+        for cloudpath in cloudpaths:
+            print(cloudpath, ' ', self.get_path_to_file(cloudpath))
+        # locations = self.cache.compute_data_locations(cloudpaths)
+        # for location, vals in locations.items():
+        #     for val in vals:
+        #         print(location, val)
+
+        layer_path = self.layer_cloudpath
+        extracted_path = extract_path(layer_path)
+        print(extracted_path)
+
+    def get_path_to_file(self, cloudpath):
+        path = extract_path(self.layer_cloudpath)
+        return '/'.join([path.intermediate_path, path.dataset, path.layer, cloudpath])
+
+    def __interpret_slices(self, slices):
+        """
+        stolen from CV becaues it was private
+        Convert python slice objects into a more useful and computable form:
+
+        - requested_bbox: A bounding box representing the volume requested
+        - steps: the requested stride over x,y,z
+        - channel_slice: A python slice object over the channel dimension
+
+        Returned as a tuple: (requested_bbox, steps, channel_slice)
+        """
+        maxsize = list(self.bounds.maxpt) + [self.num_channels]
+        minsize = list(self.bounds.minpt) + [0]
+
+        slices = generate_slices(slices, minsize, maxsize, bounded=self.bounded)
+        channel_slice = slices.pop()
+
+        minpt = Vec(*[slc.start for slc in slices])
+        maxpt = Vec(*[slc.stop for slc in slices])
+        steps = Vec(*[slc.step for slc in slices])
+
+        return Bbox(minpt, maxpt), steps, channel_slice
 
     def __setitem__(self, slices, item):
         slices = slices[::-1]
