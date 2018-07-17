@@ -51,8 +51,10 @@ def aggregate(slices, aggregate, datasource):
     return aggregate
 
 
-def create_download_stream(block, datasource_manager):
+def create_download_stream(executor, block, datasource_manager):
     return lambda chunk: Observable.just(chunk).do_action(datasource_manager.download_input)
+    # return lambda chunk: Observable.just(chunk).flat_map(
+    #     lambda s: executor.submit(datasource_manager.download_input, s))
 
 
 def create_inference_stream(block, inference_operation, blend_operation, datasource_manager):
@@ -100,11 +102,11 @@ def create_upload_stream(block, datasource_manager):
     )
 
 
-def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
+def create_inference_and_blend_stream(executor, block, inference_operation, blend_operation, datasource_manager):
     return lambda chunk: (
         Observable.just(chunk)
         # .observe_on(scheduler)
-        .flat_map(create_download_stream(block, datasource_manager))
+        .flat_map(create_download_stream(executor, block, datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
         # check both the current chunk we just ran inference on as well as the neighboring chunks
         .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))

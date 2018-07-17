@@ -39,6 +39,16 @@ class CloudVolumeCZYX(CloudVolume):
     instead. All other usages of indices such as in the constructor are STILL in ZYXC fortran order!!!!
     """
 
+    def __reduce__(self):
+        return (
+            CloudVolumeCZYX,
+            (
+                self.layer_cloudpath, self.mip, self.bounded, self.autocrop, self.fill_missing, self.cache,
+                self.cdn_cache, self.progress, self.info, None, self.compress, self.non_aligned_writes, self.parallel,
+                self.output_to_shared_memory
+            ),
+        )
+
     def __getitem__(self, slices):
         # convert this from Fortran xyzc order because offset is kept in czyx c-order for this class
         dataset_offset = tuple(self.voxel_offset[::-1])
@@ -51,7 +61,7 @@ class CloudVolumeCZYX(CloudVolume):
         slices = slices[::-1]
 
         # replace this thing here!!
-        self._get_slices(slices)
+        # self._get_slices(slices)
         item = super().__getitem__(slices)
 
         if hasattr(item, 'flags') and (item.flags['F_CONTIGUOUS'] or not item.flags['C_CONTIGUOUS']):
