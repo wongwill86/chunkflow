@@ -155,11 +155,12 @@ class CloudVolumeDatasourceRepository(DatasourceRepository):
         layer_cloudpath = self.overlap_protocol + base_name
 
         try:
-            new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, cache=False, non_aligned_writes=True, fill_missing=True)
+            new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, cache=False, non_aligned_writes=True, fill_missing=True,
+                                              compress=False)
         except ValueError:
             base_info = self.output_datasource.info
             new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, info=base_info, cache=False, non_aligned_writes=True,
-                                              fill_missing=True)
+                                              fill_missing=True, compress=False)
             new_cloudvolume.commit_info()
 
         return new_cloudvolume

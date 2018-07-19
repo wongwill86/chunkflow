@@ -27,7 +27,7 @@ class DatasourceManager:
         return chunk
 
     def dump_chunk(self, chunk, datasource=None, slices=None):
-        print('dump_chunk input', chunk.unit_index)
+        print('dump_chunk input', chunk.unit_index, slices)
         if datasource is None:
             datasource = self.repository.get_datasource(chunk.unit_index)
         chunk.dump_data(datasource, slices)

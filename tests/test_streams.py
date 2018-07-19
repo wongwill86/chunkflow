@@ -6,6 +6,7 @@ from rx import Observable
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkflow.datasource_manager import DatasourceManager, DatasourceRepository
+from chunkflow.sparse_matrix_datasource import SparseMatrixDatasourceRepository
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 
@@ -376,28 +377,54 @@ class IncrementThreeChannelInference(ChunkOperation):
 class TestInferencePerformance:
 
     def test_process_multi_channel_3d(self, chunk_datasource_manager):
-        bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-        chunk_shape = (3, 3, 3)
-        overlap = (1, 1, 1)
-        offset = (0, 0, 0)
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+        # bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
+        # chunk_shape = (3, 3, 3)
+        # overlap = (1, 1, 1)
+        # offset = (0, 0, 0)
+        # block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-        bounds = (slice(0, 40), slice(0, 320), slice(0, 320))
-        chunk_shape = (16, 128, 128)
-        overlap = (4, 32, 32)
+        # bounds = (slice(0, 40), slice(0, 320), slice(0, 320))
+        # chunk_shape = (16, 128, 128)
+        # overlap = (4, 32, 32)
         offset = (200, 100, 50)
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+        # block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
+        # offset = (200, 100, 50)
+        # num_chunks = (4, 4, 4)
+        # patch_shape = (32, 256, 256)
+        # overlap = (4, 32, 32)
+
+        offset = (200, 100, 50)
         num_chunks = (4, 4, 4)
         patch_shape = (16, 128, 128)
         overlap = (4, 32, 32)
+
+        # offset = (200, 100, 50)
+        # num_chunks = (4, 4, 4)
+        # patch_shape = (3, 3, 3)
+        # overlap = (1, 1, 1)
+
         bounds = tuple(slice(o, o + c * (s - olap) + olap) for o, c, s, olap in zip(offset, num_chunks, patch_shape,
                                                                                     overlap))
+        # print(chunk_datasource_manager.input_datasource.info)
+        # print(bounds)
         block = Block(offset=offset, num_chunks=num_chunks, chunk_shape=patch_shape, overlap=overlap)
+        # for datasource in chunk_datasource_manager.repository.overlap_datasources.values():
+        #     datasource[:, 200:216, 100:228, 530:658]
+        # assert False
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape, dtype=np.float32), global_offset=offset)
+        # datasource_manager = DatasourceManager(
+        #     NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
         datasource_manager = DatasourceManager(
-            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+            SparseMatrixDatasourceRepository(
+                input_datasource=chunk_datasource_manager.input_datasource,
+                output_datasource=chunk_datasource_manager.output_datasource,
+                output_datasource_final=chunk_datasource_manager.output_datasource_final,
+                num_channels=3,
+                block=block
+            )
+        )
 
         chunk_datasource_manager.repository.create_overlap_datasources(patch_shape)
         from concurrent.futures import ProcessPoolExecutor
@@ -408,8 +435,8 @@ class TestInferencePerformance:
                 block=block,
                 inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.float32),
                 blend_operation=AverageBlend(block),
-                # datasource_manager=datasource_manager
-                datasource_manager=chunk_datasource_manager
+                datasource_manager=datasource_manager
+                # datasource_manager=chunk_datasource_manager
             )
             import time
 
@@ -452,7 +479,7 @@ class TestInferencePerformance:
                 # on_subscribe)
             print('completed ', len(list(block.chunk_iterator())), ' chunks in ', time.time() - stats['start'])
         prof.disable()
-        prof.dump_stats('/usr/people/ww12/src/chunkflow/prof.cprof')
+        prof.dump_stats('/home/wwong/src/chunkflow/no-thread-888-np-256.cprof')
 
         # assert np.product(block.shape) * 111 == \
         #     datasource_manager.repository.output_datasource.sum() + \

@@ -4,7 +4,7 @@ from cloudvolume import CloudVolume
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository, default_overlap_name
 from chunkflow.datasource_manager import DatasourceManager
 
-VOLUME_SIZE = (4096, 4096, 600)
+VOLUME_SIZE = (600, 4096, 4096)
 VOXEL_OFFSET = (200, 100, 50)
 CLOUD_VOLUME_CHUNK_SIZE = (12, 96, 96)
 INPUT_DATA_TYPE = 'uint8'
@@ -62,6 +62,7 @@ def cloudvolume_factory(tmpdir):
             info = CloudVolume.create_new_info(**info_args)
 
             directory = 'file://' + str(self.tmpdir) + name
+            print('creating info', info)
             input_cloudvolume = cloudvolume_class(directory, info=info, cache=False, non_aligned_writes=True,
                                                   fill_missing=True, compress=True)
             input_cloudvolume.commit_info()
