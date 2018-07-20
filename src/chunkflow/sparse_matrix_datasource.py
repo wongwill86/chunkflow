@@ -12,7 +12,6 @@ class SparseMatrixDatasourceRepository(DatasourceRepository):
     def get_datasource(self, index):
         if index not in self.overlap_datasources:
             self.overlap_datasources[index] = self.create(index)
-            print('\n\ncreated shapep ! ', self.overlap_datasources[index].shape)
         return self.overlap_datasources[index]
 
     def create(self, index, *args, **kwargs):

@@ -17,6 +17,16 @@ def get_all_mod_index(index):
     return itertools.chain([index], map(get_mod_index, UnitIterator().get_all_neighbors(index)))
 
 
+def squeeze_slices(chunk, slices):
+    return tuple(
+        slice(
+            None if slice.start is None else slice.start if slice.start > bounds.start else bounds.start,
+            None if slice.stop is None else slice.stop if slice.stop < bounds.stop else bounds.stop
+        )
+        for bounds, slice in zip(chunk.data.bounds(), slices)
+    )
+
+
 class DatasourceManager:
     def __init__(self, repository):
         self.repository = repository
@@ -27,15 +37,40 @@ class DatasourceManager:
         return chunk
 
     def dump_chunk(self, chunk, datasource=None, slices=None):
-        print('dump_chunk input', chunk.unit_index, slices)
+        # print('dump_chunk input', chunk.unit_index,
+        #       '\n requestedslices:', slices,
+        #       '\n slices shape', None if slices is None else tuple(s.stop - s.start for s in slices),
+        #       '\n chunk sllices:', chunk.slices,
+        #       '\n chunk shape:', chunk.shape,
+        #       '\n chunk data shape', chunk.data.shape,
+        #       '\n actual sliced slices', None if slices is None else chunk.data[(slice(None, None),) + slices].bounds(),
+        #       '\n actual sliced shape', None if slices is None else chunk.data[(slice(None, None),) + slices].shape,
+        #       '\n chunk global_offsest', chunk.data.global_offset,
+        #       '\n sliced global_offsest', None if slices is None else chunk.data[(slice(None, None),) + slices].global_offset,
+        #       '\n\n',
+        #       )
         if datasource is None:
             datasource = self.repository.get_datasource(chunk.unit_index)
+
         chunk.dump_data(datasource, slices)
         return chunk
 
     def load_chunk(self, chunk, datasource=None, slices=None):
         if datasource is None:
             datasource = self.repository.get_datasource(chunk.unit_index)
+
+        # print('loading chunk', chunk.unit_index,
+        #       '\n requestedslices:', slices,
+        #       '\n slices shape', None if slices is None else tuple(s.stop - s.start for s in slices),
+        #       '\n chunk sllices:', chunk.slices,
+        #       '\n chunk shape:', chunk.shape,
+        #       '\n chunk data shape', chunk.data.shape,
+        #       '\n actual sliced slices', None if slices is None else chunk.data[(slice(None, None),) + slices].bounds(),
+        #       '\n actual sliced shape', None if slices is None else chunk.data[(slice(None, None),) + slices].shape,
+        #       '\n chunk global_offsest', chunk.data.global_offset,
+        #       '\n sliced global_offsest', None if slices is None else chunk.data[(slice(None, None),) + slices].global_offset,
+        #       '\n\n',
+        #       )
         chunk.load_data(datasource, slices)
         return chunk
 

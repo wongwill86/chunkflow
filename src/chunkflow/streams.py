@@ -1,6 +1,10 @@
 import multiprocessing
+import numpy as np
+
 from collections import namedtuple
 from functools import partial
+
+from chunkblocks.global_offset_array import GlobalOffsetArray
 
 from rx import Observable, config
 from rx.concurrency import ThreadPoolScheduler
@@ -48,6 +52,8 @@ def aggregate(slices, aggregate, datasource):
     else:
         # no slicing when seeding with 0
         aggregate += datasource[slices]
+    # aggregate += datasource
+    # print('agg', aggregate.shape, tuple(s.stop - s.start for s in slices[1:]), datasource[slices].shape, slices)
     return aggregate
 
 
@@ -76,7 +82,10 @@ def create_aggregate_stream(block, datasource_manager):
             (
                 # create temp list of repositories values at time of iteration
                 Observable.from_(list(datasource_manager.repository.overlap_datasources.values()))
-                .reduce(partial(aggregate, chunk.slices), seed=0)
+                .reduce(partial(aggregate, chunk.slices), seed=GlobalOffsetArray(np.zeros((3,) + chunk.shape),
+                                                                                 global_offset=[0] + chunk.offset,
+                                                                                 dtype=datasource_manager.repository.output_datasource.dtype
+                                                                                 ))
                 .do_action(chunk.load_data)
                 .map(lambda _: chunk)
             )
@@ -105,7 +114,7 @@ def create_upload_stream(block, datasource_manager):
 def create_inference_and_blend_stream(executor, block, inference_operation, blend_operation, datasource_manager):
     return lambda chunk: (
         Observable.just(chunk)
-        # .observe_on(scheduler)
+        .observe_on(scheduler)
         .flat_map(create_download_stream(executor, block, datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
         # check both the current chunk we just ran inference on as well as the neighboring chunks
