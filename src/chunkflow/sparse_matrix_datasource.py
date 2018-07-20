@@ -17,7 +17,6 @@ class SparseMatrixDatasourceRepository(DatasourceRepository):
     def create(self, index, *args, **kwargs):
         global_offset = (0,) + tuple(s.start for s in self.block.unit_index_to_slices(index))
         return GlobalOffsetArray(
-            np.zeros((self.num_channels,) + self.block.chunk_shape),
+            np.zeros((self.num_channels,) + self.block.chunk_shape, dtype=self.output_datasource.dtype),
             global_offset=global_offset,
-            dtype=self.output_datasource.dtype
         )
