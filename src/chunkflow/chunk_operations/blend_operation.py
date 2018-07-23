@@ -29,14 +29,13 @@ class AverageBlend(ChunkOperation):
 
     def is_border_slice(self, slices):
         for s, b, olap in zip(slices, self.block.bounds, self.block.overlap):
-            if not ((s.start > b.start + olap and s.start < b.stop - olap) or \
+            if not ((s.start > b.start + olap and s.start < b.stop - olap) or
                     (s.stop > b.start + olap and s.stop < b.stop - olap)):
                 return True
         return False
 
     def generate_weight_mapping(self, chunk):
         weight_mapping = np.ones(chunk.shape, dtype=chunk.data.dtype)
-        it = np.nditer(weight_mapping, flags=['multi_index'], op_flags=['writeonly'])
 
         # remove the offset for these slice ranges
         overlap_slices = [slices for slices in chunk.border_slices(nonintersecting=False) if not self.is_border_slice(
@@ -54,6 +53,9 @@ class AverageBlend(ChunkOperation):
         return weight_mapping
 
     def get_weight_mapping(self, chunk):
+        print(chunk.shape)
+        print((chunk.data.dtype,))
+        print(tuple(set(self.block.overlap_borders(chunk))))
         key = chunk.shape + (chunk.data.dtype,) + tuple(set(self.block.overlap_borders(chunk)))
         if key not in self.weight_cache:
             self.weight_cache[key] = self.generate_weight_mapping(chunk)

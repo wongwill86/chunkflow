@@ -43,9 +43,9 @@ def test_inference(block_datasource_manager):
         block_datasource_manager.output_datasource[(slice(0, 3),) + dataset_bounds] +
         output_cloudvolume_overlap[(slice(0, 3),) + dataset_bounds]
     )
-    print(result.output)
-    print(block_datasource_manager.output_datasource[(slice(0, 3),) + dataset_bounds])
-    print(output_cloudvolume_overlap[(slice(0, 3),) + dataset_bounds])
+    # print(result.output)
+    # print(block_datasource_manager.output_datasource[(slice(0, 3),) + dataset_bounds])
+    # print(output_cloudvolume_overlap[(slice(0, 3),) + dataset_bounds])
     #  force print error (until click 7.0 https://github.com/pallets/click/issues/371)
     if result.exception is not None:
         print(''.join(traceback.format_exception(etype=type(result.exception), value=result.exception,

@@ -1,6 +1,8 @@
 from collections import namedtuple
 from functools import partial
 
+import numpy as np
+from chunkblocks.global_offset_array import GlobalOffsetArray
 from rx import Observable, config
 # from rx.concurrency import ThreadPoolScheduler
 from rx.core.blockingobservable import BlockingObservable
@@ -40,13 +42,23 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None):
 
 def aggregate(slices, aggregate, datasource):
     # Account for additional output dimensions
-    slices = (slice(None),) * (len(datasource.shape) - len(slices)) + slices
+    channel_dimensions = len(datasource.shape) - len(slices)
+    channel_slices = (slice(None),) * (channel_dimensions) + slices
 
-    if hasattr(aggregate, '__getitem__'):
-        aggregate[slices] += datasource[slices]
+    # 0 from seed
+    if aggregate is 0:
+        data = datasource[channel_slices]
+        slice_shape = tuple(s.stop - s.start for s in slices)
+        offset = (0,) * channel_dimensions + tuple(s.start for s in slices)
+
+        aggregate = GlobalOffsetArray(
+            np.zeros(data.shape[0:channel_dimensions] + slice_shape, dtype=data.dtype),
+            global_offset=offset
+        )
+        aggregate += data
     else:
-        # no slicing when seeding with 0
-        aggregate += datasource[slices]
+        aggregate[channel_slices] += datasource[channel_slices]
+
     return aggregate
 
 
@@ -127,7 +139,7 @@ def create_blend_stream(block, datasource_manager):
             (
                 # create temp list of repositories values at time of iteration
                 Observable.from_(list(datasource_manager.repository.overlap_datasources.values()))
-                .reduce(partial(aggregate, chunk_slices), seed=0)
+                .reduce(partial(aggregate, chunk_slices))
                 .do_action(
                     partial(chunk.copy_data, destination=datasource_manager.output_datasource, slices=chunk_slices)
                 )

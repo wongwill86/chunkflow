@@ -120,6 +120,8 @@ class TestInferenceStream:
         Observable.just(test_chunk_1_1).flat_map(task_stream).subscribe(print)
         assert block.is_checkpointed(test_chunk_1_1)
 
+        print(datasource_manager.repository.output_datasource)
+        print(datasource_manager.repository.output_datasource_final)
         assert np.product(block.shape) == \
             datasource_manager.repository.output_datasource.sum() + \
             datasource_manager.repository.output_datasource_final.sum()
@@ -416,6 +418,7 @@ class TestInferencePerformance:
         import threading
 
         lock = threading.Lock()
+
         def on_subscribe(item):
             lock.acquire()
             now = time.time()
@@ -429,10 +432,11 @@ class TestInferencePerformance:
             lock.release()
             return True
 
-        import cProfile
-        prof = cProfile.Profile()
+        # import cProfile
+        # prof = cProfile.Profile()
 
         import traceback
+
         def on_error(error):
             print('\n\n\n\nerror error *&)*&*&)*\n\n')
             self.error = error
@@ -443,9 +447,9 @@ class TestInferencePerformance:
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(
             on_subscribe, on_error=on_error)
-            # lambda x: on_subscribe(x) and print('\t\tgot ', x.unit_index, ' after ', (time.time() - stats['start'])))
-            # on_subscribe)
+
         print('completed ', len(list(block.chunk_iterator())), ' chunks in ', time.time() - stats['start'])
+
         # prof.disable()
         # prof.dump_stats('/home/wwong/src/chunkflow/prof.cprof')
 
@@ -464,5 +468,3 @@ class TestInferencePerformance:
         # assert np.product(block.shape) * 111 == \
         #     datasource_manager.repository.output_datasource.sum() + \
         #     datasource_manager.repository.output_datasource_final.sum()
-
-

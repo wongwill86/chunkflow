@@ -37,6 +37,18 @@ class CloudVolumeCZYX(CloudVolume):
     Cloudvolume assumes XYZC Fortran order.  This class hijacks cloud volume indexing to use CZYX C order indexing
     instead. All other usages of indices such as in the constructor are STILL in ZYXC fortran order!!!!
     """
+    def __reduce__(self):
+        """
+        Help make pickle serialization much easier
+        """
+        return (
+            CloudVolumeCZYX,
+            (
+                self.layer_cloudpath, self.mip, self.bounded, self.autocrop, self.fill_missing, self.cache,
+                self.cdn_cache, self.progress, self.info, None, self.compress, self.non_aligned_writes, self.parallel,
+                self.output_to_shared_memory
+            ),
+        )
 
     def __getitem__(self, slices):
         # convert this from Fortran xyzc order because offset is kept in czyx c-order for this class
