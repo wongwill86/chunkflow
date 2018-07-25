@@ -36,7 +36,6 @@ class AverageBlend(ChunkOperation):
 
     def generate_weight_mapping(self, chunk):
         weight_mapping = np.ones(chunk.shape, dtype=chunk.data.dtype)
-
         # remove the offset for these slice ranges
         overlap_slices = [slices for slices in chunk.border_slices(nonintersecting=False) if not self.is_border_slice(
             slices)]
@@ -53,9 +52,6 @@ class AverageBlend(ChunkOperation):
         return weight_mapping
 
     def get_weight_mapping(self, chunk):
-        print(chunk.shape)
-        print((chunk.data.dtype,))
-        print(tuple(set(self.block.overlap_borders(chunk))))
         key = chunk.shape + (chunk.data.dtype,) + tuple(set(self.block.overlap_borders(chunk)))
         if key not in self.weight_cache:
             self.weight_cache[key] = self.generate_weight_mapping(chunk)
