@@ -15,10 +15,12 @@ Why does this file exist, and why not put this in __main__?
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 import ast
+import multiprocessing
 
 import click
 from chunkblocks.models import Block
 from rx import Observable
+from rx.concurrency import ThreadPoolScheduler
 
 from chunkflow.block_processor import BlockProcessor
 from chunkflow.chunk_operations.blend_operation import BlendFactory
@@ -75,6 +77,8 @@ def main(ctx, **kwargs):
               cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--overlap_protocol', type=str, help="cloudvolume protocol to use for overlap cloudvolumes",
               default=None)
+@click.option('--threads', type=int, help="number of threads to use",
+              default=multiprocessing.cpu_count())
 @click.pass_obj
 def task(obj, **kwargs):
     """
@@ -108,6 +112,13 @@ def task(obj, **kwargs):
     obj['block_datasource_manager'] = DatasourceManager(block_repository)
     obj['chunk_datasource_manager'] = DatasourceManager(chunk_repository)
 
+    threads = obj['threads']
+    if threads > 1:
+        scheduler = ThreadPoolScheduler(threads)
+    else:
+        scheduler = None
+    obj['scheduler'] = scheduler
+
 
 @task.command()
 @click.option('--patch_shape', type=list, help="convnet input patch shape (ZYX order)",
@@ -138,7 +149,8 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         block=block,
         inference_operation=inference_factory.get_operation(inference_framework, model_path, net_path, accelerator_ids),
         blend_operation=blend_factory.get_operation(blend_framework),
-        datasource_manager=datasource_manager
+        datasource_manager=datasource_manager,
+        scheduler=obj['scheduler']
     )
 
     BlockProcessor().process(block, task_stream)

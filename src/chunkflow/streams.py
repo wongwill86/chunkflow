@@ -21,14 +21,18 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None):
             on_next(src)
 
     def onError(src):
-        if on_error:
-            on_error(src)
-        latch.set()
+        try:
+            if on_error:
+                on_error(src)
+        finally:
+            latch.set()
 
     def onCompleted():
-        if on_completed:
-            on_completed()
-        latch.set()
+        try:
+            if on_completed:
+                on_completed()
+        finally:
+            latch.set()
 
     disposable = source.subscribe(onNext, onError, onCompleted)
     latch.wait()
@@ -58,8 +62,13 @@ def aggregate(slices, aggregate, datasource):
     return aggregate
 
 
-def create_download_stream(block, datasource_manager):
-    return lambda chunk: Observable.just(chunk).do_action(datasource_manager.download_input)
+def create_download_stream(block, datasource_manager, executor=None):
+    if executor is None:
+        return lambda chunk: Observable.just(chunk).do_action(datasource_manager.download_input)
+    else:
+        return lambda chunk: Observable.just(chunk).flat_map(
+            lambda chunk: executor.submit(chunk.load_data, datasource_manager.input_datasource)
+        )
 
 
 def create_inference_stream(block, inference_operation, blend_operation, datasource_manager):
@@ -92,8 +101,18 @@ def create_aggregate_stream(block, datasource_manager):
 DumpArguments = namedtuple('DumpArguments', 'datasource slices')
 
 
-def create_upload_stream(block, datasource_manager):
-    return lambda chunk: (
+def create_upload_stream(block, datasource_manager, executor=None):
+    def append_dump(observable, chunk):
+        if executor is None:
+            return observable.do_action(
+                lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict())
+            )
+        else:
+            return observable.flat_map(
+                lambda dump_args: executor.submit(datasource_manager.dump_chunk, chunk, **dump_args._asdict())
+            )
+
+    return lambda chunk: append_dump(
         Observable.merge(
             # core slices can bypass to the final datasource
             Observable.just(chunk).map(block.core_slices).map(
@@ -101,17 +120,17 @@ def create_upload_stream(block, datasource_manager):
             ),
             Observable.just(chunk).flat_map(block.overlap_slices).map(
                 lambda slices: DumpArguments(datasource_manager.output_datasource, slices)
-            ),
-        )
-        .do_action(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
+            )
+        ),
+        chunk
     )
 
 
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager,
-                                      scheduler=None):
+                                      scheduler=None, io_executor=None):
     return lambda chunk: (
         (Observable.just(chunk) if scheduler is None else Observable.just(chunk).observe_on(scheduler))
-        .flat_map(create_download_stream(block, datasource_manager))
+        .flat_map(create_download_stream(block, datasource_manager, io_executor))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
         # check both the current chunk we just ran inference on as well as the neighboring chunks
         .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
@@ -119,17 +138,17 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .filter(block.all_neighbors_checkpointed)
         .distinct()
         .flat_map(create_aggregate_stream(block, datasource_manager))
-        .flat_map(create_upload_stream(block, datasource_manager))
+        .flat_map(create_upload_stream(block, datasource_manager, io_executor))
         .map(lambda _: chunk)
     )
 
 
-def create_blend_stream(block, datasource_manager):
+def create_blend_stream(block, datasource_manager, scheduler=None):
     """
     Assume block is a dataset with chunks to represent each task!
     """
     return lambda chunk: (
-        Observable.just(chunk)
+        (Observable.just(chunk) if scheduler is None else Observable.just(chunk).observe_on(scheduler))
         .flat_map(block.overlap_chunk_slices)
         .flat_map(
             lambda chunk_slices:

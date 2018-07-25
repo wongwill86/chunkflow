@@ -28,6 +28,7 @@ def test_inference(block_datasource_manager):
         '--task_shape', list(task_shape),
         '--overlap', overlap,
         '--overlap_protocol', 'file://',
+        '--threads', '1',
         'inference',
         '--patch_shape', [3, 30, 30],
         '--inference_framework', 'identity',
@@ -43,10 +44,9 @@ def test_inference(block_datasource_manager):
         block_datasource_manager.output_datasource[(slice(0, 3),) + dataset_bounds] +
         output_cloudvolume_overlap[(slice(0, 3),) + dataset_bounds]
     )
-    # print(result.output)
-    # print(block_datasource_manager.output_datasource[(slice(0, 3),) + dataset_bounds])
-    # print(output_cloudvolume_overlap[(slice(0, 3),) + dataset_bounds])
-    #  force print error (until click 7.0 https://github.com/pallets/click/issues/371)
+    print(result.output)
+
+    # force print error (until click 7.0 https://github.com/pallets/click/issues/371)
     if result.exception is not None:
         print(''.join(traceback.format_exception(etype=type(result.exception), value=result.exception,
                                                  tb=result.exception.__traceback__)))
@@ -127,7 +127,6 @@ def test_blend_with_offset_non_top_edge_task(block_datasource_manager):
     if result.exception is not None:
         print(''.join(traceback.format_exception(etype=type(result.exception), value=result.exception,
                                                  tb=result.exception.__traceback__)))
-    # print(block_datasource_manager.output_datasource[dataset_bounds])
     assert result.exit_code == 0
     assert result.exception is None
     assert np.product(task_shape) * 7 * 3 == \
@@ -165,7 +164,6 @@ def test_blend_no_offset(block_datasource_manager):
     if result.exception is not None:
         print(''.join(traceback.format_exception(etype=type(result.exception), value=result.exception,
                                                  tb=result.exception.__traceback__)))
-    # print(block_datasource_manager.output_datasource[dataset_bounds])
     assert result.exit_code == 0
     assert result.exception is None
     assert np.product(task_shape) * 7 * 3 == \
