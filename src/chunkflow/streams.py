@@ -77,7 +77,6 @@ def create_inference_stream(block, inference_operation, blend_operation, datasou
         .map(inference_operation)
         .map(blend_operation)
         .do_action(datasource_manager.dump_chunk)
-        .do_action(block.checkpoint)
     )
 
 
@@ -123,7 +122,7 @@ def create_upload_stream(block, datasource_manager, executor=None):
             )
         ),
         chunk
-    )
+    ).map(lambda _: chunk)
 
 
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager,
@@ -132,13 +131,18 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         (Observable.just(chunk) if scheduler is None else Observable.just(chunk).observe_on(scheduler))
         .flat_map(create_download_stream(block, datasource_manager, io_executor))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
+        .do_action(lambda chunk: block.checkpoint(chunk, stage=0))
         # check both the current chunk we just ran inference on as well as the neighboring chunks
         .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
-        .filter(block.is_checkpointed)
-        .filter(block.all_neighbors_checkpointed)
+        .filter(lambda chunk: block.is_checkpointed(chunk, stage=0))
+        .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=0))
         .distinct()
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .flat_map(create_upload_stream(block, datasource_manager, io_executor))
+        .distinct()
+        .do_action(lambda chunk: block.checkpoint(chunk, stage=1))
+        .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=1))
+        # .do_action(datasource_manager.clear)
         .map(lambda _: chunk)
     )
 

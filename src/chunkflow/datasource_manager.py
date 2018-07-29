@@ -37,6 +37,9 @@ class DatasourceManager:
         chunk.load_data(datasource, slices)
         return chunk
 
+    def clear(self, chunk):
+        self.repository.clear(chunk)
+
     @property
     def input_datasource(self):
         return self.repository.input_datasource
@@ -75,3 +78,7 @@ class DatasourceRepository:
         if mod_index not in self.overlap_datasources:
             self.overlap_datasources[mod_index] = self.create(mod_index)
         return self.overlap_datasources[mod_index]
+
+    def clear(self, index):
+        mod_index = get_mod_index(index)
+        del self.overlap_datasources[mod_index]

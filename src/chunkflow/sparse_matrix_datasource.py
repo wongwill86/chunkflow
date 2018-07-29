@@ -21,3 +21,6 @@ class SparseMatrixDatasourceRepository(DatasourceRepository):
             np.zeros((self.num_channels,) + self.block.chunk_shape, dtype=self.output_datasource.dtype),
             global_offset=global_offset,
         )
+
+    def clear(self, index):
+        del self.overlap_datasources[mod_index]
