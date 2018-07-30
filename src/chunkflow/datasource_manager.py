@@ -38,7 +38,7 @@ class DatasourceManager:
         return chunk
 
     def clear(self, chunk):
-        self.repository.clear(chunk)
+        self.repository.clear(chunk.unit_index)
 
     @property
     def input_datasource(self):

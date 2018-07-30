@@ -4,12 +4,51 @@ from functools import partial
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 from rx import Observable, config
+from rx.core import AnonymousObservable, ObservableBase
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod
 
 
+@extensionmethod(Observable)
+def distinct_hash(self, key_selector=None, seed=None):
+    """
+    Returns an observable sequence that contains only distinct elements according to the key_mapper. Usage of
+    this operator should be considered carefully due to the maintenance of an internal lookup structure which can grow
+    large. This implementation allows specifying a given set to track duplicate keys.
+    Example:
+    res = obs = xs.distinct_hash()
+    obs = xs.distinct_hash(key_selector=lambda x: x.id)
+    obs = xs.distinct_hash(key_selector=lambda x: x.id, lambda a,b: a == b)
+    Keyword arguments:
+    key_selector -- [Optional]  A function to compute the comparison key
+        for each element.
+    seed -- [Optional]  Set used to track keys with. Use to enable global tracking.
+    Returns an observable sequence only containing the distinct
+    elements, based on a computed key value, from the source sequence.
+    """
+    source = self
+    hashset = seed if seed is not None else set()
+
+    def subscribe(observer, scheduler=None):
+
+        def on_next(x):
+            key = x
+            if key_selector:
+                try:
+                    key = key_selector(x)
+                except Exception as ex:
+                    observer.on_error(ex)
+                    return
+
+            if key not in hashset:
+                hashset.add(key)
+                observer.on_next(x)
+        return source.subscribe(on_next, observer.on_error, observer.on_completed, scheduler)
+    return AnonymousObservable(subscribe)
+
+
 @extensionmethod(BlockingObservable)
-def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None):
+def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None, timeout=None):
     """
     only needed when using subscribe_on
     https://github.com/ReactiveX/RxPY/issues/203#issuecomment-372963230
@@ -35,7 +74,7 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None):
             latch.set()
 
     disposable = source.subscribe(onNext, onError, onCompleted)
-    latch.wait()
+    latch.wait(timeout)
 
     return disposable
 
@@ -127,21 +166,34 @@ def create_upload_stream(block, datasource_manager, executor=None):
 
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager,
                                       scheduler=None, io_executor=None):
+    ready_upload = set()
+    done_upload = set()
+    ready_clear = set()
+
     return lambda chunk: (
         (Observable.just(chunk) if scheduler is None else Observable.just(chunk).observe_on(scheduler))
         .flat_map(create_download_stream(block, datasource_manager, io_executor))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
-        .do_action(lambda chunk: block.checkpoint(chunk, stage=0))
+
         # check both the current chunk we just ran inference on as well as the neighboring chunks
+        .do_action(lambda chunk: block.checkpoint(chunk, stage=0))
         .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
         .filter(lambda chunk: block.is_checkpointed(chunk, stage=0))
         .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=0))
-        .distinct()
+        # .distinct_hash(key_selector=lambda c: c.unit_index, seed=ready_upload)
+
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .flat_map(create_upload_stream(block, datasource_manager, io_executor))
-        .distinct()
+        # .distinct_hash(key_selector=lambda c: c.unit_index, seed=done_upload)
+
         .do_action(lambda chunk: block.checkpoint(chunk, stage=1))
+        .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
+        .filter(lambda chunk: block.is_checkpointed(chunk, stage=1))
         .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=1))
+
+        # .distinct_hash(key_selector=lambda c: c.unit_index, seed=ready_clear)
+        .do_action(lambda chunk: print('\t\t\tCLEARING!!:', chunk.unit_index))
+        # .filter(lambda chunk: chunk.unit_index != (0, 0) and chunk.unit_index != (0, 1))
         # .do_action(datasource_manager.clear)
         .map(lambda _: chunk)
     )

@@ -23,4 +23,4 @@ class SparseMatrixDatasourceRepository(DatasourceRepository):
         )
 
     def clear(self, index):
-        del self.overlap_datasources[mod_index]
+        del self.overlap_datasources[index]
