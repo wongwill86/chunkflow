@@ -4,8 +4,10 @@ from cloudvolume import CloudVolume
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository, default_overlap_name
 from chunkflow.datasource_manager import DatasourceManager
 
-VOLUME_SIZE = (7, 70, 70)
+VOLUME_SIZE = (600, 4096, 4096)
+VOLUME_SIZE = (40, 70, 70)
 VOXEL_OFFSET = (200, 100, 50)
+CLOUD_VOLUME_CHUNK_SIZE = (12, 96, 96)
 CLOUD_VOLUME_CHUNK_SIZE = (2, 20, 20)
 INPUT_DATA_TYPE = 'uint8'
 OUTPUT_DATA_TYPE = 'float32'

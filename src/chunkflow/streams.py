@@ -1,16 +1,17 @@
 from collections import namedtuple
+from enum import Enum
 from functools import partial
 
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 from rx import Observable, config
-from rx.core import AnonymousObservable, ObservableBase
+from rx.core import AnonymousObservable
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod
 
 
 @extensionmethod(Observable)
-def distinct_hash(self, key_selector=None, seed=None):
+def distinct_hash(self, key_selector=None, seed=None, lock=None):
     """
     Returns an observable sequence that contains only distinct elements according to the key_mapper. Usage of
     this operator should be considered carefully due to the maintenance of an internal lookup structure which can grow
@@ -40,9 +41,17 @@ def distinct_hash(self, key_selector=None, seed=None):
                     observer.on_error(ex)
                     return
 
-            if key not in hashset:
-                hashset.add(key)
-                observer.on_next(x)
+            def add_and_next():
+                if key not in hashset:
+                    hashset.add(key)
+                    observer.on_next(x)
+
+            if lock is None:
+                add_and_next()
+            else:
+                with lock:
+                    add_and_next()
+
         return source.subscribe(on_next, observer.on_error, observer.on_completed, scheduler)
     return AnonymousObservable(subscribe)
 
@@ -164,37 +173,42 @@ def create_upload_stream(block, datasource_manager, executor=None):
     ).map(lambda _: chunk)
 
 
+
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager,
                                       scheduler=None, io_executor=None):
-    ready_upload = set()
-    done_upload = set()
-    ready_clear = set()
+    def create_checkpoint_observable(block, stage):
+        return lambda chunk: (
+            Observable.just(chunk)
+            .do_action(lambda chunk: block.checkpoint(chunk, stage=stage.value))
+            # check both the current chunk we just ran inference on as well as the neighboring chunks
+            .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
+            .filter(lambda chunk: block.is_checkpointed(chunk, stage=stage.value))
+            .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=stage.value))
+            .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage.hashset)
+        )
+
+    class Stages(Enum):
+        INFERENCE_DONE, UPLOAD_DONE = range(2)
+
+        def __init__(self, *args, **kwargs):
+            self.hashset = set()
 
     return lambda chunk: (
         (Observable.just(chunk) if scheduler is None else Observable.just(chunk).observe_on(scheduler))
+        # .do_action(lambda chunk: print('Start ', chunk.unit_index))
         .flat_map(create_download_stream(block, datasource_manager, io_executor))
+        # .do_action(lambda chunk: print('Finish Download ', chunk.unit_index))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
-
-        # check both the current chunk we just ran inference on as well as the neighboring chunks
-        .do_action(lambda chunk: block.checkpoint(chunk, stage=0))
-        .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
-        .filter(lambda chunk: block.is_checkpointed(chunk, stage=0))
-        .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=0))
-        # .distinct_hash(key_selector=lambda c: c.unit_index, seed=ready_upload)
+        # .do_action(lambda chunk: print('Finish Inference ', chunk.unit_index))
+        .flat_map(create_checkpoint_observable(block, Stages.INFERENCE_DONE))
 
         .flat_map(create_aggregate_stream(block, datasource_manager))
+        # .do_action(lambda chunk: print('Finish Aggregate ', chunk.unit_index))
         .flat_map(create_upload_stream(block, datasource_manager, io_executor))
-        # .distinct_hash(key_selector=lambda c: c.unit_index, seed=done_upload)
+        .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
+        # .do_action(lambda chunk: print('\t\t\tFinish Upload ', chunk.unit_index))
 
-        .do_action(lambda chunk: block.checkpoint(chunk, stage=1))
-        .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
-        .filter(lambda chunk: block.is_checkpointed(chunk, stage=1))
-        .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=1))
-
-        # .distinct_hash(key_selector=lambda c: c.unit_index, seed=ready_clear)
-        .do_action(lambda chunk: print('\t\t\tCLEARING!!:', chunk.unit_index))
-        # .filter(lambda chunk: chunk.unit_index != (0, 0) and chunk.unit_index != (0, 1))
-        # .do_action(datasource_manager.clear)
+        .do_action(datasource_manager.clear)
         .map(lambda _: chunk)
     )
 

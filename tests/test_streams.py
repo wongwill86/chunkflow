@@ -10,6 +10,7 @@ from rx.concurrency import ThreadPoolScheduler
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkflow.datasource_manager import DatasourceManager, DatasourceRepository
+from chunkflow.sparse_matrix_datasource import SparseMatrixDatasourceRepository
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 
@@ -38,6 +39,9 @@ class NumpyDatasourceRepository(DatasourceRepository):
             offset = (0,) * extra_dimensions + offset
 
         return GlobalOffsetArray(np.zeros(shape), global_offset=offset)
+
+    def clear(self, index):
+        pass
 
 
 class IncrementInference(ChunkOperation):
@@ -138,8 +142,6 @@ class TestInferenceStream:
         overlap = (1, 1)
 
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
-        optimal_thread_count = multiprocessing.cpu_count()
-        scheduler = ThreadPoolScheduler(optimal_thread_count)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
         datasource_manager = DatasourceManager(
@@ -150,323 +152,354 @@ class TestInferenceStream:
             inference_operation=IncrementInference(step=1),
             blend_operation=AverageBlend(block),
             datasource_manager=datasource_manager,
-            scheduler=scheduler
         )
-        def do_error(error):
-            raise error
 
-        Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(
-            print, on_error=do_error)
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(print)
 
-        print(datasource_manager.repository.output_datasource)
-        print(datasource_manager.repository.output_datasource_final)
         assert np.product(block.shape) == \
             datasource_manager.repository.output_datasource.sum() + \
             datasource_manager.repository.output_datasource_final.sum()
-        assert False
 
-    # def test_process_multi_channel(self):
-    #     bounds = (slice(0, 7), slice(0, 7))
-    #     chunk_shape = (3, 3)
-    #     overlap = (1, 1)
+    def test_process_multi_channel(self):
+        bounds = (slice(0, 7), slice(0, 7))
+        chunk_shape = (3, 3)
+        overlap = (1, 1)
 
-    #     block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-    #     fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-    #     datasource_manager = DatasourceManager(
-    #         NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+        datasource_manager = DatasourceManager(
+            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
 
-    #     task_stream = create_inference_and_blend_stream(
-    #         block=block,
-    #         inference_operation=IncrementThreeChannelInference(step=1),
-    #         blend_operation=AverageBlend(block),
-    #         datasource_manager=datasource_manager
-    #     )
+        task_stream = create_inference_and_blend_stream(
+            block=block,
+            inference_operation=IncrementThreeChannelInference(step=1),
+            blend_operation=AverageBlend(block),
+            datasource_manager=datasource_manager
+        )
 
-    #     Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
-    #     assert np.product(block.shape) * 111 == \
-    #         datasource_manager.repository.output_datasource.sum() + \
-    #         datasource_manager.repository.output_datasource_final.sum()
+        print(datasource_manager.repository.output_datasource)
+        print(datasource_manager.repository.output_datasource_final)
 
-#     def test_process_single_channel_3d(self):
-#         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-#         chunk_shape = (3, 3, 3)
-#         overlap = (1, 1, 1)
+        assert np.product(block.shape) * 111 == \
+            datasource_manager.repository.output_datasource.sum() + \
+            datasource_manager.repository.output_datasource_final.sum()
 
-#         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+    def test_process_single_channel_3d(self):
+        bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
+        chunk_shape = (3, 3, 3)
+        overlap = (1, 1, 1)
 
-#         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-#         datasource_manager = DatasourceManager(
-#             NumpyDatasourceRepository(input_datasource=fake_data, output_shape=fake_data.shape))
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-#         task_stream = create_inference_and_blend_stream(
-#             block=block,
-#             inference_operation=IncrementInference(step=1),
-#             blend_operation=AverageBlend(block),
-#             datasource_manager=datasource_manager
-#         )
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+        datasource_manager = DatasourceManager(
+            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=fake_data.shape))
 
-#         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
+        task_stream = create_inference_and_blend_stream(
+            block=block,
+            inference_operation=IncrementInference(step=1),
+            blend_operation=AverageBlend(block),
+            datasource_manager=datasource_manager
+        )
 
-#         assert np.product(block.shape) == \
-#             datasource_manager.repository.output_datasource.sum() + \
-#             datasource_manager.repository.output_datasource_final.sum()
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
-#     def test_process_multi_channel_3d(self):
-#         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-#         chunk_shape = (3, 3, 3)
-#         overlap = (1, 1, 1)
+        assert np.product(block.shape) == \
+            datasource_manager.repository.output_datasource.sum() + \
+            datasource_manager.repository.output_datasource_final.sum()
 
-#         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+    def test_process_multi_channel_3d(self):
+        bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
+        chunk_shape = (3, 3, 3)
+        overlap = (1, 1, 1)
 
-#         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-#         datasource_manager = DatasourceManager(
-#             NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-#         task_stream = create_inference_and_blend_stream(
-#             block=block,
-#             inference_operation=IncrementThreeChannelInference(step=1),
-#             blend_operation=AverageBlend(block),
-#             datasource_manager=datasource_manager
-#         )
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+        datasource_manager = DatasourceManager(
+            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
 
-#         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
+        task_stream = create_inference_and_blend_stream(
+            block=block,
+            inference_operation=IncrementThreeChannelInference(step=1),
+            blend_operation=AverageBlend(block),
+            datasource_manager=datasource_manager
+        )
 
-#         assert np.product(block.shape) * 111 == \
-#             datasource_manager.repository.output_datasource.sum() + \
-#             datasource_manager.repository.output_datasource_final.sum()
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
-#     def test_process_cloudvolume(self, chunk_datasource_manager):
-#         bounds = (slice(200, 203), slice(100, 103), slice(50, 53))
-#         chunk_shape = (3, 3, 3)
-#         overlap = (1, 1, 1)
+        assert np.product(block.shape) * 111 == \
+            datasource_manager.repository.output_datasource.sum() + \
+            datasource_manager.repository.output_datasource_final.sum()
 
-#         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+    def test_process_cloudvolume(self, chunk_datasource_manager):
+        bounds = (slice(200, 203), slice(100, 103), slice(50, 53))
+        chunk_shape = (3, 3, 3)
+        overlap = (1, 1, 1)
 
-#         task_stream = create_inference_and_blend_stream(
-#             block=block,
-#             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
-#                 chunk_datasource_manager.output_datasource.data_type)),
-#             blend_operation=AverageBlend(block),
-#             datasource_manager=chunk_datasource_manager
-#         )
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-#         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
+        task_stream = create_inference_and_blend_stream(
+            block=block,
+            inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
+                chunk_datasource_manager.output_datasource.data_type)),
+            blend_operation=AverageBlend(block),
+            datasource_manager=chunk_datasource_manager
+        )
 
-#         print(chunk_datasource_manager.repository.output_datasource[bounds])
-#         print(chunk_datasource_manager.repository.output_datasource_final[bounds])
-#         assert np.product(block.shape) * 111 == \
-#             chunk_datasource_manager.repository.output_datasource[bounds].sum() + \
-#             chunk_datasource_manager.repository.output_datasource_final[bounds].sum()
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
+        print(chunk_datasource_manager.repository.output_datasource[bounds])
+        print(chunk_datasource_manager.repository.output_datasource_final[bounds])
+        assert np.product(block.shape) * 111 == \
+            chunk_datasource_manager.repository.output_datasource[bounds].sum() + \
+            chunk_datasource_manager.repository.output_datasource_final[bounds].sum()
 
-# class TestBlendStream:
 
-#     def test_blend(self):
-#         dataset_bounds = (slice(0, 7), slice(0, 7))
-#         task_shape = (3, 3)
-#         overlap = (1, 1)
+class TestBlendStream:
 
-#         block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
-#         assert block.num_chunks == (3, 3)
+    def test_blend(self):
+        dataset_bounds = (slice(0, 7), slice(0, 7))
+        task_shape = (3, 3)
+        overlap = (1, 1)
 
-#         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+        block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
+        assert block.num_chunks == (3, 3)
 
-#         datasource_manager = DatasourceManager(
-#             NumpyDatasourceRepository(input_datasource=fake_data, output_shape=fake_data.shape))
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
 
-#         chunk_index = (1, 1)
+        datasource_manager = DatasourceManager(
+            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=fake_data.shape))
 
-#         chunk = block.unit_index_to_chunk(chunk_index)
+        chunk_index = (1, 1)
 
-#         # set up test data
-#         datasource_manager.repository.create_overlap_datasources(chunk_index)
-#         for datasource in datasource_manager.repository.overlap_datasources.values():
-#             datasource[chunk.slices] = 1
+        chunk = block.unit_index_to_chunk(chunk_index)
 
-#         blend_stream = create_blend_stream(block, datasource_manager)
+        # set up test data
+        datasource_manager.repository.create_overlap_datasources(chunk_index)
+        for datasource in datasource_manager.repository.overlap_datasources.values():
+            datasource[chunk.slices] = 1
 
-#         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
+        blend_stream = create_blend_stream(block, datasource_manager)
 
-#         assert 3 ** len(chunk_index) * 3 == \
-#             datasource_manager.output_datasource.sum()
+        Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
-#     def test_blend_3d(self):
-#         dataset_bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-#         task_shape = (3, 3, 3)
-#         overlap = (1, 1, 1)
+        assert 3 ** len(chunk_index) * 3 == \
+            datasource_manager.output_datasource.sum()
 
-#         block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
-#         assert block.num_chunks == (3, 3, 3)
+    def test_blend_3d(self):
+        dataset_bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
+        task_shape = (3, 3, 3)
+        overlap = (1, 1, 1)
 
-#         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+        block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
+        assert block.num_chunks == (3, 3, 3)
 
-#         datasource_manager = DatasourceManager(
-#             NumpyDatasourceRepository(input_datasource=fake_data, output_shape=fake_data.shape))
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
 
-#         chunk_index = (1, 1, 1)
+        datasource_manager = DatasourceManager(
+            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=fake_data.shape))
 
-#         chunk = block.unit_index_to_chunk(chunk_index)
+        chunk_index = (1, 1, 1)
 
-#         # set up test data
-#         datasource_manager.repository.create_overlap_datasources(chunk_index)
-#         for datasource in datasource_manager.repository.overlap_datasources.values():
-#             datasource[chunk.slices] = 1
+        chunk = block.unit_index_to_chunk(chunk_index)
 
-#         blend_stream = create_blend_stream(block, datasource_manager)
+        # set up test data
+        datasource_manager.repository.create_overlap_datasources(chunk_index)
+        for datasource in datasource_manager.repository.overlap_datasources.values():
+            datasource[chunk.slices] = 1
 
-#         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
+        blend_stream = create_blend_stream(block, datasource_manager)
 
-#         assert 3 ** len(chunk_index) * 7 == \
-#             datasource_manager.output_datasource.sum()
+        Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
-#     def test_blend_multichannel_3d(self):
-#         dataset_bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-#         task_shape = (3, 3, 3)
-#         overlap = (1, 1, 1)
+        assert 3 ** len(chunk_index) * 7 == \
+            datasource_manager.output_datasource.sum()
 
-#         block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
-#         assert block.num_chunks == (3, 3, 3)
+    def test_blend_multichannel_3d(self):
+        dataset_bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
+        task_shape = (3, 3, 3)
+        overlap = (1, 1, 1)
 
-#         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-#         output_shape = (3,) + fake_data.shape
+        block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
+        assert block.num_chunks == (3, 3, 3)
 
-#         datasource_manager = DatasourceManager(
-#             NumpyDatasourceRepository(input_datasource=fake_data, output_shape=output_shape))
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+        output_shape = (3,) + fake_data.shape
 
-#         chunk_index = (1, 1, 1)
+        datasource_manager = DatasourceManager(
+            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=output_shape))
 
-#         chunk = block.unit_index_to_chunk(chunk_index)
+        chunk_index = (1, 1, 1)
 
-#         # set up test data
-#         datasource_manager.repository.create_overlap_datasources(chunk_index)
-#         for datasource in datasource_manager.repository.overlap_datasources.values():
-#             datasource[(slice(None),) + chunk.slices] = 1
+        chunk = block.unit_index_to_chunk(chunk_index)
 
-#         blend_stream = create_blend_stream(block, datasource_manager)
+        # set up test data
+        datasource_manager.repository.create_overlap_datasources(chunk_index)
+        for datasource in datasource_manager.repository.overlap_datasources.values():
+            datasource[(slice(None),) + chunk.slices] = 1
 
-#         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
+        blend_stream = create_blend_stream(block, datasource_manager)
 
-#         np.set_printoptions(threshold=np.nan)
+        Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
-#         assert 3 ** len(chunk_index) * 7 * 3 == \
-#             datasource_manager.output_datasource.sum()
-#         # assert False
+        np.set_printoptions(threshold=np.nan)
 
-#     def test_blend_multichannel_3d_cloudvolume(self, block_datasource_manager):
-#         task_shape = (3, 30, 30)
-#         overlap = (1, 10, 10)
-#         output_shape = (3,) + task_shape
+        assert 3 ** len(chunk_index) * 7 * 3 == \
+            datasource_manager.output_datasource.sum()
+        # assert False
 
-#         input_datasource = block_datasource_manager.repository.input_datasource
-#         offsets = input_datasource.voxel_offset[::-1]
-#         volume_size = input_datasource.volume_size[::-1]
+    def test_blend_multichannel_3d_cloudvolume(self, block_datasource_manager):
+        task_shape = (3, 30, 30)
+        overlap = (1, 10, 10)
+        output_shape = (3,) + task_shape
+        num_chunks = (3, 3, 3)
 
-#         dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offsets, volume_size))
+        input_datasource = block_datasource_manager.repository.input_datasource
+        offsets = input_datasource.voxel_offset[::-1]
 
-#         block = Block(bounds=dataset_bounds, chunk_shape=task_shape, overlap=overlap)
-#         # assert block.num_chunks == (3, 3, 3)
+        block = Block(num_chunks=(3, 3, 3), offset=offsets, chunk_shape=task_shape, overlap=overlap)
 
-#         chunk_index = (1, 1, 1)
+        chunk_index = (1, 1, 1)
 
-#         chunk = block.unit_index_to_chunk(chunk_index)
+        chunk = block.unit_index_to_chunk(chunk_index)
 
-#         # set up test data
-#         block_datasource_manager.repository.create_overlap_datasources(chunk_index)
-#         for datasource in block_datasource_manager.repository.overlap_datasources.values():
-#             datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
+        # set up test data
+        block_datasource_manager.repository.create_overlap_datasources(chunk_index)
+        for datasource in block_datasource_manager.repository.overlap_datasources.values():
+            datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
-#         datasource = block_datasource_manager.repository.get_datasource(chunk_index)
-#         datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
+        datasource = block_datasource_manager.repository.get_datasource(chunk_index)
+        datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
-#         blend_stream = create_blend_stream(block, block_datasource_manager)
+        blend_stream = create_blend_stream(block, block_datasource_manager)
 
-#         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
+        Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
-#         assert np.product(task_shape) * 7 * 3 == \
-#             block_datasource_manager.output_datasource[dataset_bounds].sum()
+        volume_size = input_datasource.volume_size[::-1]
+        dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offsets, volume_size))
+        assert np.product(task_shape) * 7 * 3 == \
+            block_datasource_manager.output_datasource[dataset_bounds].sum()
 
 
-# class TestPerformance:
+class TestPerformance:
 
-#     def test_performance(self, chunk_datasource_manager):
-#         """
-#         Use this to benchmark inference performance
-#         pytest  --capture=no --basetemp=/tmp/ramdisk/folder tests/test_streams.py::TestPerformance
-#         """
-#         should_profile = False
-#         profile_file = '/home/wwong/src/chunkflow/prof-2-notime.cprof'
-#         optimal_thread_count = multiprocessing.cpu_count()
-#         scheduler = ThreadPoolScheduler(optimal_thread_count)
+    def test_performance(self, chunk_datasource_manager):
+        """
+        Use this to benchmark inference performance
+        pytest  --capture=no --basetemp=/tmp/ramdisk/folder tests/test_streams.py::TestPerformance
+        """
+        should_profile = False
+        profile_file = '/home/wwong/src/chunkflow/prof-2-notime.cprof'
+        optimal_thread_count = multiprocessing.cpu_count()
+        scheduler = ThreadPoolScheduler(optimal_thread_count)
 
-#         # change num_chunks for real test!
-#         num_chunks = (2, 2, 2)
-#         patch_shape = (16, 128, 128)
-#         overlap = (4, 32, 32)
-#         offset = (200, 100, 50)
+        # change num_chunks when benchmarking!
+        # benchmark with:
+        #    conftest.py volume_size = (600, 4096, 4096) and CLOUD_VOLUME_CHUNK_SIZE = (12, 96, 96)
+        #    here patch_shape = (16, 128, 128) and  overlap = (4, 32, 32)
+        num_chunks = (2, 2, 2)
+        patch_shape = (8, 16, 16)
+        overlap = (2, 4, 4)
+        offset = (200, 100, 50)
 
-#         block = Block(offset=offset, num_chunks=num_chunks, chunk_shape=patch_shape, overlap=overlap)
+        dtype = chunk_datasource_manager.output_datasource.dtype
 
-#         fake_data = GlobalOffsetArray(np.zeros(block.shape, dtype=np.float32), global_offset=offset)
-#         datasource_manager = DatasourceManager(
-#             NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+        block = Block(offset=offset, num_chunks=num_chunks, chunk_shape=patch_shape, overlap=overlap)
 
-#         chunk_datasource_manager.repository.create_overlap_datasources(patch_shape)
-#         task_stream = create_inference_and_blend_stream(
-#             block=block,
-#             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.float32),
-#             blend_operation=AverageBlend(block),
-#             datasource_manager=datasource_manager,
-#             scheduler=scheduler
-#         )
-#         import time
+        fake_data = GlobalOffsetArray(np.zeros(block.shape, dtype=dtype), global_offset=offset)
+        datasource_manager = DatasourceManager(
+            SparseMatrixDatasourceRepository(
+                input_datasource=chunk_datasource_manager.input_datasource,
+                output_datasource=chunk_datasource_manager.output_datasource,
+                output_datasource_final=chunk_datasource_manager.output_datasource_final,
+                num_channels=3,
+                block=block
+            )
+        )
 
-#         stats = dict()
-#         stats['completed'] = 0
-#         stats['start'] = time.time()
-#         stats['previous_time'] = stats['start']
-#         stats['running_sum'] = 0.0
-#         import threading
+        chunk_datasource_manager.repository.create_overlap_datasources(patch_shape)
+        task_stream = create_inference_and_blend_stream(
+            block=block,
+            inference_operation=IncrementThreeChannelInference(step=1, output_dtype=dtype),
+            blend_operation=AverageBlend(block),
+            datasource_manager=datasource_manager,
+            scheduler=scheduler
+        )
+        import time
 
-#         lock = threading.Lock()
+        stats = dict()
+        stats['completed'] = 0
+        stats['start'] = time.time()
+        stats['previous_time'] = stats['start']
+        stats['running_sum'] = 0.0
+        import threading
 
-#         def on_subscribe(item):
-#             lock.acquire()
-#             now = time.time()
-#             stats['completed'] += 1
-#             if (stats['completed'] == 0):
-#                 return True
-#             elapsed = now - stats['previous_time']
-#             stats['previous_time'] = now
-#             stats['running_sum'] += elapsed
-#             print(stats['running_sum']/stats['completed'], '\t', stats['completed'])
-#             lock.release()
-#             return True
+        lock = threading.Lock()
 
-#         if should_profile:
-#             profile = cProfile.Profile()
+        def on_subscribe(item):
+            lock.acquire()
+            now = time.time()
+            stats['completed'] += 1
+            if (stats['completed'] == 0):
+                return True
+            elapsed = now - stats['previous_time']
+            stats['previous_time'] = now
+            stats['running_sum'] += elapsed
+            print('Average:', stats['running_sum']/stats['completed'], '\t', stats['completed'])
+            lock.release()
+            return True
 
-#         import traceback
+        if should_profile:
+            profile = cProfile.Profile()
 
-#         def on_error(error):
-#             print('\n\n\n\nerror error *&)*&*&)*\n\n')
-#             self.error = error
-#             traceback.print_exception(None, error, error.__traceback__)
-#             # raise error
+        import traceback
 
-#         if should_profile:
-#             profile.enable()
+        def on_error(error):
+            print('\n\n\n\nerror error *&)*&*&)*\n\n')
+            self.error = error
+            traceback.print_exception(None, error, error.__traceback__)
+            raise error
 
-#         Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(
-#             on_subscribe, on_error=on_error, timeout=5)
+        if should_profile:
+            profile.enable()
 
-#         print('completed ', len(list(block.chunk_iterator())), ' chunks in ', time.time() - stats['start'])
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(
+            on_subscribe, on_error=on_error)
 
-#         if should_profile:
-#             profile.disable()
-#             profile.dump_stats(profile_file)
+        print('\n\n\ncompleted ', len(list(block.chunk_iterator())), ' chunks in ', time.time() - stats['start'])
 
-#         actual = datasource_manager.repository.output_datasource.sum() + \
-#             datasource_manager.repository.output_datasource_final.sum()
-#         assert np.product(block.shape) * 111 == actual
+        if should_profile:
+            profile.disable()
+            profile.dump_stats(profile_file)
+
+        actual = datasource_manager.repository.output_datasource[block.bounds].sum() + \
+            datasource_manager.repository.output_datasource_final[block.bounds].sum()
+        assert np.product(block.shape) * 111 == actual
+
+
+class TestRxExtenstion:
+
+    def test_distinct_hash(self):
+        completed_distinct = []
+        completed_hash = []
+
+        num_values = 10
+        # regular distinct does not work
+        (
+            Observable.from_(range(num_values))
+            .flat_map(lambda i: Observable.just(i).flat_map(lambda ii: [ii, ii + 1]).distinct())
+            .subscribe(lambda i: completed_distinct.append(i))
+        )
+        assert len(completed_distinct) != len(set(completed_distinct))
+
+        hashset = set()
+        (
+            Observable.from_(range(num_values))
+            .flat_map(lambda i: Observable.just(i).flat_map(lambda ii: [ii, ii + 1]).distinct_hash(seed=hashset))
+            .subscribe(lambda i: completed_hash.append(i))
+        )
+        assert len(completed_hash) == len(set(completed_hash))
