@@ -41,6 +41,8 @@ RUN apt-get update \
     && dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')" \
     && wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch" \
     && pip install chunkflow/ \
+    && pip uninstall cloud-volume -y \
+    && pip install git+https://github.com/seung-lab/cloud-volume.git@no_threads#egg=cloud-volume \
     && chmod +x /usr/local/bin/gosu \
     && gosu nobody true \
     && apt-get remove --purge -yqq $buildDeps \

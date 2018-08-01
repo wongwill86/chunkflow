@@ -65,6 +65,7 @@ Installation
 ::
 
     pip install chunkflow
+    pip install --force-reinstall git+https://github.com/seung-lab/cloud-volume.git@no_threads#egg=cloud-volume
 
 Documentation
 =============
