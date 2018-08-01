@@ -173,7 +173,6 @@ def create_upload_stream(block, datasource_manager, executor=None):
     ).map(lambda _: chunk)
 
 
-
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager,
                                       scheduler=None, io_executor=None):
     def create_checkpoint_observable(block, stage):
@@ -195,18 +194,18 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
 
     return lambda chunk: (
         (Observable.just(chunk) if scheduler is None else Observable.just(chunk).observe_on(scheduler))
-        # .do_action(lambda chunk: print('Start ', chunk.unit_index))
+        .do_action(lambda chunk: print('Start ', chunk.unit_index))
         .flat_map(create_download_stream(block, datasource_manager, io_executor))
-        # .do_action(lambda chunk: print('Finish Download ', chunk.unit_index))
+        .do_action(lambda chunk: print('Finish Download ', chunk.unit_index))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
-        # .do_action(lambda chunk: print('Finish Inference ', chunk.unit_index))
+        .do_action(lambda chunk: print('Finish Inference ', chunk.unit_index))
         .flat_map(create_checkpoint_observable(block, Stages.INFERENCE_DONE))
 
         .flat_map(create_aggregate_stream(block, datasource_manager))
-        # .do_action(lambda chunk: print('Finish Aggregate ', chunk.unit_index))
+        .do_action(lambda chunk: print('Finish Aggregate ', chunk.unit_index))
         .flat_map(create_upload_stream(block, datasource_manager, io_executor))
         .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
-        # .do_action(lambda chunk: print('\t\t\tFinish Upload ', chunk.unit_index))
+        .do_action(lambda chunk: print('Finish Upload ', chunk.unit_index))
 
         .do_action(datasource_manager.clear)
         .map(lambda _: chunk)

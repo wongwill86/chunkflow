@@ -361,7 +361,7 @@ class TestBlendStream:
         input_datasource = block_datasource_manager.repository.input_datasource
         offsets = input_datasource.voxel_offset[::-1]
 
-        block = Block(num_chunks=(3, 3, 3), offset=offsets, chunk_shape=task_shape, overlap=overlap)
+        block = Block(num_chunks=num_chunks, offset=offsets, chunk_shape=task_shape, overlap=overlap)
 
         chunk_index = (1, 1, 1)
 
@@ -410,7 +410,6 @@ class TestPerformance:
 
         block = Block(offset=offset, num_chunks=num_chunks, chunk_shape=patch_shape, overlap=overlap)
 
-        fake_data = GlobalOffsetArray(np.zeros(block.shape, dtype=dtype), global_offset=offset)
         datasource_manager = DatasourceManager(
             SparseMatrixDatasourceRepository(
                 input_datasource=chunk_datasource_manager.input_datasource,
