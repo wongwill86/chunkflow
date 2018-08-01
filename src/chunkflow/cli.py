@@ -28,6 +28,7 @@ from chunkflow.chunk_operations.inference_operation import InferenceFactory
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository, default_overlap_name
 from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk_sizes, valid_cloudvolume
 from chunkflow.datasource_manager import DatasourceManager, get_absolute_index, get_all_mod_index
+from chunkflow.sparse_matrix_datasource import SparseMatrixDatasourceRepository
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 
@@ -109,8 +110,8 @@ def task(obj, **kwargs):
         overlap_protocol=obj['overlap_protocol']
     )
 
-    obj['block_datasource_manager'] = DatasourceManager(block_repository)
-    obj['chunk_datasource_manager'] = DatasourceManager(chunk_repository)
+    obj['block_cloudvolume_repository'] = block_repository
+    obj['chunk_cloudvolume_repository'] = chunk_repository
 
     threads = obj['threads']
     if threads > 1:
@@ -137,10 +138,20 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     Run inference on task
     """
     print('Running inference ...')
-    datasource_manager = obj['chunk_datasource_manager']
+    block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
+
+    chunk_repository = obj['chunk_cloudvolume_repository']
+    datasource_manager = DatasourceManager(
+        SparseMatrixDatasourceRepository(
+            input_datasource=chunk_repository.input_datasource,
+            output_datasource=chunk_repository.output_datasource,
+            output_datasource_final=chunk_repository.output_datasource_final,
+            num_channels=chunk_repository.output_datasource_final.num_channels,
+            block=block
+        )
+    )
 
     output_datasource = datasource_manager.output_datasource
-    block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
     inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
                                          output_data_type=output_datasource.data_type)
     blend_factory = BlendFactory(block)
@@ -188,7 +199,7 @@ def blend(obj, **kwargs):
             task_offset, task_shape, overlap))
         print(dataset_bounds)
 
-    datasource_manager = obj['block_datasource_manager']
+    datasource_manager = DatasourceManager(obj['block_cloudvolume_repository'])
 
     print(obj['voxel_offset'])
     print(obj['volume_size'])
