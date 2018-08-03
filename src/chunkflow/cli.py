@@ -151,6 +151,9 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         )
     )
 
+    print('Using output_datasource', datasource_manager.output_datasource.layer_cloudpath)
+    print('Using output_datasource_final', datasource_manager.output_datasource_final.layer_cloudpath)
+
     output_datasource = datasource_manager.output_datasource
     inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
                                          output_data_type=output_datasource.data_type)
@@ -164,7 +167,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         scheduler=obj['scheduler']
     )
 
-    BlockProcessor().process(block, task_stream)
+    BlockProcessor(block).process(task_stream)
     print('Finished inference!')
 
 

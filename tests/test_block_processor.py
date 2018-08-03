@@ -23,8 +23,8 @@ class TestBlockProcessor:
         def task_stream(chunk):
             return Observable.just(chunk).map(throws)
 
-        block_processor = BlockProcessor()
+        block_processor = BlockProcessor(block)
         with pytest.raises(ValueError):
-            block_processor.process(block, task_stream)
+            block_processor.process(task_stream)
 
         assert block_processor.error is not None
