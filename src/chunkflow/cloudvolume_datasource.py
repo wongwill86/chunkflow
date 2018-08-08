@@ -1,12 +1,16 @@
 from functools import reduce
+import inspect
+import os
 
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 from cloudvolume import CloudVolume
+from cloudvolume.storage import reset_connection_pools
 
 from chunkflow.datasource_manager import DatasourceRepository
 
 OVERLAP_POSTFIX = '_overlap%s/'
+CLOUDVOLUME_INIT_ARGS = len(inspect.getargspec(CloudVolume.__init__)[0]) - 1 # -1 for self arg
 
 
 def get_index_name(index):
@@ -37,6 +41,13 @@ class CloudVolumeCZYX(CloudVolume):
     Cloudvolume assumes XYZC Fortran order.  This class hijacks cloud volume indexing to use CZYX C order indexing
     instead. All other usages of indices such as in the constructor are STILL in ZYXC fortran order!!!!
     """
+    def __init__(self, *args, **kwargs):
+        if len(args) > CLOUDVOLUME_INIT_ARGS:
+            args = args[:-1]
+            if args[-1] is not os.getpid():
+                reset_connection_pools()
+        super().__init__(*args, **kwargs)
+
     def __reduce__(self):
         """
         Help make pickle serialization much easier
@@ -46,7 +57,7 @@ class CloudVolumeCZYX(CloudVolume):
             (
                 self.layer_cloudpath, self.mip, self.bounded, self.autocrop, self.fill_missing, self.cache,
                 self.cdn_cache, self.progress, self.info, None, self.compress, self.non_aligned_writes, self.parallel,
-                self.output_to_shared_memory
+                self.output_to_shared_memory, os.getpid()
             ),
         )
 
