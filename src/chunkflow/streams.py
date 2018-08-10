@@ -200,12 +200,15 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
             .filter(lambda datasource_chunk: block.all_checkpointed(
                 block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
             .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage_to_complete.hashset)
-            .do_action(lambda datasource_chunk: output_needs_flush and datasource_manager.output_datasource.flush(
-                unit_index=datasource_chunk.unit_index))
-            .do_action(
-                lambda datasource_chunk: output_final_needs_flush and datasource_manager.output_datasource_final.flush(
-                    unit_index=datasource_chunk.unit_index)
+            .flat_map(lambda datasource_chunk:
+                      Observable.merge(
+                          Observable.empty() if not output_needs_flush else Observable.just(
+                          datasource_manager.output_datasource),
+                          Observable.empty() if not output_final_needs_flush else Observable.just(
+                          datasource_manager.output_datasource_final)
+                      ).do_action(lambda datasource: datasource.flush(unit_index=datasource_chunk.unit_index))
             )
+            .reduce(lambda x, y: uploaded_chunk) # reduce to wait to all have finished transferring
             .map(lambda _: uploaded_chunk)
         )
     else:

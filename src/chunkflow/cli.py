@@ -99,7 +99,7 @@ def task(obj, **kwargs):
     ))
 
     input_cloudvolume = CloudVolumeCZYX(
-        obj['input_image_source'], cache=False, non_aligned_writes=True, fill_missing=True)
+        obj['input_image_source'], cache=True, non_aligned_writes=True, fill_missing=True)
     output_cloudvolume_final = CloudVolumeCZYX(
         obj['output_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
     block_repository = CloudVolumeDatasourceRepository(
