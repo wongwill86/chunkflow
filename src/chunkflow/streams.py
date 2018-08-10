@@ -170,7 +170,7 @@ def create_upload_stream(block, datasource_manager, executor=None):
             )
         ),
         chunk
-    ).reduce(lambda x, y: chunk).map(lambda _: chunk)  # reduce to wait until all have completed transferring
+    ).reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait until all have completed transferring
 
 
 def create_checkpoint_observable(block, stage):
@@ -208,7 +208,7 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
                           datasource_manager.output_datasource_final)
                       ).do_action(lambda datasource: datasource.flush(unit_index=datasource_chunk.unit_index))
             )
-            .reduce(lambda x, y: uploaded_chunk) # reduce to wait to all have finished transferring
+            .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk) # reduce to wait to all have finished transferring
             .map(lambda _: uploaded_chunk)
         )
     else:
