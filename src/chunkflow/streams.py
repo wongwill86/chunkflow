@@ -156,7 +156,7 @@ def create_upload_stream(block, datasource_manager, executor=None):
             )
         else:
             return observable.flat_map(
-                lambda dump_args: executor.submit(datasource_manager.dump_chunk, chunk, **dump_args._asdict())
+                lambda dump_args: executor.submit(chunk.dump_args, **dump_args._asdict())
             )
 
     return lambda chunk: append_dump(
@@ -170,24 +170,52 @@ def create_upload_stream(block, datasource_manager, executor=None):
             )
         ),
         chunk
-    ).map(lambda _: chunk)
+    ).reduce(lambda x, y: chunk).map(lambda _: chunk)  # reduce to wait until all have completed transferring
 
 
-def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager,
-                                      scheduler=None, io_executor=None):
-    def create_checkpoint_observable(block, stage):
-        return lambda chunk: (
-            Observable.just(chunk)
-            .do_action(lambda chunk: block.checkpoint(chunk, stage=stage.value))
-            # check both the current chunk we just ran inference on as well as the neighboring chunks
-            .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
-            .filter(lambda chunk: block.is_checkpointed(chunk, stage=stage.value))
-            .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=stage.value))
-            .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage.hashset)
+def create_checkpoint_observable(block, stage):
+    return lambda chunk: (
+        Observable.just(chunk)
+        .do_action(lambda chunk: block.checkpoint(chunk, stage=stage.value))
+        # check both the current chunk we just ran inference on as well as the neighboring chunks
+        .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
+        .filter(lambda chunk: block.is_checkpointed(chunk, stage=stage.value))
+        .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=stage.value))
+        .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage.hashset)
+    )
+
+
+def create_flush_datasource_observable(datasource_manager, block, stage_to_check, stage_to_complete):
+    output_needs_flush = hasattr(datasource_manager.output_datasource, 'block')
+    output_final_needs_flush = hasattr(datasource_manager.output_datasource_final, 'block')
+
+    reference_datasource = (
+        datasource_manager.output_datasource if output_needs_flush else
+        datasource_manager.output_datasource_final if output_final_needs_flush else None
+    )
+
+    if reference_datasource is not None:
+        return lambda uploaded_chunk: (
+            Observable.from_(reference_datasource.block.slices_to_chunks(uploaded_chunk.slices))
+            .filter(lambda datasource_chunk: block.all_checkpointed(
+                block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
+            .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage_to_complete.hashset)
+            .do_action(lambda datasource_chunk: output_needs_flush and datasource_manager.output_datasource.flush(
+                unit_index=datasource_chunk.unit_index))
+            .do_action(
+                lambda datasource_chunk: output_final_needs_flush and datasource_manager.output_datasource_final.flush(
+                    unit_index=datasource_chunk.unit_index)
+            )
+            .map(lambda _: uploaded_chunk)
         )
+    else:
+        return lambda uploaded_chunk: Observable.just(uploaded_chunk)
 
+
+def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager, scheduler=None,
+                                      io_executor=None):
     class Stages(Enum):
-        INFERENCE_DONE, UPLOAD_DONE = range(2)
+        INFERENCE_DONE, UPLOAD_DONE, FLUSH_DONE = range(3)
 
         def __init__(self, *args, **kwargs):
             self.hashset = set()
@@ -204,10 +232,12 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .do_action(lambda chunk: print('Finish Aggregate ', chunk.unit_index))
         .flat_map(create_upload_stream(block, datasource_manager, io_executor))
-        .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
         .do_action(lambda chunk: print('Finish Upload ', chunk.unit_index))
 
+        .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
         .do_action(datasource_manager.clear)
+
+        .flat_map(create_flush_datasource_observable(datasource_manager, block, Stages.UPLOAD_DONE, Stages.FLUSH_DONE))
         .map(lambda _: chunk)
     )
 

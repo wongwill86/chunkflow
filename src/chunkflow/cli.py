@@ -25,7 +25,12 @@ from rx.concurrency import ThreadPoolScheduler
 from chunkflow.block_processor import BlockProcessor
 from chunkflow.chunk_operations.blend_operation import BlendFactory
 from chunkflow.chunk_operations.inference_operation import InferenceFactory
-from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository, default_overlap_name
+from chunkflow.cloudvolume_datasource import (
+    CloudVolumeCZYX,
+    CloudVolumeDatasourceRepository,
+    create_buffered_cloudvolumeCZYX,
+    default_overlap_name
+)
 from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk_sizes, valid_cloudvolume
 from chunkflow.datasource_manager import DatasourceManager, get_absolute_index, get_all_mod_index
 from chunkflow.sparse_matrix_datasource import SparseMatrixDatasourceRepository
@@ -105,8 +110,8 @@ def task(obj, **kwargs):
 
     chunk_repository = CloudVolumeDatasourceRepository(
         input_cloudvolume,
-        output_cloudvolume=output_cloudvolume_overlap,
-        output_cloudvolume_final=output_cloudvolume_final,
+        output_cloudvolume=create_buffered_cloudvolumeCZYX(output_cloudvolume_overlap),
+        output_cloudvolume_final=create_buffered_cloudvolumeCZYX(output_cloudvolume_final),
         overlap_protocol=obj['overlap_protocol']
     )
 
@@ -212,7 +217,7 @@ def blend(obj, **kwargs):
     datasource_manager.repository.create_overlap_datasources(obj['task_shape'])
     blend_stream = create_blend_stream(block, datasource_manager)
 
-    chunk_index = block.slices_to_unit_index(obj['task_bounds'])
+    chunk_index = block.chunk_slices_to_unit_index(obj['task_bounds'])
     chunk = block.unit_index_to_chunk(chunk_index)
     Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 

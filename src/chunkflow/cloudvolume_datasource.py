@@ -1,16 +1,19 @@
-from functools import reduce
 import inspect
 import os
+from functools import reduce
+from math import ceil
 
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
+from chunkblocks.models import Block
 from cloudvolume import CloudVolume
 from cloudvolume.storage import reset_connection_pools
 
+from chunkflow.buffered_chunk_datasource import BufferedChunkDatasource
 from chunkflow.datasource_manager import DatasourceRepository
 
 OVERLAP_POSTFIX = '_overlap%s/'
-CLOUDVOLUME_INIT_ARGS = len(inspect.getargspec(CloudVolume.__init__)[0]) - 1 # -1 for self arg
+CLOUDVOLUME_INIT_ARGS = len(inspect.getargspec(CloudVolume.__init__)[0]) - 1  # -1 for self arg
 
 
 def get_index_name(index):
@@ -18,9 +21,9 @@ def get_index_name(index):
 
 
 def default_overlap_name(path_or_cv, mod_index):
-    if isinstance(path_or_cv, CloudVolume):
+    try:
         layer_cloudpath = path_or_cv.layer_cloudpath
-    else:
+    except AttributeError:
         layer_cloudpath = path_or_cv
 
     index_name = get_index_name(mod_index)
@@ -34,6 +37,18 @@ def default_overlap_name(path_or_cv, mod_index):
 def default_overlap_datasource(path_or_cv, mod_index):
     return CloudVolumeCZYX(default_overlap_name(path_or_cv, mod_index), cache=False, non_aligned_writes=True,
                            fill_missing=True)
+
+
+def create_buffered_cloudvolumeCZYX(cloudvolume):
+    chunk_shape = cloudvolume.underlying[::-1]
+    offset = cloudvolume.voxel_offset[::-1]
+    size = cloudvolume.volume_size[::-1]
+
+    # we don't really care if the bounds don't divide evenly for this. snap to nearest grid
+    num_chunks = tuple(ceil(s / c_shp) for s, c_shp in zip(size, chunk_shape))
+    bounds = tuple(slice(o, o + n * c_shp) for o, n, c_shp in zip(offset, num_chunks, chunk_shape))
+    block = Block(bounds=bounds, chunk_shape=chunk_shape)
+    return BufferedChunkDatasource(block, cloudvolume, num_channels=cloudvolume.num_channels)
 
 
 class CloudVolumeCZYX(CloudVolume):
@@ -91,6 +106,10 @@ class CloudVolumeCZYX(CloudVolume):
             item = np.asfortranarray(item)
         super().__setitem__(slices, item)
 
+    @property
+    def ordering(self):
+        return 'CZYX'
+
 
 class CloudVolumeDatasourceRepository(DatasourceRepository):
     def __init__(self, input_cloudvolume, output_cloudvolume, output_cloudvolume_final=None,
@@ -100,10 +119,14 @@ class CloudVolumeDatasourceRepository(DatasourceRepository):
         else:
             self.overlap_protocol = overlap_protocol
 
-        if any(not isinstance(volume, CloudVolumeCZYX) for volume in [input_cloudvolume, output_cloudvolume]) or \
-                (output_cloudvolume_final is not None and not isinstance(output_cloudvolume_final, CloudVolumeCZYX)):
+        try:
+            for volume in [input_cloudvolume, output_cloudvolume]:
+                assert volume.ordering == 'CZYX'
+            assert output_cloudvolume_final is None or output_cloudvolume_final.ordering == 'CZYX'
+        except (AttributeError, AssertionError):
             raise ValueError('Must use %s class cloudvolume to ensure correct c order indexing' %
                              CloudVolumeCZYX.__name__)
+
         super().__init__(input_datasource=input_cloudvolume,
                          output_datasource=output_cloudvolume,
                          output_datasource_final=output_cloudvolume_final,

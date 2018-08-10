@@ -9,6 +9,7 @@ from rx.concurrency import ThreadPoolScheduler
 
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
+from chunkflow.cloudvolume_datasource import create_buffered_cloudvolumeCZYX
 from chunkflow.datasource_manager import DatasourceManager, DatasourceRepository
 from chunkflow.sparse_matrix_datasource import SparseMatrixDatasourceRepository
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
@@ -86,54 +87,54 @@ class IncrementThreeChannelInference(ChunkOperation):
 
 class TestInferenceStream:
 
-    # def test_process_single_channel_2x2(self):
-    #     bounds = (slice(0, 5), slice(0, 5))
-    #     chunk_shape = (3, 3)
-    #     output_shape = (3, 3)
-    #     overlap = (1, 1)
+    def test_process_single_channel_2x2(self):
+        bounds = (slice(0, 5), slice(0, 5))
+        chunk_shape = (3, 3)
+        output_shape = (3, 3)
+        overlap = (1, 1)
 
-    #     block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-    #     fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-    #     datasource_manager = DatasourceManager(
-    #         NumpyDatasourceRepository(input_datasource=fake_data, output_shape=output_shape))
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
+        datasource_manager = DatasourceManager(
+            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=output_shape))
 
-    #     task_stream = create_inference_and_blend_stream(
-    #         block=block,
-    #         inference_operation=IncrementInference(step=1),
-    #         blend_operation=AverageBlend(block),
-    #         datasource_manager=datasource_manager
-    #     )
+        task_stream = create_inference_and_blend_stream(
+            block=block,
+            inference_operation=IncrementInference(step=1),
+            blend_operation=AverageBlend(block),
+            datasource_manager=datasource_manager
+        )
 
-    #     test_chunk_0_0 = block.unit_index_to_chunk((0, 0))
-    #     assert not block.is_checkpointed(test_chunk_0_0)
-    #     Observable.just(test_chunk_0_0).flat_map(task_stream).subscribe(print)
-    #     assert block.is_checkpointed(test_chunk_0_0)
+        test_chunk_0_0 = block.unit_index_to_chunk((0, 0))
+        assert not block.is_checkpointed(test_chunk_0_0)
+        Observable.just(test_chunk_0_0).flat_map(task_stream).subscribe(print)
+        assert block.is_checkpointed(test_chunk_0_0)
 
-    #     test_chunk_0_1 = block.unit_index_to_chunk((0, 1))
-    #     assert not block.is_checkpointed(test_chunk_0_1)
-    #     Observable.just(test_chunk_0_1).flat_map(task_stream).subscribe(print)
-    #     assert block.is_checkpointed(test_chunk_0_1)
+        test_chunk_0_1 = block.unit_index_to_chunk((0, 1))
+        assert not block.is_checkpointed(test_chunk_0_1)
+        Observable.just(test_chunk_0_1).flat_map(task_stream).subscribe(print)
+        assert block.is_checkpointed(test_chunk_0_1)
 
-    #     test_chunk_1_0 = block.unit_index_to_chunk((1, 0))
-    #     assert not block.is_checkpointed(test_chunk_1_0)
-    #     Observable.just(test_chunk_1_0).flat_map(task_stream).subscribe(print)
-    #     assert block.is_checkpointed(test_chunk_1_0)
+        test_chunk_1_0 = block.unit_index_to_chunk((1, 0))
+        assert not block.is_checkpointed(test_chunk_1_0)
+        Observable.just(test_chunk_1_0).flat_map(task_stream).subscribe(print)
+        assert block.is_checkpointed(test_chunk_1_0)
 
-    #     assert 0 == \
-    #         datasource_manager.repository.output_datasource.sum() + \
-    #         datasource_manager.repository.output_datasource_final.sum()
+        assert 0 == \
+            datasource_manager.repository.output_datasource.sum() + \
+            datasource_manager.repository.output_datasource_final.sum()
 
-    #     test_chunk_1_1 = block.unit_index_to_chunk((1, 1))
-    #     assert not block.is_checkpointed(test_chunk_1_1)
-    #     Observable.just(test_chunk_1_1).flat_map(task_stream).subscribe(print)
-    #     assert block.is_checkpointed(test_chunk_1_1)
+        test_chunk_1_1 = block.unit_index_to_chunk((1, 1))
+        assert not block.is_checkpointed(test_chunk_1_1)
+        Observable.just(test_chunk_1_1).flat_map(task_stream).subscribe(print)
+        assert block.is_checkpointed(test_chunk_1_1)
 
-    #     print(datasource_manager.repository.output_datasource)
-    #     print(datasource_manager.repository.output_datasource_final)
-    #     assert np.product(block.shape) == \
-    #         datasource_manager.repository.output_datasource.sum() + \
-    #         datasource_manager.repository.output_datasource_final.sum()
+        print(datasource_manager.repository.output_datasource)
+        print(datasource_manager.repository.output_datasource_final)
+        assert np.product(block.shape) == \
+            datasource_manager.repository.output_datasource.sum() + \
+            datasource_manager.repository.output_datasource_final.sum()
 
     def test_process_single_channel_3x3(self):
         bounds = (slice(0, 7), slice(0, 7))
@@ -242,10 +243,13 @@ class TestInferenceStream:
 
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
+        chunk_datasource_manager.repository.output_datasource = create_buffered_cloudvolumeCZYX(
+            chunk_datasource_manager.output_datasource)
+
         task_stream = create_inference_and_blend_stream(
             block=block,
             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
-                chunk_datasource_manager.output_datasource.data_type)),
+                chunk_datasource_manager.output_datasource.dtype)),
             blend_operation=AverageBlend(block),
             datasource_manager=chunk_datasource_manager
         )
