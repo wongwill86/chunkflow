@@ -170,7 +170,7 @@ def create_upload_stream(block, datasource_manager, executor=None):
             )
         ),
         chunk
-    ).reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait until all have completed transferring
+    ).reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
 
 
 def create_checkpoint_observable(block, stage):
@@ -200,15 +200,17 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
             .filter(lambda datasource_chunk: block.all_checkpointed(
                 block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
             .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage_to_complete.hashset)
-            .flat_map(lambda datasource_chunk:
-                      Observable.merge(
-                          Observable.empty() if not output_needs_flush else Observable.just(
-                          datasource_manager.output_datasource),
-                          Observable.empty() if not output_final_needs_flush else Observable.just(
-                          datasource_manager.output_datasource_final)
-                      ).do_action(lambda datasource: datasource.flush(unit_index=datasource_chunk.unit_index))
+            .flat_map(
+                lambda datasource_chunk:
+                Observable.merge(
+                    Observable.empty() if not output_needs_flush else Observable.just(
+                        datasource_manager.output_datasource),
+                    Observable.empty() if not output_final_needs_flush else Observable.just(
+                        datasource_manager.output_datasource_final)
+                )
+                .do_action(lambda datasource: datasource.flush(unit_index=datasource_chunk.unit_index))
             )
-            .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk) # reduce to wait to all have finished transferring
+            .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk)  # reduce to wait for all to complete transferring
             .map(lambda _: uploaded_chunk)
         )
     else:
