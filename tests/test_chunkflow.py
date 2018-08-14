@@ -209,6 +209,7 @@ def test_check(block_datasource_manager, output_cloudvolume_overlaps):
         '--overlap', [1, 10, 10],
         '--num_channels', 3,
         '--check_overlaps',
+        '--min_mips', 0,
         'check',
     ])
     print(result.output)
@@ -234,6 +235,7 @@ def test_check_bad_chunksize(block_datasource_manager, output_cloudvolume_overla
         '--overlap', [1, 10, 10],
         '--num_channels', 3,
         '--check_overlaps',
+        '--min_mips', 1,
         'check',
     ])
     print(result.output)
@@ -249,6 +251,7 @@ def test_check_missing_overlaps_not_needed(block_datasource_manager):
         '--patch_shape', [3, 30, 30],
         '--overlap', [1, 10, 10],
         '--num_channels', 3,
+        '--min_mips', 0,
         'check',
     ])
     print(result.output)
@@ -269,6 +272,7 @@ def test_check_missing_overlaps_needed(block_datasource_manager):
         '--overlap', [1, 10, 10],
         '--num_channels', 3,
         '--check_overlaps',
+        '--min_mips', 1,
         'check',
     ])
     print(result.output)
@@ -285,6 +289,7 @@ def test_check_missing_cloudvolume():
         '--overlap', [1, 10, 10],
         '--num_channels', 3,
         '--check_overlaps',
+        '--min_mips', 1,
         'check',
     ])
     print(result.output)
@@ -304,9 +309,10 @@ def test_create_cloudvolume(input_cloudvolume):
             '--overlap', [1, 10, 10],
             '--num_channels', 3,
             '--check_overlaps',
+            '--min_mips', 0,
             'create'
         ],
-        input='yes\n1'
+        input='yes\n1\n1\n1'
     )
 
     print(result.output)
@@ -318,7 +324,7 @@ def test_create_cloudvolume(input_cloudvolume):
     voxel_offset = input_cloudvolume.voxel_offset
     volume_size = input_cloudvolume.volume_size
     resolution = input_cloudvolume.resolution
-    chunk_size = [10, 10, 1]  # runner input chooses option 1 for [1, 10, 10], then reverse becuase cv is xyzc
+    chunk_size = [40, 40, 4]  # runner input chooses option 1 for [1, 10, 10], then reverse becuase cv is xyzc
     num_channels = 3
     data_type = 'float32'
 
@@ -352,6 +358,7 @@ def test_create_only_some_cloudvolume(input_cloudvolume, output_cloudvolume, out
             '--overlap', [1, 10, 10],
             '--num_channels', 3,
             '--check_overlaps',
+            '--min_mips', 0,
             'create'
         ],
         # no input because we use the chunk size from existing cloudvolumes
@@ -407,9 +414,10 @@ def test_create_cloudvolume_mixed_chunk_size(input_cloudvolume, output_cloudvolu
             '--overlap', [1, 10, 10],
             '--num_channels', 3,
             '--check_overlaps',
+            '--min_mips', 1,
             'create'
         ],
-        input='yes\n1'
+        input='yes\n1,1,1'
     )
 
     print(result.output)

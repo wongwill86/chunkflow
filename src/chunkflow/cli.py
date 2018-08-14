@@ -227,6 +227,10 @@ def blend(obj, **kwargs):
 @main.group()
 @click.option('--patch_shape', type=list, help="convnet input patch shape (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
+@click.option('--num_patches', type=list, help="how large of a task desired(ZYX order)",
+              cls=PythonLiteralOption, callback=validate_literal, default=[4, 4, 4])
+@click.option('--min_mips', type=int, help="number of mip levels expected (sets minimum chunk size)",
+              default=4)
 @click.option('--overlap', type=list,
               help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
@@ -241,8 +245,9 @@ def cloudvolume(obj, **kwargs):
 
     overlap = kwargs['overlap']
     patch_shape = kwargs['patch_shape']
-    chunk_shape_options = get_possible_chunk_sizes(overlap, patch_shape)
+    chunk_shape_options = get_possible_chunk_sizes(overlap, patch_shape, obj['min_mips'], obj['num_patches'])
     obj['chunk_shape_options'] = chunk_shape_options
+    obj['input_datasource'] = CloudVolumeCZYX(obj['input_image_source'])
 
     print('Finished cloudvolume prepare')
 
@@ -254,14 +259,13 @@ def check(obj):
     Check if output destination exists and if the chunk sizes are correct (use --check_overlaps to check overlaps)
     """
     print('Checking cloudvolume ...')
-    input_datasource = CloudVolumeCZYX(obj['input_image_source'])
     output_destination = obj['output_destination']
-    assert valid_cloudvolume(output_destination, obj['chunk_shape_options'], input_datasource)
+    assert valid_cloudvolume(output_destination, obj['chunk_shape_options'], obj['input_datasource'])
 
     if obj['check_overlaps']:
         for mod_index in get_all_mod_index((0,) * len(obj['patch_shape'])):
             assert valid_cloudvolume(default_overlap_name(output_destination, mod_index),
-                                     obj['chunk_shape_options'], input_datasource)
+                                     obj['chunk_shape_options'], obj['input_datasource'])
     print('Done cloudvolume!')
 
 
@@ -302,22 +306,23 @@ def create(obj, **kwargs):
                 pass
             print('Found existing chunk size of %s' % (chunk_size,))
             assert tuple(chunk_size) == tuple(cloudvolume.underlying[::-1])
+            assert valid_cloudvolume(cloudvolume, obj['chunk_shape_options'], obj['input_datasource']), (
+                'Invalid cloudvolume configuration detected! See warnings above'
+            )
+
         except ValueError:
             missing_datasource_names.append(datasource_name)
 
     chunk_shape_options = obj['chunk_shape_options']
 
-    if chunk_size is not None:
-        assert any(tuple(chunk_size) == tuple(chunk_shape) for chunk_shape in chunk_shape_options)
-    else:
+    if chunk_size is None:
         chunk_size = prompt_for_chunk_size(chunk_shape_options)
 
     if len(missing_datasource_names) > 0:
         print('Will use chunk sizes %s to create datasources: %s' % (chunk_size, '\n'.join(missing_datasource_names)))
 
-        input_datasource = CloudVolumeCZYX(obj['input_image_source'])
         for datasource_name in missing_datasource_names:
-            create_cloudvolume(datasource_name, chunk_size, input_datasource, **obj)
+            create_cloudvolume(datasource_name, chunk_size, **obj)
     else:
         print('Datasources already created with suitable chunk sizes')
 
@@ -326,13 +331,19 @@ def create(obj, **kwargs):
 
 def prompt_for_chunk_size(chunk_shape_options):
     print('Starting Fresh! No existing cloudvolumes found. What chunksize do you want to use?')
-    for idx, chunk_shape_option in enumerate(chunk_shape_options):
-        print('[%s]: %s' % (idx, chunk_shape_option))
-    index = -1
-    while not (index >= 0 and index < len(chunk_shape_options)):
-        index = click.prompt('Please enter a valid integer selection', type=int)
+    dimensions = ['Z', 'Y', 'X']
+    selection = []
+    for dim, chunk_shape_option in zip(dimensions, chunk_shape_options):
+        for idx, shape_option in enumerate(chunk_shape_option):
+            print('[%s]: %s' % (idx, shape_option))
 
-    return chunk_shape_options[index]
+        option_index = -1
+        while not (option_index >= 0 and option_index < len(chunk_shape_option)):
+            option_index = click.prompt('Please enter size for dimension %s' % dim, type=int)
+
+        selection.append(chunk_shape_option[option_index])
+
+    return selection
 
 
 if __name__ == '__main__':

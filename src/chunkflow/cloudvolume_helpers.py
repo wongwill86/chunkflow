@@ -1,5 +1,3 @@
-import fractions
-import functools
 import math
 
 from cloudvolume import CloudVolume
@@ -35,12 +33,17 @@ def get_factors(n):
     return factors
 
 
-def get_possible_chunk_sizes(overlap, patch_shape):
-    core_shape = tuple(p - o for p, o in zip(patch_shape, overlap))
-    gcd = functools.reduce(fractions.gcd, core_shape)
-    factors = get_factors(gcd)
+def get_possible_chunk_sizes(overlap, task_shape, min_mips, num_patches):
+    core_shape = tuple(p - o for p, o in zip(task_shape, overlap))
 
-    chunk_shape_options = [tuple(cs // factor for cs in core_shape) for factor in factors]
+    min_mip_factor = 2 ** min_mips
+    assert all(c_s % min_mip_factor == 0 for c_s in core_shape), 'Unable to support %s with %s mips' % (
+        task_shape, min_mips)
+    core_shape = tuple(c_s // min_mip_factor * n_p for c_s, n_p in zip(core_shape, num_patches))
+
+    chunk_shape_options = [
+        [c_s / i * min_mip_factor for i in range(1, c_s) if c_s % i == 0] for c_s in core_shape
+    ]
 
     return chunk_shape_options
 
@@ -55,10 +58,11 @@ def valid_cloudvolume(path_or_cv, chunk_shape_options, input_datasource):
         # cloudvolume is in xyzc
         actual_chunk_size = tuple(cloudvolume.underlying)[::-1]
 
-        if not any(tuple(actual_chunk_size) == chunk_shape for chunk_shape in chunk_shape_options):
-            print('Warning: %s already has incorrect chunk size %s. Please reformat with one of these chunk sizes: %s' %
-                  (cloudvolume.layer_cloudpath, actual_chunk_size, chunk_shape_options))
-            return False
+        for c_size, chunk_shape_option in zip(actual_chunk_size, chunk_shape_options):
+            if c_size not in chunk_shape_option:
+                print('Warning: %s already has incorrect chunk size %s. Please reformat with one of these chunk sizes:'
+                      '%s' % (cloudvolume.layer_cloudpath, actual_chunk_size, chunk_shape_options))
+                return False
 
         for attribute in ATTRIBUTE_COMPARISONS:
             if str(getattr(input_datasource, attribute)) != str(getattr(cloudvolume, attribute)):
