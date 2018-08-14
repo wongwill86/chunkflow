@@ -72,7 +72,7 @@ class CloudVolumeCZYX(CloudVolume):
             (
                 self.layer_cloudpath, self.mip, self.bounded, self.autocrop, self.fill_missing, self.cache,
                 self.cdn_cache, self.progress, self.info, None, self.compress, self.non_aligned_writes, self.parallel,
-                self.output_to_shared_memory, os.getpid()
+                self.output_to_shared_memory, self.cache_compress, os.getpid()
             ),
         )
 

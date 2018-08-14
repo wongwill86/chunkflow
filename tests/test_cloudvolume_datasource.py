@@ -130,13 +130,15 @@ class TestCloudVolumeDatasource:
         assert repository.get_datasource((1, 2, 0)) == datasource
 
     def test_pickle(self):
-        cv = CloudVolumeCZYX('gs://wwong/sub_pinky40test2/output')
+        cv = CloudVolumeCZYX('gs://seunglab-test/pinky40_v11/image_rechunked')
         print(cv.layer_cloudpath)
 
-        from concurrent.futures import ProcessPoolExecutor
-        ppe = ProcessPoolExecutor(max_workers=4)
-        # this will fail if cv connection is not properly refreshed
-        ppe.submit(cv.refresh_info)
-        ppe.submit(cv.refresh_info)
-        ppe.submit(cv.refresh_info)
-        ppe.submit(cv.refresh_info)
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        futures = []
+        with ProcessPoolExecutor(max_workers=4) as ppe:
+            for i in range(0, 5):
+                futures.append(ppe.submit(cv.refresh_info))
+
+            for future in as_completed(futures):
+                # an error should be re-raised in one of the futures
+                future.result()
