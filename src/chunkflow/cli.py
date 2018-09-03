@@ -99,9 +99,9 @@ def task(obj, **kwargs):
     ))
 
     input_cloudvolume = CloudVolumeCZYX(
-        obj['input_image_source'], cache=True, non_aligned_writes=True, fill_missing=True)
+        obj['input_image_source'], cache=False, fill_missing=True)
     output_cloudvolume_final = CloudVolumeCZYX(
-        obj['output_destination'], cache=False, non_aligned_writes=True, fill_missing=True)
+        obj['output_destination'], cache=False, fill_missing=True, non_aligned_writes=True)
     block_repository = CloudVolumeDatasourceRepository(
         input_cloudvolume=input_cloudvolume, output_cloudvolume=output_cloudvolume_final)
 
@@ -347,4 +347,4 @@ def prompt_for_chunk_size(chunk_shape_options):
 
 
 if __name__ == '__main__':
-    main()
+    main(standalone=False)

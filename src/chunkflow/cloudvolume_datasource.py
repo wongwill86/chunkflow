@@ -1,4 +1,3 @@
-import inspect
 import os
 from functools import reduce
 from math import ceil
@@ -13,7 +12,7 @@ from chunkflow.buffered_chunk_datasource import BufferedChunkDatasource
 from chunkflow.datasource_manager import DatasourceRepository
 
 OVERLAP_POSTFIX = '_overlap%s/'
-CLOUDVOLUME_INIT_ARGS = len(inspect.getargspec(CloudVolume.__init__)[0]) - 1  # -1 for self arg
+CONNECTED_PIDS = set()
 
 
 def get_index_name(index):
@@ -57,10 +56,8 @@ class CloudVolumeCZYX(CloudVolume):
     instead. All other usages of indices such as in the constructor are STILL in ZYXC fortran order!!!!
     """
     def __init__(self, *args, **kwargs):
-        if len(args) > CLOUDVOLUME_INIT_ARGS:
-            args = args[:-1]
-            if args[-1] is not os.getpid():
-                reset_connection_pools()
+        if os.getpid() not in CONNECTED_PIDS:
+            reset_connection_pools()
         super().__init__(*args, **kwargs)
 
     def __reduce__(self):
@@ -72,7 +69,7 @@ class CloudVolumeCZYX(CloudVolume):
             (
                 self.layer_cloudpath, self.mip, self.bounded, self.autocrop, self.fill_missing, self.cache,
                 self.cdn_cache, self.progress, self.info, None, self.compress, self.non_aligned_writes, self.parallel,
-                self.output_to_shared_memory, self.cache_compress, os.getpid()
+                self.output_to_shared_memory, self.cache_compress
             ),
         )
 
