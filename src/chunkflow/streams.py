@@ -111,12 +111,11 @@ def aggregate(slices, aggregate, datasource):
 
 
 def create_download_stream(block, datasource_manager, executor=None):
-    if executor is None:
-        return lambda chunk: Observable.just(chunk).do_action(datasource_manager.download_input)
-    else:
-        return lambda chunk: Observable.just(chunk).flat_map(
-            lambda chunk: executor.submit(chunk.load_data, datasource_manager.input_datasource)
-        )
+    return lambda chunk: Observable.just(chunk).map(
+        lambda chunk: datasource_manager.download_input(chunk, executor=executor)
+    ).flat_map(
+        lambda chunk_or_future: Observable.just(chunk_or_future) if executor is None else chunk_or_future
+    )
 
 
 def create_inference_stream(block, inference_operation, blend_operation, datasource_manager):
@@ -149,17 +148,7 @@ DumpArguments = namedtuple('DumpArguments', 'datasource slices')
 
 
 def create_upload_stream(block, datasource_manager, executor=None):
-    def append_dump(observable, chunk):
-        if executor is None:
-            return observable.do_action(
-                lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict())
-            )
-        else:
-            return observable.flat_map(
-                lambda dump_args: executor.submit(chunk.dump_args, **dump_args._asdict())
-            )
-
-    return lambda chunk: append_dump(
+    return lambda chunk: (
         Observable.merge(
             # core slices can bypass to the final datasource
             Observable.just(chunk).map(block.core_slices).map(
@@ -168,9 +157,11 @@ def create_upload_stream(block, datasource_manager, executor=None):
             Observable.just(chunk).flat_map(block.overlap_slices).map(
                 lambda slices: DumpArguments(datasource_manager.output_datasource, slices)
             )
-        ),
-        chunk
-    ).reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
+        )
+        .map(lambda dump_args: datasource_manager.dump_chunk(chunk, executor=executor, **dump_args._asdict()))
+        .flat_map(lambda chunk_or_future: Observable.just(chunk_or_future) if executor is None else chunk_or_future)
+        .reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
+    )
 
 
 def create_checkpoint_observable(block, stage):
@@ -194,11 +185,6 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
         datasource_manager.output_datasource_final if output_final_needs_flush else None
     )
 
-    flush_observable = (
-        lambda datasource_chunk: datasource.flush(unit_index=datasource_chunk.unit_index) if executor is None else
-        lambda datasource_chunk: executor.submit(
-
-
     if reference_datasource is not None:
         return lambda uploaded_chunk: (
             Observable.from_(reference_datasource.block.slices_to_chunks(uploaded_chunk.slices))
@@ -213,7 +199,8 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
                     Observable.empty() if not output_final_needs_flush else Observable.just(
                         datasource_manager.output_datasource_final)
                 )
-                .do_action(lambda datasource: datasource.flush(unit_index=datasource_chunk.unit_index, executor=executor))
+                .map(lambda datasource: datasource_manager.flush(datasource_chunk, datasource, executor=executor))
+                .flat_map(lambda chunk_or_future: Observable.just(chunk_or_future) if executor is None else chunk_or_future)
             )
             .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk)  # reduce to wait for all to complete transferring
             .map(lambda _: uploaded_chunk)

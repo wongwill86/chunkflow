@@ -25,17 +25,46 @@ class DatasourceManager:
         return self.load_chunk(chunk, datasource=self.repository.input_datasource, executor=executor)
 
     def dump_chunk(self, chunk, datasource=None, slices=None, executor=None):
-        #TODO figure out executor
+        """
+        Dump chunk data into target datasource.
+        :param chunk source of chunk data to dump from
+        :param datasource destination to dump data into. searches for designated chunk datasource if non specified
+        :param slices (optional) slices from chunk to dump from. default to chunk's entire bbox if None given
+        :param executor (optional) where to schedule dump command. runs on same thread if None specified
+
+        :returns: chunk if no executor is given, otherwise returns the future returned by the executor
+        """
         if datasource is None:
             datasource = self.repository.get_datasource(chunk.unit_index)
-        chunk.dump_data(datasource, slices)
-        return chunk
+
+        if executor is None:
+            return chunk.dump_data(datasource, slices=slices)
+        else:
+            return executor.submit(chunk.dump_data, datasource, slices)
 
     def load_chunk(self, chunk, datasource=None, slices=None, executor=None):
-        #TODO figure out executor
+        """
+        Load chunk with data from datasource
+        :param chunk destination chunk to load data into
+        :param datasource (optional) source to load data from. searches for designated chunk datasource if non specified
+        :param slices (optional) slices from datasource to load from. default to chunk's entire bbox if None given
+        :param executor (optional) where to schedule load command. runs on same thread if None specified
+
+        :returns: chunk if no executor is given, otherwise returns the future returned by the executor
+        """
         if datasource is None:
             datasource = self.repository.get_datasource(chunk.unit_index)
-        chunk.load_data(datasource, slices)
+
+        if executor is None:
+            return chunk.load_data(datasource, slices=slices)
+        else:
+            return executor.submit(chunk.load_data, datasource, slices)
+
+    def flush(self, chunk, datasource, executor=None):
+        cleared_chunk = datasource.clear(chunk.unit_index)
+        if cleared_chunk is not None:
+            # TODO this should be fixed shouldn't use ds.ds
+            return self.dump_chunk(cleared_chunk, datasource.datasource, executor=executor)
         return chunk
 
     def clear(self, chunk):

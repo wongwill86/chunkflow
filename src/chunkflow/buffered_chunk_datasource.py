@@ -32,16 +32,14 @@ class BufferedChunkDatasource:
 
     def clear(self, unit_index=None):
         if unit_index is None:
-            self.local_cache.values()
-            for unit_index, chunk in self.local_cache.items():
-                if executor is None:
-                    chunk.dump_data(self.datasource)
-                else:
-
+            chunks = self.local_cache.values()
             self.local_cache.clear()
+            return chunks
         elif unit_index in self.local_cache:
-            self.local_cache[unit_index].dump_data(self.datasource)
-            del self.local_cache[unit_index]
+            obj = self.local_cache.pop(unit_index)
+            return obj
+        else:
+            return None
 
     def __getattr__(self, attr):
         return getattr(self.datasource, attr)
