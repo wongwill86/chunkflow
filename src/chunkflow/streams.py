@@ -217,7 +217,7 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
         return lambda uploaded_chunk: Observable.just(uploaded_chunk)
 
 
-def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager, scheduler=None,
+def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager,
                                       io_executor=None):
     class Stages(Enum):
         INFERENCE_DONE, UPLOAD_DONE, FLUSH_DONE = range(3)
@@ -226,7 +226,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
             self.hashset = set()
 
     return lambda chunk: (
-        (Observable.just(chunk) if scheduler is None else Observable.just(chunk).observe_on(scheduler))
+        Observable.just(chunk)
         .do_action(lambda chunk: print('Start ', chunk.unit_index))
         .flat_map(create_download_stream(block, datasource_manager, io_executor))
         .do_action(lambda chunk: print('Finish Download ', chunk.unit_index))
@@ -247,12 +247,12 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
     )
 
 
-def create_blend_stream(block, datasource_manager, scheduler=None):
+def create_blend_stream(block, datasource_manager):
     """
     Assume block is a dataset with chunks to represent each task!
     """
     return lambda chunk: (
-        (Observable.just(chunk) if scheduler is None else Observable.just(chunk).observe_on(scheduler))
+        Observable.just(chunk)
         .flat_map(block.overlap_chunk_slices)
         .flat_map(
             lambda chunk_slices:

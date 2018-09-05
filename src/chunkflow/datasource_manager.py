@@ -22,8 +22,7 @@ class DatasourceManager:
         self.repository = repository
 
     def download_input(self, chunk):
-        chunk.load_data(self.repository.input_datasource)
-        return chunk
+        return self.load_chunk(chunk, datasource=self.repository.input_datasource)
 
     def dump_chunk(self, chunk, datasource=None, slices=None):
         if datasource is None:

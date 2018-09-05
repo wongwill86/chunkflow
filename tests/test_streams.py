@@ -1,11 +1,10 @@
 import cProfile
-import multiprocessing
+import threading
 
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkblocks.models import Block
 from rx import Observable
-from rx.concurrency import ThreadPoolScheduler
 
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
@@ -398,8 +397,6 @@ class TestPerformance:
         """
         should_profile = False
         profile_file = '/home/wwong/src/chunkflow/prof-2-notime.cprof'
-        optimal_thread_count = multiprocessing.cpu_count()
-        scheduler = ThreadPoolScheduler(optimal_thread_count)
 
         # change num_chunks when benchmarking!
         # benchmark with:
@@ -430,7 +427,6 @@ class TestPerformance:
             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=dtype),
             blend_operation=AverageBlend(block),
             datasource_manager=datasource_manager,
-            scheduler=scheduler
         )
         import time
 
@@ -439,7 +435,6 @@ class TestPerformance:
         stats['start'] = time.time()
         stats['previous_time'] = stats['start']
         stats['running_sum'] = 0.0
-        import threading
 
         lock = threading.Lock()
 

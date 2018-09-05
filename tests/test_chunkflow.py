@@ -28,7 +28,6 @@ def test_inference(block_datasource_manager):
         '--task_shape', list(task_shape),
         '--overlap', overlap,
         '--overlap_protocol', 'file://',
-        '--threads', '1',
         'inference',
         '--patch_shape', [3, 30, 30],
         '--inference_framework', 'identity',
