@@ -30,10 +30,14 @@ class BufferedChunkDatasource:
     def __getitem__(self, slices):
         return self.datasource.__getitem__(slices)
 
-    def flush(self, unit_index=None):
+    def clear(self, unit_index=None):
         if unit_index is None:
+            self.local_cache.values()
             for unit_index, chunk in self.local_cache.items():
-                chunk.dump_data(self.datasource)
+                if executor is None:
+                    chunk.dump_data(self.datasource)
+                else:
+
             self.local_cache.clear()
         elif unit_index in self.local_cache:
             self.local_cache[unit_index].dump_data(self.datasource)

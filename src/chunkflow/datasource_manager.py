@@ -21,16 +21,18 @@ class DatasourceManager:
     def __init__(self, repository):
         self.repository = repository
 
-    def download_input(self, chunk):
-        return self.load_chunk(chunk, datasource=self.repository.input_datasource)
+    def download_input(self, chunk, executor=None):
+        return self.load_chunk(chunk, datasource=self.repository.input_datasource, executor=executor)
 
-    def dump_chunk(self, chunk, datasource=None, slices=None):
+    def dump_chunk(self, chunk, datasource=None, slices=None, executor=None):
+        #TODO figure out executor
         if datasource is None:
             datasource = self.repository.get_datasource(chunk.unit_index)
         chunk.dump_data(datasource, slices)
         return chunk
 
-    def load_chunk(self, chunk, datasource=None, slices=None):
+    def load_chunk(self, chunk, datasource=None, slices=None, executor=None):
+        #TODO figure out executor
         if datasource is None:
             datasource = self.repository.get_datasource(chunk.unit_index)
         chunk.load_data(datasource, slices)

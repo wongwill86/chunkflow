@@ -185,7 +185,7 @@ def create_checkpoint_observable(block, stage):
     )
 
 
-def create_flush_datasource_observable(datasource_manager, block, stage_to_check, stage_to_complete):
+def create_flush_datasource_observable(datasource_manager, block, stage_to_check, stage_to_complete, executor=None):
     output_needs_flush = hasattr(datasource_manager.output_datasource, 'block')
     output_final_needs_flush = hasattr(datasource_manager.output_datasource_final, 'block')
 
@@ -193,6 +193,11 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
         datasource_manager.output_datasource if output_needs_flush else
         datasource_manager.output_datasource_final if output_final_needs_flush else None
     )
+
+    flush_observable = (
+        lambda datasource_chunk: datasource.flush(unit_index=datasource_chunk.unit_index) if executor is None else
+        lambda datasource_chunk: executor.submit(
+
 
     if reference_datasource is not None:
         return lambda uploaded_chunk: (
@@ -208,7 +213,7 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
                     Observable.empty() if not output_final_needs_flush else Observable.just(
                         datasource_manager.output_datasource_final)
                 )
-                .do_action(lambda datasource: datasource.flush(unit_index=datasource_chunk.unit_index))
+                .do_action(lambda datasource: datasource.flush(unit_index=datasource_chunk.unit_index, executor=executor))
             )
             .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk)  # reduce to wait for all to complete transferring
             .map(lambda _: uploaded_chunk)
