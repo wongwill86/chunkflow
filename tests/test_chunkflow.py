@@ -37,7 +37,7 @@ def test_inference(block_datasource_manager):
     np.set_printoptions(threshold=np.inf)
 
     absolute_index = get_absolute_index(offset, overlap, task_shape)
-    output_cloudvolume_overlap = block_datasource_manager.repository.get_datasource(absolute_index)
+    output_cloudvolume_overlap = block_datasource_manager.get_datasource(absolute_index)
 
     data = (
         block_datasource_manager.output_datasource[(slice(0, 3),) + dataset_bounds] +
@@ -64,8 +64,8 @@ def test_blend_with_offset_top_edge_task(block_datasource_manager):
     task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
 
-    block_datasource_manager.repository.create_overlap_datasources(task_shape)
-    for datasource in block_datasource_manager.repository.overlap_datasources.values():
+    block_datasource_manager.create_overlap_datasources(task_shape)
+    for datasource in block_datasource_manager.overlap_datasources.values():
         datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
     result = runner.invoke(main, [
@@ -105,8 +105,8 @@ def test_blend_with_offset_non_top_edge_task(block_datasource_manager):
     task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
 
-    block_datasource_manager.repository.create_overlap_datasources(task_shape)
-    for datasource in block_datasource_manager.repository.overlap_datasources.values():
+    block_datasource_manager.create_overlap_datasources(task_shape)
+    for datasource in block_datasource_manager.overlap_datasources.values():
         datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
     result = runner.invoke(main, [
@@ -142,8 +142,8 @@ def test_blend_no_offset(block_datasource_manager):
     task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
 
-    block_datasource_manager.repository.create_overlap_datasources(task_shape)
-    for datasource in block_datasource_manager.repository.overlap_datasources.values():
+    block_datasource_manager.create_overlap_datasources(task_shape)
+    for datasource in block_datasource_manager.overlap_datasources.values():
         datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
     result = runner.invoke(main, [
@@ -177,8 +177,8 @@ def test_blend_bad_param(block_datasource_manager):
 
     task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
 
-    block_datasource_manager.repository.create_overlap_datasources(task_shape)
-    for datasource in block_datasource_manager.repository.overlap_datasources.values():
+    block_datasource_manager.create_overlap_datasources(task_shape)
+    for datasource in block_datasource_manager.overlap_datasources.values():
         datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
     result = runner.invoke(main, [

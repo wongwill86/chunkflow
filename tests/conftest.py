@@ -1,8 +1,7 @@
 import pytest
 from cloudvolume import CloudVolume
 
-from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceRepository, default_overlap_name
-from chunkflow.datasource_manager import DatasourceManager
+from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceManager, default_overlap_name
 
 VOLUME_SIZE = (600, 4096, 4096)
 VOLUME_SIZE = (40, 60, 60)
@@ -99,24 +98,22 @@ def output_cloudvolume_overlap(cloudvolume_factory):
 
 @pytest.fixture(scope='function')
 def output_cloudvolume_overlaps(block_datasource_manager):
-    block_datasource_manager.repository.create_overlap_datasources((0,) * len(VOXEL_OFFSET))
-    return block_datasource_manager.repository.overlap_datasources.values()
+    block_datasource_manager.create_overlap_datasources((0,) * len(VOXEL_OFFSET))
+    return block_datasource_manager.overlap_datasources.values()
 
 
 @pytest.fixture(scope='function')
 def chunk_datasource_manager(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap):
-    repository = CloudVolumeDatasourceRepository(
+    return CloudVolumeDatasourceManager(
         input_cloudvolume=input_cloudvolume,
         output_cloudvolume=output_cloudvolume_overlap,
         output_cloudvolume_final=output_cloudvolume
     )
-    return DatasourceManager(repository)
 
 
 @pytest.fixture(scope='function')
 def block_datasource_manager(input_cloudvolume, output_cloudvolume):
-    repository = CloudVolumeDatasourceRepository(
+    return CloudVolumeDatasourceManager(
         input_cloudvolume=input_cloudvolume,
         output_cloudvolume=output_cloudvolume,
     )
-    return DatasourceManager(repository)

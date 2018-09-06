@@ -25,13 +25,12 @@ from chunkflow.chunk_operations.blend_operation import BlendFactory
 from chunkflow.chunk_operations.inference_operation import InferenceFactory
 from chunkflow.cloudvolume_datasource import (
     CloudVolumeCZYX,
-    CloudVolumeDatasourceRepository,
+    CloudVolumeDatasourceManager,
     create_buffered_cloudvolumeCZYX,
     default_overlap_name
 )
 from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk_sizes, valid_cloudvolume
-from chunkflow.datasource_manager import DatasourceManager, get_absolute_index, get_all_mod_index
-from chunkflow.sparse_matrix_datasource import SparseMatrixDatasourceRepository
+from chunkflow.datasource_manager import SparseOverlapRepository, get_absolute_index, get_all_mod_index
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 
@@ -98,21 +97,21 @@ def task(obj, **kwargs):
         obj['input_image_source'], cache=False, fill_missing=True)
     output_cloudvolume_final = CloudVolumeCZYX(
         obj['output_destination'], cache=False, fill_missing=True, non_aligned_writes=True)
-    block_repository = CloudVolumeDatasourceRepository(
+    block_datasource_manager = CloudVolumeDatasourceManager(
         input_cloudvolume=input_cloudvolume, output_cloudvolume=output_cloudvolume_final)
 
     absolute_index = get_absolute_index(obj['task_offset_coordinates'], obj['overlap'], obj['task_shape'])
-    output_cloudvolume_overlap = block_repository.get_datasource(absolute_index)
+    output_cloudvolume_overlap = block_datasource_manager.get_datasource(absolute_index)
 
-    chunk_repository = CloudVolumeDatasourceRepository(
+    chunk_datasource_manager = CloudVolumeDatasourceManager(
         input_cloudvolume,
         output_cloudvolume=create_buffered_cloudvolumeCZYX(output_cloudvolume_overlap),
         output_cloudvolume_final=create_buffered_cloudvolumeCZYX(output_cloudvolume_final),
         overlap_protocol=obj['overlap_protocol']
     )
 
-    obj['block_cloudvolume_repository'] = block_repository
-    obj['chunk_cloudvolume_repository'] = chunk_repository
+    obj['block_datasource_manager'] = block_datasource_manager
+    obj['chunk_datasource_manager'] = chunk_datasource_manager
 
 
 @task.command()
@@ -134,14 +133,15 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     print('Running inference ...')
     block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
 
-    chunk_repository = obj['chunk_cloudvolume_repository']
-    datasource_manager = DatasourceManager(
-        SparseMatrixDatasourceRepository(
-            input_datasource=chunk_repository.input_datasource,
-            output_datasource=chunk_repository.output_datasource,
-            output_datasource_final=chunk_repository.output_datasource_final,
-            num_channels=chunk_repository.output_datasource_final.num_channels,
-            block=block
+    chunk_datasource_manager = obj['chunk_datasource_manager']
+    datasource_manager = CloudVolumeDatasourceManager(
+        input_cloudvolume=chunk_datasource_manager.input_datasource,
+        output_cloudvolume=chunk_datasource_manager.output_datasource,
+        output_cloudvolume_final=chunk_datasource_manager.output_datasource_final,
+        overlap_repository=SparseOverlapRepository(
+            block=block,
+            channel_dimensions=(chunk_datasource_manager.output_datasource_final.num_channels,),
+            dtype=chunk_datasource_manager.output_datasource.dtype,
         )
     )
 
@@ -195,14 +195,14 @@ def blend(obj, **kwargs):
             task_offset, task_shape, overlap))
         print(dataset_bounds)
 
-    datasource_manager = DatasourceManager(obj['block_cloudvolume_repository'])
+    datasource_manager = obj['block_datasource_manager']
 
     print(obj['voxel_offset'])
     print(obj['volume_size'])
     print('dataset_bounds', dataset_bounds)
     block = Block(bounds=dataset_bounds, chunk_shape=obj['task_shape'], overlap=obj['overlap'])
 
-    datasource_manager.repository.create_overlap_datasources(obj['task_shape'])
+    datasource_manager.create_overlap_datasources(obj['task_shape'])
     blend_stream = create_blend_stream(block, datasource_manager)
 
     chunk_index = block.chunk_slices_to_unit_index(obj['task_bounds'])

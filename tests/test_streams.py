@@ -9,24 +9,33 @@ from rx import Observable
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkflow.cloudvolume_datasource import create_buffered_cloudvolumeCZYX
-from chunkflow.datasource_manager import DatasourceManager, DatasourceRepository
-from chunkflow.sparse_matrix_datasource import SparseMatrixDatasourceRepository
+from chunkflow.datasource_manager import DatasourceManager, OverlapRepository, SparseOverlapRepository
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
 
-class NumpyDatasourceRepository(DatasourceRepository):
-    def __init__(self, output_shape,
-                 output_datasource=None, output_datasource_final=None, *args, **kwargs):
-        self.output_shape = output_shape
-        super().__init__(output_datasource=output_datasource,
+class NumpyDatasourceManager(DatasourceManager):
+    def __init__(self, output_shape, input_datasource=None, output_datasource=None, output_datasource_final=None,
+                 *args, **kwargs):
+        super().__init__(input_datasource=input_datasource,
+                         output_datasource=output_datasource,
                          output_datasource_final=output_datasource_final,
+                         overlap_repository=NumpyOverlapRepository(input_datasource, output_shape),
                          *args, **kwargs)
 
+        # Hack for test to automatically create output datasources
         if self.output_datasource is None:
-            self.output_datasource = self.create(None)
+            self.output_datasource = self.overlap_repository.create(None)
 
         if self.output_datasource_final is None:
-            self.output_datasource_final = self.create(None)
+            self.output_datasource_final = self.overlap_repository.create(None)
+
+
+class NumpyOverlapRepository(OverlapRepository):
+
+    def __init__(self, input_datasource, output_shape):
+        self.input_datasource = input_datasource
+        self.output_shape = output_shape
+        super().__init__()
 
     def create(self, mod_index, *args, **kwargs):
         offset = self.input_datasource.global_offset
@@ -95,8 +104,7 @@ class TestInferenceStream:
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(
-            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=output_shape))
+        datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=output_shape)
 
         task_stream = create_inference_and_blend_stream(
             block=block,
@@ -121,19 +129,19 @@ class TestInferenceStream:
         assert block.is_checkpointed(test_chunk_1_0)
 
         assert 0 == \
-            datasource_manager.repository.output_datasource.sum() + \
-            datasource_manager.repository.output_datasource_final.sum()
+            datasource_manager.output_datasource.sum() + \
+            datasource_manager.output_datasource_final.sum()
 
         test_chunk_1_1 = block.unit_index_to_chunk((1, 1))
         assert not block.is_checkpointed(test_chunk_1_1)
         Observable.just(test_chunk_1_1).flat_map(task_stream).subscribe(print)
         assert block.is_checkpointed(test_chunk_1_1)
 
-        print(datasource_manager.repository.output_datasource)
-        print(datasource_manager.repository.output_datasource_final)
+        print(datasource_manager.output_datasource)
+        print(datasource_manager.output_datasource_final)
         assert np.product(block.shape) == \
-            datasource_manager.repository.output_datasource.sum() + \
-            datasource_manager.repository.output_datasource_final.sum()
+            datasource_manager.output_datasource.sum() + \
+            datasource_manager.output_datasource_final.sum()
 
     def test_process_single_channel_3x3(self):
         bounds = (slice(0, 7), slice(0, 7))
@@ -144,8 +152,7 @@ class TestInferenceStream:
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(
-            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=output_shape))
+        datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=output_shape)
 
         task_stream = create_inference_and_blend_stream(
             block=block,
@@ -157,8 +164,8 @@ class TestInferenceStream:
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(print)
 
         assert np.product(block.shape) == \
-            datasource_manager.repository.output_datasource.sum() + \
-            datasource_manager.repository.output_datasource_final.sum()
+            datasource_manager.output_datasource.sum() + \
+            datasource_manager.output_datasource_final.sum()
 
     def test_process_multi_channel(self):
         bounds = (slice(0, 7), slice(0, 7))
@@ -168,8 +175,7 @@ class TestInferenceStream:
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(
-            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+        datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=(3,) + fake_data.shape)
 
         task_stream = create_inference_and_blend_stream(
             block=block,
@@ -180,12 +186,12 @@ class TestInferenceStream:
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
-        print(datasource_manager.repository.output_datasource)
-        print(datasource_manager.repository.output_datasource_final)
+        print(datasource_manager.output_datasource)
+        print(datasource_manager.output_datasource_final)
 
         assert np.product(block.shape) * 111 == \
-            datasource_manager.repository.output_datasource.sum() + \
-            datasource_manager.repository.output_datasource_final.sum()
+            datasource_manager.output_datasource.sum() + \
+            datasource_manager.output_datasource_final.sum()
 
     def test_process_single_channel_3d(self):
         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
@@ -195,8 +201,7 @@ class TestInferenceStream:
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(
-            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=fake_data.shape))
+        datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=fake_data.shape)
 
         task_stream = create_inference_and_blend_stream(
             block=block,
@@ -208,8 +213,8 @@ class TestInferenceStream:
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
         assert np.product(block.shape) == \
-            datasource_manager.repository.output_datasource.sum() + \
-            datasource_manager.repository.output_datasource_final.sum()
+            datasource_manager.output_datasource.sum() + \
+            datasource_manager.output_datasource_final.sum()
 
     def test_process_multi_channel_3d(self):
         bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
@@ -219,8 +224,7 @@ class TestInferenceStream:
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
-        datasource_manager = DatasourceManager(
-            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=(3,) + fake_data.shape))
+        datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=(3,) + fake_data.shape)
 
         task_stream = create_inference_and_blend_stream(
             block=block,
@@ -232,8 +236,8 @@ class TestInferenceStream:
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
         assert np.product(block.shape) * 111 == \
-            datasource_manager.repository.output_datasource.sum() + \
-            datasource_manager.repository.output_datasource_final.sum()
+            datasource_manager.output_datasource.sum() + \
+            datasource_manager.output_datasource_final.sum()
 
     def test_process_cloudvolume(self, chunk_datasource_manager):
         bounds = (slice(200, 203), slice(100, 103), slice(50, 53))
@@ -242,8 +246,8 @@ class TestInferenceStream:
 
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-        chunk_datasource_manager.repository.output_datasource = create_buffered_cloudvolumeCZYX(
-            chunk_datasource_manager.output_datasource)
+        # chunk_datasource_manager.output_datasource = create_buffered_cloudvolumeCZYX(
+        #     chunk_datasource_manager.output_datasource)
 
         task_stream = create_inference_and_blend_stream(
             block=block,
@@ -255,11 +259,11 @@ class TestInferenceStream:
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
-        print(chunk_datasource_manager.repository.output_datasource[bounds])
-        print(chunk_datasource_manager.repository.output_datasource_final[bounds])
+        print(chunk_datasource_manager.output_datasource[bounds])
+        print(chunk_datasource_manager.output_datasource_final[bounds])
         assert np.product(block.shape) * 111 == \
-            chunk_datasource_manager.repository.output_datasource[bounds].sum() + \
-            chunk_datasource_manager.repository.output_datasource_final[bounds].sum()
+            chunk_datasource_manager.output_datasource[bounds].sum() + \
+            chunk_datasource_manager.output_datasource_final[bounds].sum()
 
 
 class TestBlendStream:
@@ -274,16 +278,15 @@ class TestBlendStream:
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
 
-        datasource_manager = DatasourceManager(
-            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=fake_data.shape))
+        datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=fake_data.shape)
 
         chunk_index = (1, 1)
 
         chunk = block.unit_index_to_chunk(chunk_index)
 
         # set up test data
-        datasource_manager.repository.create_overlap_datasources(chunk_index)
-        for datasource in datasource_manager.repository.overlap_datasources.values():
+        datasource_manager.create_overlap_datasources(chunk_index)
+        for datasource in datasource_manager.overlap_datasources.values():
             datasource[chunk.slices] = 1
 
         blend_stream = create_blend_stream(block, datasource_manager)
@@ -303,16 +306,15 @@ class TestBlendStream:
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
 
-        datasource_manager = DatasourceManager(
-            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=fake_data.shape))
+        datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=fake_data.shape)
 
         chunk_index = (1, 1, 1)
 
         chunk = block.unit_index_to_chunk(chunk_index)
 
         # set up test data
-        datasource_manager.repository.create_overlap_datasources(chunk_index)
-        for datasource in datasource_manager.repository.overlap_datasources.values():
+        datasource_manager.create_overlap_datasources(chunk_index)
+        for datasource in datasource_manager.overlap_datasources.values():
             datasource[chunk.slices] = 1
 
         blend_stream = create_blend_stream(block, datasource_manager)
@@ -333,16 +335,15 @@ class TestBlendStream:
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
         output_shape = (3,) + fake_data.shape
 
-        datasource_manager = DatasourceManager(
-            NumpyDatasourceRepository(input_datasource=fake_data, output_shape=output_shape))
+        datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=output_shape)
 
         chunk_index = (1, 1, 1)
 
         chunk = block.unit_index_to_chunk(chunk_index)
 
         # set up test data
-        datasource_manager.repository.create_overlap_datasources(chunk_index)
-        for datasource in datasource_manager.repository.overlap_datasources.values():
+        datasource_manager.create_overlap_datasources(chunk_index)
+        for datasource in datasource_manager.overlap_datasources.values():
             datasource[(slice(None),) + chunk.slices] = 1
 
         blend_stream = create_blend_stream(block, datasource_manager)
@@ -361,7 +362,7 @@ class TestBlendStream:
         output_shape = (3,) + task_shape
         num_chunks = (3, 3, 3)
 
-        input_datasource = block_datasource_manager.repository.input_datasource
+        input_datasource = block_datasource_manager.input_datasource
         offsets = input_datasource.voxel_offset[::-1]
 
         block = Block(num_chunks=num_chunks, offset=offsets, chunk_shape=task_shape, overlap=overlap)
@@ -371,11 +372,11 @@ class TestBlendStream:
         chunk = block.unit_index_to_chunk(chunk_index)
 
         # set up test data
-        block_datasource_manager.repository.create_overlap_datasources(chunk_index)
-        for datasource in block_datasource_manager.repository.overlap_datasources.values():
+        block_datasource_manager.create_overlap_datasources(chunk_index)
+        for datasource in block_datasource_manager.overlap_datasources.values():
             datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
-        datasource = block_datasource_manager.repository.get_datasource(chunk_index)
+        datasource = block_datasource_manager.get_datasource(chunk_index)
         datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
         blend_stream = create_blend_stream(block, block_datasource_manager)
@@ -412,16 +413,17 @@ class TestPerformance:
         block = Block(offset=offset, num_chunks=num_chunks, chunk_shape=patch_shape, overlap=overlap)
 
         datasource_manager = DatasourceManager(
-            SparseMatrixDatasourceRepository(
-                input_datasource=chunk_datasource_manager.input_datasource,
-                output_datasource=chunk_datasource_manager.output_datasource,
-                output_datasource_final=chunk_datasource_manager.output_datasource_final,
-                num_channels=3,
-                block=block
+            input_datasource=chunk_datasource_manager.input_datasource,
+            output_datasource=chunk_datasource_manager.output_datasource,
+            output_datasource_final=chunk_datasource_manager.output_datasource_final,
+            overlap_repository=SparseOverlapRepository(
+                block=block,
+                channel_dimensions=(3,),
+                dtype=chunk_datasource_manager.output_datasource.dtype,
             )
         )
 
-        chunk_datasource_manager.repository.create_overlap_datasources(patch_shape)
+        chunk_datasource_manager.create_overlap_datasources(patch_shape)
         task_stream = create_inference_and_blend_stream(
             block=block,
             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=dtype),
@@ -474,8 +476,8 @@ class TestPerformance:
             profile.disable()
             profile.dump_stats(profile_file)
 
-        actual = datasource_manager.repository.output_datasource[block.bounds].sum() + \
-            datasource_manager.repository.output_datasource_final[block.bounds].sum()
+        actual = datasource_manager.output_datasource[block.bounds].sum() + \
+            datasource_manager.output_datasource_final[block.bounds].sum()
         assert np.product(block.shape) * 111 == actual
 
 

@@ -135,7 +135,7 @@ def create_aggregate_stream(block, datasource_manager):
             lambda chunk:
             (
                 # create temp list of repositories values at time of iteration
-                Observable.from_(list(datasource_manager.repository.overlap_datasources.values()))
+                Observable.from_(list(datasource_manager.overlap_datasources.values()))
                 .reduce(partial(aggregate, chunk.slices), seed=0)
                 .do_action(chunk.load_data)
                 .map(lambda _: chunk)
@@ -200,7 +200,8 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
                         datasource_manager.output_datasource_final)
                 )
                 .map(lambda datasource: datasource_manager.flush(datasource_chunk, datasource, executor=executor))
-                .flat_map(lambda chunk_or_future: Observable.just(chunk_or_future) if executor is None else chunk_or_future)
+                .flat_map(lambda chunk_or_future:
+                          Observable.just(chunk_or_future) if executor is None else chunk_or_future)
             )
             .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk)  # reduce to wait for all to complete transferring
             .map(lambda _: uploaded_chunk)
@@ -250,7 +251,7 @@ def create_blend_stream(block, datasource_manager):
             lambda chunk_slices:
             (
                 # create temp list of repositories values at time of iteration
-                Observable.from_(list(datasource_manager.repository.overlap_datasources.values()))
+                Observable.from_(list(datasource_manager.overlap_datasources.values()))
                 .reduce(partial(aggregate, chunk_slices))
                 .do_action(
                     partial(chunk.copy_data, destination=datasource_manager.output_datasource, slices=chunk_slices)

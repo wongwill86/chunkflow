@@ -9,7 +9,7 @@ from cloudvolume import CloudVolume
 from cloudvolume.storage import reset_connection_pools
 
 from chunkflow.buffered_chunk_datasource import BufferedChunkDatasource
-from chunkflow.datasource_manager import DatasourceRepository
+from chunkflow.datasource_manager import DatasourceManager, OverlapRepository
 
 OVERLAP_POSTFIX = '_overlap%s/'
 CONNECTED_PIDS = set()
@@ -38,6 +38,18 @@ def default_overlap_datasource(path_or_cv, mod_index):
                            fill_missing=True)
 
 
+def create_datasource_buffer(cloudvolume):
+    chunk_shape = cloudvolume.underlying[::-1]
+    offset = cloudvolume.voxel_offset[::-1]
+    size = cloudvolume.volume_size[::-1]
+
+    # we don't really care if the bounds don't divide evenly for this. snap to nearest grid
+    num_chunks = tuple(ceil(s / c_shp) for s, c_shp in zip(size, chunk_shape))
+    bounds = tuple(slice(o, o + n * c_shp) for o, n, c_shp in zip(offset, num_chunks, chunk_shape))
+    block = Block(bounds=bounds, chunk_shape=chunk_shape)
+    return DatasourceBuffer(block, cloudvolume, num_channels=cloudvolume.num_channels)
+
+
 def create_buffered_cloudvolumeCZYX(cloudvolume):
     chunk_shape = cloudvolume.underlying[::-1]
     offset = cloudvolume.voxel_offset[::-1]
@@ -47,7 +59,7 @@ def create_buffered_cloudvolumeCZYX(cloudvolume):
     num_chunks = tuple(ceil(s / c_shp) for s, c_shp in zip(size, chunk_shape))
     bounds = tuple(slice(o, o + n * c_shp) for o, n, c_shp in zip(offset, num_chunks, chunk_shape))
     block = Block(bounds=bounds, chunk_shape=chunk_shape)
-    return BufferedChunkDatasource(block, cloudvolume, num_channels=cloudvolume.num_channels)
+    return BufferedChunkDatasource(block, cloudvolume)
 
 
 class CloudVolumeCZYX(CloudVolume):
@@ -108,14 +120,9 @@ class CloudVolumeCZYX(CloudVolume):
         return 'CZYX'
 
 
-class CloudVolumeDatasourceRepository(DatasourceRepository):
-    def __init__(self, input_cloudvolume, output_cloudvolume, output_cloudvolume_final=None,
+class CloudVolumeDatasourceManager(DatasourceManager):
+    def __init__(self, input_cloudvolume, output_cloudvolume, output_cloudvolume_final=None, overlap_repository=None,
                  overlap_protocol=None, *args, **kwargs):
-        if overlap_protocol is None:
-            self.overlap_protocol = output_cloudvolume.path.protocol + '://'
-        else:
-            self.overlap_protocol = overlap_protocol
-
         try:
             for volume in [input_cloudvolume, output_cloudvolume]:
                 assert volume.ordering == 'CZYX'
@@ -124,13 +131,30 @@ class CloudVolumeDatasourceRepository(DatasourceRepository):
             raise ValueError('Must use %s class cloudvolume to ensure correct c order indexing' %
                              CloudVolumeCZYX.__name__)
 
+        if overlap_repository is None:
+            overlap_repository = CloudVolumeOverlapRepository(output_cloudvolume, overlap_protocol=overlap_protocol)
+
         super().__init__(input_datasource=input_cloudvolume,
                          output_datasource=output_cloudvolume,
                          output_datasource_final=output_cloudvolume_final,
+                         overlap_repository=overlap_repository,
                          *args, **kwargs)
 
+    def create_buffer(self, datasource):
+        return None
+
+
+class CloudVolumeOverlapRepository(OverlapRepository):
+    def __init__(self, output_cloudvolume, overlap_protocol=None):
+        self.output_cloudvolume = output_cloudvolume
+        if overlap_protocol is None:
+            self.overlap_protocol = output_cloudvolume.path.protocol + '://'
+        else:
+            self.overlap_protocol = overlap_protocol
+        super().__init__()
+
     def create(self, mod_index, *args, **kwargs):
-        layer_cloudpath = default_overlap_name(self.output_datasource, mod_index)
+        layer_cloudpath = default_overlap_name(self.output_cloudvolume, mod_index)
         post_protocol_index = layer_cloudpath.find("//") + 2
         base_name = layer_cloudpath[post_protocol_index:]
         layer_cloudpath = self.overlap_protocol + base_name
@@ -138,7 +162,7 @@ class CloudVolumeDatasourceRepository(DatasourceRepository):
         try:
             new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, cache=False, non_aligned_writes=True, fill_missing=True)
         except ValueError:
-            base_info = self.output_datasource.info
+            base_info = self.output_cloudvolume.info
             new_cloudvolume = CloudVolumeCZYX(layer_cloudpath, info=base_info, cache=False, non_aligned_writes=True,
                                               fill_missing=True)
             new_cloudvolume.commit_info()

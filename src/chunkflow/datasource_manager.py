@@ -1,5 +1,7 @@
 import itertools
 
+import numpy as np
+from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkblocks.iterators import UnitIterator
 
 
@@ -18,11 +20,16 @@ def get_all_mod_index(index):
 
 
 class DatasourceManager:
-    def __init__(self, repository):
-        self.repository = repository
+    def __init__(self, input_datasource, output_datasource, overlap_repository, output_datasource_final=None,
+                 buffer=None):
+        self.input_datasource = input_datasource
+        self.output_datasource = output_datasource
+        self.output_datasource_final = output_datasource_final
+        self.overlap_repository = overlap_repository
+        self.datasource_buffer = dict()
 
     def download_input(self, chunk, executor=None):
-        return self.load_chunk(chunk, datasource=self.repository.input_datasource, executor=executor)
+        return self.load_chunk(chunk, datasource=self.input_datasource, executor=executor)
 
     def dump_chunk(self, chunk, datasource=None, slices=None, executor=None):
         """
@@ -35,7 +42,12 @@ class DatasourceManager:
         :returns: chunk if no executor is given, otherwise returns the future returned by the executor
         """
         if datasource is None:
-            datasource = self.repository.get_datasource(chunk.unit_index)
+            datasource = self.get_datasource(chunk.unit_index)
+
+        # if datasource in datasource_buffer:
+        #     datasource = datasource_buffer[datasource]
+        # else:
+        #     datasource_buffer[datasource] = self.create_buffer(datasource)
 
         if executor is None:
             return chunk.dump_data(datasource, slices=slices)
@@ -53,7 +65,7 @@ class DatasourceManager:
         :returns: chunk if no executor is given, otherwise returns the future returned by the executor
         """
         if datasource is None:
-            datasource = self.repository.get_datasource(chunk.unit_index)
+            datasource = self.get_datasource(chunk.unit_index)
 
         if executor is None:
             return chunk.load_data(datasource, slices=slices)
@@ -61,35 +73,15 @@ class DatasourceManager:
             return executor.submit(chunk.load_data, datasource, slices)
 
     def flush(self, chunk, datasource, executor=None):
-        cleared_chunk = datasource.clear(chunk.unit_index)
-        if cleared_chunk is not None:
-            # TODO this should be fixed shouldn't use ds.ds
-            return self.dump_chunk(cleared_chunk, datasource.datasource, executor=executor)
+        try:
+            cleared_chunk = datasource.clear(chunk)
+            if cleared_chunk is not None:
+                # TODO this should be fixed shouldn't use ds.ds
+                return self.dump_chunk(cleared_chunk, datasource.datasource, executor=executor)
+        except AttributeError:
+            pass
+
         return chunk
-
-    def clear(self, chunk):
-        self.repository.clear(chunk.unit_index)
-
-    @property
-    def input_datasource(self):
-        return self.repository.input_datasource
-
-    @property
-    def output_datasource(self):
-        return self.repository.output_datasource
-
-    @property
-    def output_datasource_final(self):
-        return self.repository.output_datasource_final
-
-
-class DatasourceRepository:
-    def __init__(self, input_datasource, output_datasource, output_datasource_final=None,
-                 overlap_datasources=None):
-        self.input_datasource = input_datasource
-        self.output_datasource = output_datasource
-        self.output_datasource_final = output_datasource_final
-        self.overlap_datasources = dict()
 
     def create_overlap_datasources(self, center_index):
         """
@@ -99,6 +91,21 @@ class DatasourceRepository:
         """
         for mod_index in get_all_mod_index(center_index):
             self.get_datasource(mod_index)
+
+    @property
+    def overlap_datasources(self):
+        return self.overlap_repository.overlap_datasources
+
+    def get_datasource(self, index):
+        return self.overlap_repository.get_datasource(index)
+
+    def clear(self, chunk):
+        return self.overlap_repository.clear(chunk.unit_index)
+
+
+class OverlapRepository:
+    def __init__(self, *args, **kwargs):
+        self.overlap_datasources = dict()
 
     def create(self, mod_index, *args, **kwargs):
         raise NotImplementedError
@@ -111,4 +118,27 @@ class DatasourceRepository:
 
     def clear(self, index):
         mod_index = get_mod_index(index)
-        del self.overlap_datasources[mod_index]
+        return self.overlap_datasources.pop(mod_index)
+
+
+class SparseOverlapRepository(OverlapRepository):
+    def __init__(self, block, channel_dimensions, dtype, *args, **kwargs):
+        self.block = block
+        self.channel_dimensions = channel_dimensions
+        self.dtype = dtype
+        super().__init__(*args, **kwargs)
+
+    def get_datasource(self, index):
+        if index not in self.overlap_datasources:
+            self.overlap_datasources[index] = self.create(index)
+        return self.overlap_datasources[index]
+
+    def create(self, index, *args, **kwargs):
+        global_offset = (0,) + tuple(s.start for s in self.block.unit_index_to_slices(index))
+        return GlobalOffsetArray(
+            np.zeros(self.channel_dimensions + self.block.chunk_shape, dtype=self.dtype),
+            global_offset=global_offset,
+        )
+
+    def clear(self, index):
+        del self.overlap_datasources[index]
