@@ -37,7 +37,6 @@ class DatasourceManager:
         if self.buffer_generator is not None:
             if datasource_key not in self.datasource_buffers:
                 self.datasource_buffers[datasource_key] = self.buffer_generator(datasource)
-            print('fetching buffered for dump', datasource.layer_cloudpath)
             return self.datasource_buffers[datasource_key]
         return datasource
 

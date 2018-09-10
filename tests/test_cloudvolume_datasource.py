@@ -1,9 +1,15 @@
 import numpy as np
 import pytest
 from chunkblocks.global_offset_array import GlobalOffsetArray
+from chunkblocks.models import Block
 from cloudvolume import CloudVolume
 
-from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasourceManager, default_overlap_name
+from chunkflow.cloudvolume_datasource import (
+    CloudVolumeCZYX,
+    CloudVolumeDatasourceManager,
+    create_buffered_cloudvolumeCZYX,
+    default_overlap_name
+)
 
 
 class TestCloudVolumeCZYX:
@@ -145,3 +151,29 @@ class TestCloudVolumeDatasource:
                     future.result()
         except DefaultCredentialsError:
             print('Skipping test because of missing credentials')
+
+    def test_flush(self, chunk_datasource_manager):
+        chunk_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
+        bounds = (slice(200, 206), slice(100, 106), slice(50, 56))
+        chunk_shape = (3, 3, 3)
+        block = Block(bounds=bounds, chunk_shape=chunk_shape)
+
+        output_cloudvolume = chunk_datasource_manager.output_datasource
+
+        for chunk in block.chunk_iterator():
+            chunk.data = GlobalOffsetArray(np.ones(chunk_shape), global_offset=tuple(s.start for s in chunk.slices))
+            chunk_datasource_manager.dump_chunk(chunk, datasource=output_cloudvolume)
+
+        assert 0 == output_cloudvolume[bounds].sum()
+
+        cv_chunk_shape = output_cloudvolume.underlying[::-1]
+        cv_offset = output_cloudvolume.voxel_offset[::-1]
+        cv_size = output_cloudvolume.volume_size[::-1]
+
+        cv_bounds = tuple(slice(o, o + s) for o, s in zip(cv_offset, cv_size))
+        cv_block = Block(bounds=cv_bounds, chunk_shape=cv_chunk_shape)
+
+        for chunk in cv_block.chunk_iterator():
+            chunk_datasource_manager.flush(chunk, output_cloudvolume)
+
+        assert np.product(block.shape) == output_cloudvolume[bounds].sum()
