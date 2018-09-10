@@ -8,7 +8,7 @@ from rx import Observable
 
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
-from chunkflow.cloudvolume_datasource import create_buffered_cloudvolumeCZYX
+from chunkflow.cloudvolume_datasource import create_buffered_cloudvolumeCZYX, create_sparse_overlap_cloudvolumeCZYX
 from chunkflow.datasource_manager import DatasourceManager, OverlapRepository, SparseOverlapRepository
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
 
@@ -246,11 +246,58 @@ class TestInferenceStream:
 
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
-        # from chunkflow.buffer_factory import BlockChunkBufferFactory
+        task_stream = create_inference_and_blend_stream(
+            block=block,
+            inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
+                chunk_datasource_manager.output_datasource.dtype)),
+            blend_operation=AverageBlend(block),
+            datasource_manager=chunk_datasource_manager
+        )
+
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
+
+        print(chunk_datasource_manager.output_datasource[bounds])
+        print(chunk_datasource_manager.output_datasource_final[bounds])
+        assert np.product(block.shape) * 111 == \
+            chunk_datasource_manager.output_datasource[bounds].sum() + \
+            chunk_datasource_manager.output_datasource_final[bounds].sum()
+
+    def test_process_cloudvolume_buffered(self, chunk_datasource_manager):
+        bounds = (slice(200, 203), slice(100, 103), slice(50, 53))
+        chunk_shape = (3, 3, 3)
+        overlap = (1, 1, 1)
+
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+
         chunk_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
-        # BlockChunkBufferFactory
-        # chunk_datasource_manager.output_datasource = create_buffered_cloudvolumeCZYX(
-        #     chunk_datasource_manager.output_datasource)
+
+        task_stream = create_inference_and_blend_stream(
+            block=block,
+            inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
+                chunk_datasource_manager.output_datasource.dtype)),
+            blend_operation=AverageBlend(block),
+            datasource_manager=chunk_datasource_manager
+        )
+
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
+
+        print(chunk_datasource_manager.output_datasource[bounds])
+        print(chunk_datasource_manager.output_datasource_final[bounds])
+        assert np.product(block.shape) * 111 == \
+            chunk_datasource_manager.output_datasource[bounds].sum() + \
+            chunk_datasource_manager.output_datasource_final[bounds].sum()
+
+    def test_process_cloudvolume_sparse_buffered(self, chunk_datasource_manager):
+        bounds = (slice(200, 203), slice(100, 103), slice(50, 53))
+        chunk_shape = (3, 3, 3)
+        overlap = (1, 1, 1)
+
+        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+
+        chunk_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
+        chunk_datasource_manager.overlap_repository = create_sparse_overlap_cloudvolumeCZYX(
+            chunk_datasource_manager.output_datasource_final, block
+        )
 
         task_stream = create_inference_and_blend_stream(
             block=block,

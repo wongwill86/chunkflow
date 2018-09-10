@@ -195,15 +195,7 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
             .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage_to_complete.hashset)
             .flat_map(
                 lambda datasource_chunk:
-                #TODO fix this, filter out non buffered ds
-                # Observable.from_([datasource_manager.output_datasource])
                 Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
-                # Observable.merge(
-                #     Observable.empty() if not output_needs_flush else Observable.just(
-                #         datasource_manager.output_datasource),
-                #     Observable.empty() if not output_final_needs_flush else Observable.just(
-                #         datasource_manager.output_datasource_final)
-                # )
                 .map(lambda datasource: datasource_manager.flush(datasource_chunk, datasource, executor=executor))
                 .flat_map(lambda chunk_or_future:
                           Observable.just(chunk_or_future) if executor is None else chunk_or_future)

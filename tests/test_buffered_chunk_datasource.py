@@ -1,7 +1,7 @@
 # import numpy as np
 # from chunkblocks.models import Block
 
-# from chunkflow.buffer_factory import BlockChunkBufferFactory
+# from chunkflow.block_chunk_buffer import BlockChunkBufferFactory
 
 
 # class TestBufferedChunkDatasource:

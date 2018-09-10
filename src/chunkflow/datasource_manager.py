@@ -35,9 +35,6 @@ class DatasourceManager:
     def get_buffer(self, datasource):
         datasource_key = id(datasource)
         if self.buffer_generator is not None:
-            print('\nfetching ', datasource_key, datasource.layer_cloudpath)
-            print('available', self.datasource_buffers)
-
             if datasource_key not in self.datasource_buffers:
                 self.datasource_buffers[datasource_key] = self.buffer_generator(datasource)
             return self.datasource_buffers[datasource_key]
@@ -94,13 +91,9 @@ class DatasourceManager:
         try:
             cleared_chunk = datasource_buffer.clear(chunk)
             if cleared_chunk is not None:
-                print('\n\n\n\t\tflushing', id(datasource_buffer), 'id orig is ', id(datasource), 'flushing dumping! ', chunk.unit_index, datasource_buffer.datasource.layer_cloudpath)
-                print('flusing sum', cleared_chunk.data.sum())
-                # TODO this should be fixed shouldn't use ds.ds
-                # print('data is ', cleared_chunk.data)
-                # return self.dump_chunk(cleared_chunk, datasource_buffer.datasource, executor=executor)
                 return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=executor)
         except AttributeError:
+            # Not a buffered datasource, not flush needed
             pass
 
         return chunk

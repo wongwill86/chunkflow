@@ -14,7 +14,7 @@ class BlockProcessor:
         self.error = None
 
     def process(self, processing_stream, start_slice=None):
-        print('num_chunks %s' % (self.block.num_chunks,))
+        print('Num_chunks %s' % (self.block.num_chunks,))
         if start_slice:
             start = self.block.slices_to_unit_index(start_slice)
         else:
@@ -28,7 +28,7 @@ class BlockProcessor:
         )
 
     def on_error(self, error):
-        print('\n\n\n\nerror error *&)*&*&)*\n\n')
+        print('\n\n\n\n************************************error************************************\n\n')
         self.error = error
         traceback.print_exception(None, error, error.__traceback__)
         raise error

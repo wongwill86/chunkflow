@@ -97,21 +97,9 @@ def task(obj, **kwargs):
         obj['input_image_source'], cache=False, fill_missing=True)
     output_cloudvolume_final = CloudVolumeCZYX(
         obj['output_destination'], cache=False, fill_missing=True, non_aligned_writes=True)
-    block_datasource_manager = CloudVolumeDatasourceManager(
+
+    obj['block_datasource_manager'] = CloudVolumeDatasourceManager(
         input_cloudvolume=input_cloudvolume, output_cloudvolume=output_cloudvolume_final)
-
-    absolute_index = get_absolute_index(obj['task_offset_coordinates'], obj['overlap'], obj['task_shape'])
-    output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource(absolute_index)
-
-    chunk_datasource_manager = CloudVolumeDatasourceManager(
-        input_cloudvolume,
-        output_cloudvolume=create_buffered_cloudvolumeCZYX(output_cloudvolume_overlap),
-        output_cloudvolume_final=create_buffered_cloudvolumeCZYX(output_cloudvolume_final),
-        overlap_protocol=obj['overlap_protocol']
-    )
-
-    obj['block_datasource_manager'] = block_datasource_manager
-    obj['chunk_datasource_manager'] = chunk_datasource_manager
 
 
 @task.command()
@@ -131,24 +119,29 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     Run inference on task
     """
     print('Running inference ...')
+    block_datasource_manager = obj['block_datasource_manager']
+
     block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
 
-    chunk_datasource_manager = obj['chunk_datasource_manager']
-    datasource_manager = CloudVolumeDatasourceManager(
-        input_cloudvolume=chunk_datasource_manager.input_datasource,
-        output_cloudvolume=chunk_datasource_manager.output_datasource,
-        output_cloudvolume_final=chunk_datasource_manager.output_datasource_final,
+    absolute_index = get_absolute_index(obj['task_offset_coordinates'], obj['overlap'], obj['task_shape'])
+    output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource(absolute_index)
+
+    chunk_datasource_manager = CloudVolumeDatasourceManager(
+        block_datasource_manager.input_datasource,
+        output_cloudvolume=output_cloudvolume_overlap,
+        output_cloudvolume_final=block_datasource_manager.output_datasource,
         overlap_repository=SparseOverlapRepository(
             block=block,
-            channel_dimensions=(chunk_datasource_manager.output_datasource_final.num_channels,),
-            dtype=chunk_datasource_manager.output_datasource.dtype,
-        )
+            channel_dimensions=(output_cloudvolume_overlap.num_channels,),
+            dtype=output_cloudvolume_overlap.dtype,
+        ),
+        buffer_generator=create_buffered_cloudvolumeCZYX
     )
 
-    print('Using output_datasource', datasource_manager.output_datasource.layer_cloudpath)
-    print('Using output_datasource_final', datasource_manager.output_datasource_final.layer_cloudpath)
+    print('Using output_datasource', chunk_datasource_manager.output_datasource.layer_cloudpath)
+    print('Using output_datasource_final', chunk_datasource_manager.output_datasource_final.layer_cloudpath)
 
-    output_datasource = datasource_manager.output_datasource
+    output_datasource = chunk_datasource_manager.output_datasource
     inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
                                          output_data_type=output_datasource.data_type)
     blend_factory = BlendFactory(block)
@@ -157,7 +150,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         block=block,
         inference_operation=inference_factory.get_operation(inference_framework, model_path, net_path, accelerator_ids),
         blend_operation=blend_factory.get_operation(blend_framework),
-        datasource_manager=datasource_manager,
+        datasource_manager=chunk_datasource_manager,
     )
 
     BlockProcessor(block).process(task_stream)

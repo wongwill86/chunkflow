@@ -8,8 +8,8 @@ from chunkblocks.models import Block
 from cloudvolume import CloudVolume
 from cloudvolume.storage import reset_connection_pools
 
-from chunkflow.buffer_factory import BlockChunkBuffer
-from chunkflow.datasource_manager import DatasourceManager, OverlapRepository
+from chunkflow.block_chunk_buffer import BlockChunkBuffer
+from chunkflow.datasource_manager import DatasourceManager, OverlapRepository, SparseOverlapRepository
 
 OVERLAP_POSTFIX = '_overlap%s/'
 CONNECTED_PIDS = set()
@@ -50,16 +50,12 @@ def create_buffered_cloudvolumeCZYX(cloudvolume):
     return BlockChunkBuffer(block, cloudvolume, (cloudvolume.num_channels,))
 
 
-# def create_buffered_cloudvolumeCZYX(cloudvolume):
-#     chunk_shape = cloudvolume.underlying[::-1]
-#     offset = cloudvolume.voxel_offset[::-1]
-#     size = cloudvolume.volume_size[::-1]
-
-#     # we don't really care if the bounds don't divide evenly for this. snap to nearest grid
-#     num_chunks = tuple(ceil(s / c_shp) for s, c_shp in zip(size, chunk_shape))
-#     bounds = tuple(slice(o, o + n * c_shp) for o, n, c_shp in zip(offset, num_chunks, chunk_shape))
-#     block = Block(bounds=bounds, chunk_shape=chunk_shape)
-#     return (block, cloudvolume)
+def create_sparse_overlap_cloudvolumeCZYX(cloudvolume, block):
+    return SparseOverlapRepository(
+        block=block,
+        channel_dimensions=(cloudvolume.num_channels,),
+        dtype=cloudvolume.dtype
+    )
 
 
 class CloudVolumeCZYX(CloudVolume):
