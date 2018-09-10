@@ -8,7 +8,7 @@ from chunkblocks.models import Block
 from cloudvolume import CloudVolume
 from cloudvolume.storage import reset_connection_pools
 
-from chunkflow.block_chunk_buffer import BlockChunkBuffer
+from chunkflow.chunk_buffer import ChunkBuffer
 from chunkflow.datasource_manager import DatasourceManager, OverlapRepository, SparseOverlapRepository
 
 OVERLAP_POSTFIX = '_overlap%s/'
@@ -47,7 +47,7 @@ def create_buffered_cloudvolumeCZYX(cloudvolume):
     num_chunks = tuple(ceil(s / c_shp) for s, c_shp in zip(size, chunk_shape))
     bounds = tuple(slice(o, o + n * c_shp) for o, n, c_shp in zip(offset, num_chunks, chunk_shape))
     block = Block(bounds=bounds, chunk_shape=chunk_shape)
-    return BlockChunkBuffer(block, cloudvolume, (cloudvolume.num_channels,))
+    return ChunkBuffer(block, cloudvolume, (cloudvolume.num_channels,))
 
 
 def create_sparse_overlap_cloudvolumeCZYX(cloudvolume, block):

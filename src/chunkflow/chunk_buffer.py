@@ -11,7 +11,7 @@ class CacheMiss(Exception):
         return 'Cache miss: %s %s' % (self.message if self.message is not None else '', self.misses)
 
 
-class BlockChunkBuffer:
+class ChunkBuffer:
     def __init__(self, block, datasource, channel_dimensions):
         self.block = block
         self.datasource = datasource
@@ -19,9 +19,8 @@ class BlockChunkBuffer:
         self.local_cache = dict()
 
     def __setitem__(self, slices, item):
-        channel_dimensions = len(self.channel_dimensions) - len(slices)
         if not isinstance(item, GlobalOffsetArray):
-            global_offset = (0,) * channel_dimensions + tuple(
+            global_offset = (0,) * len(self.channel_dimensions) + tuple(
                 (0 if s.start is None else s.start) if isinstance(s, slice) else s for s in slices)
             item = GlobalOffsetArray(item, global_offset=global_offset)
 
@@ -58,10 +57,11 @@ class BlockChunkBuffer:
         return data
 
     def clear(self, chunk=None):
-        assert chunk.block.bounds == self.block.bounds and chunk.block.overlap == self.block.overlap
+        if chunk is not None:
+            assert chunk.block.bounds == self.block.bounds and chunk.block.overlap == self.block.overlap
 
         if chunk is None:
-            chunks = self.local_cache.values()
+            chunks = list(self.local_cache.values())
             self.local_cache.clear()
             return chunks
         elif chunk.unit_index in self.local_cache:

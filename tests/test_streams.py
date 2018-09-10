@@ -262,7 +262,7 @@ class TestInferenceStream:
             chunk_datasource_manager.output_datasource[bounds].sum() + \
             chunk_datasource_manager.output_datasource_final[bounds].sum()
 
-    def test_process_cloudvolume_buffered(self, chunk_datasource_manager):
+    def test_process_cloudvolume_buffer(self, chunk_datasource_manager):
         bounds = (slice(200, 203), slice(100, 103), slice(50, 53))
         chunk_shape = (3, 3, 3)
         overlap = (1, 1, 1)
