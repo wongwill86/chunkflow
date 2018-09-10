@@ -11,14 +11,16 @@ class CacheMiss(Exception):
         return 'Cache miss: %s %s' % (self.message if self.message is not None else '', self.misses)
 
 
-class BufferedChunkDatasource:
-    def __init__(self, block, datasource):
+
+class BlockChunkBuffer:
+    def __init__(self, block, datasource, channel_dimensions):
         self.block = block
         self.datasource = datasource
-        self.channel_dimensions = (datasource.num_channels,)
+        self.channel_dimensions = channel_dimensions
         self.local_cache = dict()
 
     def __setitem__(self, slices, item):
+        print('set item item already has', item[slices].sum())
         channel_dimensions = len(self.channel_dimensions) - len(slices)
         if not isinstance(item, GlobalOffsetArray):
             global_offset = (0,) * channel_dimensions + tuple(
@@ -36,8 +38,13 @@ class BufferedChunkDatasource:
                 self.local_cache[chunk_index] = chunk
             chunk = self.local_cache[chunk_index]
             chunk.load_data(item, slices=slices)
+            print('\n\tsetting', id(self), self.datasource.layer_cloudpath, 'setting slices', slices, 'into chunk ds',
+                  chunk_index)
+            print('setting sum', chunk.data.sum())
 
     def __getitem__(self, slices):
+        print('getting from ', self.datasource.layer_cloudpath, self.datasource[slices].sum())
+        return self.datasource[slices]
         unit_indices = self.block.slices_to_unit_indices(slices)
         missing = list(unit_index for unit_index in unit_indices if unit_index not in self.local_cache)
 
@@ -64,7 +71,8 @@ class BufferedChunkDatasource:
             self.local_cache.clear()
             return chunks
         elif chunk.unit_index in self.local_cache:
-            return self.local_cache.pop(chunk.unit_index)
+            obj = self.local_cache.pop(chunk.unit_index)
+            return obj
         else:
             return None
 

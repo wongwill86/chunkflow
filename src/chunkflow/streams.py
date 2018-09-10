@@ -135,7 +135,7 @@ def create_aggregate_stream(block, datasource_manager):
             lambda chunk:
             (
                 # create temp list of repositories values at time of iteration
-                Observable.from_(list(datasource_manager.overlap_datasources.values()))
+                Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
                 .reduce(partial(aggregate, chunk.slices), seed=0)
                 .do_action(chunk.load_data)
                 .map(lambda _: chunk)
@@ -158,6 +158,7 @@ def create_upload_stream(block, datasource_manager, executor=None):
                 lambda slices: DumpArguments(datasource_manager.output_datasource, slices)
             )
         )
+        .do_action(lambda x: print('*&*(*&******************dumping from upload stream'))
         .map(lambda dump_args: datasource_manager.dump_chunk(chunk, executor=executor, **dump_args._asdict()))
         .flat_map(lambda chunk_or_future: Observable.just(chunk_or_future) if executor is None else chunk_or_future)
         .reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
@@ -177,28 +178,32 @@ def create_checkpoint_observable(block, stage):
 
 
 def create_flush_datasource_observable(datasource_manager, block, stage_to_check, stage_to_complete, executor=None):
-    output_needs_flush = hasattr(datasource_manager.output_datasource, 'block')
-    output_final_needs_flush = hasattr(datasource_manager.output_datasource_final, 'block')
+    output_buffer = datasource_manager.get_buffer(datasource_manager.output_datasource)
+    output_final_buffer = datasource_manager.get_buffer(datasource_manager.output_datasource_final)
 
-    reference_datasource = (
-        datasource_manager.output_datasource if output_needs_flush else
-        datasource_manager.output_datasource_final if output_final_needs_flush else None
+    # assuming buffer blocks are same for both output and output_final
+    reference_buffer = (
+        output_buffer if output_buffer is not datasource_manager.output_datasource else
+        output_final_buffer if output_final_buffer is not datasource_manager.output_datasource_final else None
     )
 
-    if reference_datasource is not None:
+    if reference_buffer is not None:
         return lambda uploaded_chunk: (
-            Observable.from_(reference_datasource.block.slices_to_chunks(uploaded_chunk.slices))
+            Observable.from_(reference_buffer.block.slices_to_chunks(uploaded_chunk.slices))
             .filter(lambda datasource_chunk: block.all_checkpointed(
                 block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
             .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage_to_complete.hashset)
             .flat_map(
                 lambda datasource_chunk:
-                Observable.merge(
-                    Observable.empty() if not output_needs_flush else Observable.just(
-                        datasource_manager.output_datasource),
-                    Observable.empty() if not output_final_needs_flush else Observable.just(
-                        datasource_manager.output_datasource_final)
-                )
+                #TODO fix this, filter out non buffered ds
+                # Observable.from_([datasource_manager.output_datasource])
+                Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
+                # Observable.merge(
+                #     Observable.empty() if not output_needs_flush else Observable.just(
+                #         datasource_manager.output_datasource),
+                #     Observable.empty() if not output_final_needs_flush else Observable.just(
+                #         datasource_manager.output_datasource_final)
+                # )
                 .map(lambda datasource: datasource_manager.flush(datasource_chunk, datasource, executor=executor))
                 .flat_map(lambda chunk_or_future:
                           Observable.just(chunk_or_future) if executor is None else chunk_or_future)
@@ -233,7 +238,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .do_action(lambda chunk: print('Finish Upload ', chunk.unit_index))
 
         .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
-        .do_action(datasource_manager.clear)
+        # .do_action(datasource_manager.overlap_repository.clear)
 
         .flat_map(create_flush_datasource_observable(datasource_manager, block, Stages.UPLOAD_DONE, Stages.FLUSH_DONE))
         .map(lambda _: chunk)
@@ -251,7 +256,7 @@ def create_blend_stream(block, datasource_manager):
             lambda chunk_slices:
             (
                 # create temp list of repositories values at time of iteration
-                Observable.from_(list(datasource_manager.overlap_datasources.values()))
+                Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
                 .reduce(partial(aggregate, chunk_slices))
                 .do_action(
                     partial(chunk.copy_data, destination=datasource_manager.output_datasource, slices=chunk_slices)

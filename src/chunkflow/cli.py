@@ -101,7 +101,7 @@ def task(obj, **kwargs):
         input_cloudvolume=input_cloudvolume, output_cloudvolume=output_cloudvolume_final)
 
     absolute_index = get_absolute_index(obj['task_offset_coordinates'], obj['overlap'], obj['task_shape'])
-    output_cloudvolume_overlap = block_datasource_manager.get_datasource(absolute_index)
+    output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource(absolute_index)
 
     chunk_datasource_manager = CloudVolumeDatasourceManager(
         input_cloudvolume,

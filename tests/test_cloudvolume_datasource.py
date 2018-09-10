@@ -125,9 +125,9 @@ class TestCloudVolumeDatasource:
 
         repository = CloudVolumeDatasourceManager(input_cloudvolume, output_cloudvolume, output_cloudvolume_overlap)
 
-        datasource = repository.get_datasource((10, 11, 12))
+        datasource = repository.overlap_repository.get_datasource((10, 11, 12))
 
-        assert repository.get_datasource((1, 2, 0)) == datasource
+        assert repository.overlap_repository.get_datasource((1, 2, 0)) == datasource
 
     def test_pickle(self, input_cloudvolume):
         from google.auth.exceptions import DefaultCredentialsError

@@ -8,7 +8,7 @@ from chunkblocks.models import Block
 from cloudvolume import CloudVolume
 from cloudvolume.storage import reset_connection_pools
 
-from chunkflow.buffered_chunk_datasource import BufferedChunkDatasource
+from chunkflow.buffer_factory import BlockChunkBuffer
 from chunkflow.datasource_manager import DatasourceManager, OverlapRepository
 
 OVERLAP_POSTFIX = '_overlap%s/'
@@ -38,18 +38,6 @@ def default_overlap_datasource(path_or_cv, mod_index):
                            fill_missing=True)
 
 
-def create_datasource_buffer(cloudvolume):
-    chunk_shape = cloudvolume.underlying[::-1]
-    offset = cloudvolume.voxel_offset[::-1]
-    size = cloudvolume.volume_size[::-1]
-
-    # we don't really care if the bounds don't divide evenly for this. snap to nearest grid
-    num_chunks = tuple(ceil(s / c_shp) for s, c_shp in zip(size, chunk_shape))
-    bounds = tuple(slice(o, o + n * c_shp) for o, n, c_shp in zip(offset, num_chunks, chunk_shape))
-    block = Block(bounds=bounds, chunk_shape=chunk_shape)
-    return DatasourceBuffer(block, cloudvolume, num_channels=cloudvolume.num_channels)
-
-
 def create_buffered_cloudvolumeCZYX(cloudvolume):
     chunk_shape = cloudvolume.underlying[::-1]
     offset = cloudvolume.voxel_offset[::-1]
@@ -59,7 +47,19 @@ def create_buffered_cloudvolumeCZYX(cloudvolume):
     num_chunks = tuple(ceil(s / c_shp) for s, c_shp in zip(size, chunk_shape))
     bounds = tuple(slice(o, o + n * c_shp) for o, n, c_shp in zip(offset, num_chunks, chunk_shape))
     block = Block(bounds=bounds, chunk_shape=chunk_shape)
-    return BufferedChunkDatasource(block, cloudvolume)
+    return BlockChunkBuffer(block, cloudvolume, (cloudvolume.num_channels,))
+
+
+# def create_buffered_cloudvolumeCZYX(cloudvolume):
+#     chunk_shape = cloudvolume.underlying[::-1]
+#     offset = cloudvolume.voxel_offset[::-1]
+#     size = cloudvolume.volume_size[::-1]
+
+#     # we don't really care if the bounds don't divide evenly for this. snap to nearest grid
+#     num_chunks = tuple(ceil(s / c_shp) for s, c_shp in zip(size, chunk_shape))
+#     bounds = tuple(slice(o, o + n * c_shp) for o, n, c_shp in zip(offset, num_chunks, chunk_shape))
+#     block = Block(bounds=bounds, chunk_shape=chunk_shape)
+#     return (block, cloudvolume)
 
 
 class CloudVolumeCZYX(CloudVolume):
@@ -140,9 +140,6 @@ class CloudVolumeDatasourceManager(DatasourceManager):
                          overlap_repository=overlap_repository,
                          *args, **kwargs)
 
-    def create_buffer(self, datasource):
-        return None
-
 
 class CloudVolumeOverlapRepository(OverlapRepository):
     def __init__(self, output_cloudvolume, overlap_protocol=None):
@@ -155,6 +152,7 @@ class CloudVolumeOverlapRepository(OverlapRepository):
 
     def create(self, mod_index, *args, **kwargs):
         layer_cloudpath = default_overlap_name(self.output_cloudvolume, mod_index)
+        print('\n\n\ncreating', layer_cloudpath, 'from', self.output_cloudvolume.layer_cloudpath)
         post_protocol_index = layer_cloudpath.find("//") + 2
         base_name = layer_cloudpath[post_protocol_index:]
         layer_cloudpath = self.overlap_protocol + base_name

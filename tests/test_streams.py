@@ -246,6 +246,9 @@ class TestInferenceStream:
 
         block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
 
+        # from chunkflow.buffer_factory import BlockChunkBufferFactory
+        chunk_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
+        # BlockChunkBufferFactory
         # chunk_datasource_manager.output_datasource = create_buffered_cloudvolumeCZYX(
         #     chunk_datasource_manager.output_datasource)
 
@@ -286,7 +289,7 @@ class TestBlendStream:
 
         # set up test data
         datasource_manager.create_overlap_datasources(chunk_index)
-        for datasource in datasource_manager.overlap_datasources.values():
+        for datasource in datasource_manager.overlap_repository.datasources.values():
             datasource[chunk.slices] = 1
 
         blend_stream = create_blend_stream(block, datasource_manager)
@@ -314,7 +317,7 @@ class TestBlendStream:
 
         # set up test data
         datasource_manager.create_overlap_datasources(chunk_index)
-        for datasource in datasource_manager.overlap_datasources.values():
+        for datasource in datasource_manager.overlap_repository.datasources.values():
             datasource[chunk.slices] = 1
 
         blend_stream = create_blend_stream(block, datasource_manager)
@@ -343,7 +346,7 @@ class TestBlendStream:
 
         # set up test data
         datasource_manager.create_overlap_datasources(chunk_index)
-        for datasource in datasource_manager.overlap_datasources.values():
+        for datasource in datasource_manager.overlap_repository.datasources.values():
             datasource[(slice(None),) + chunk.slices] = 1
 
         blend_stream = create_blend_stream(block, datasource_manager)
@@ -373,10 +376,10 @@ class TestBlendStream:
 
         # set up test data
         block_datasource_manager.create_overlap_datasources(chunk_index)
-        for datasource in block_datasource_manager.overlap_datasources.values():
+        for datasource in block_datasource_manager.overlap_repository.datasources.values():
             datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
-        datasource = block_datasource_manager.get_datasource(chunk_index)
+        datasource = block_datasource_manager.overlap_repository.get_datasource(chunk_index)
         datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
         blend_stream = create_blend_stream(block, block_datasource_manager)
