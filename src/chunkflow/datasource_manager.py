@@ -21,16 +21,17 @@ def get_all_mod_index(index):
 
 class DatasourceManager:
     def __init__(self, input_datasource, output_datasource, overlap_repository, output_datasource_final=None,
-                 buffer_generator=None):
+                 buffer_generator=None, executor=None):
         self.input_datasource = input_datasource
         self.output_datasource = output_datasource
         self.output_datasource_final = output_datasource_final
         self.overlap_repository = overlap_repository
         self.buffer_generator = buffer_generator
         self.datasource_buffers = dict()
+        self.executor = executor
 
-    def download_input(self, chunk, executor=None):
-        return self.load_chunk(chunk, datasource=self.input_datasource, executor=executor)
+    def download_input(self, chunk):
+        return self.load_chunk(chunk, datasource=self.input_datasource)
 
     def get_buffer(self, datasource):
         datasource_key = id(datasource)
@@ -38,7 +39,7 @@ class DatasourceManager:
             if datasource_key not in self.datasource_buffers:
                 self.datasource_buffers[datasource_key] = self.buffer_generator(datasource)
             return self.datasource_buffers[datasource_key]
-        return datasource
+        return None
 
     def _perform_chunk_action(self, chunk_action, datasource, slices=None, executor=None):
         if executor is None:
@@ -46,7 +47,7 @@ class DatasourceManager:
         else:
             return executor.submit(chunk_action, datasource, slices)
 
-    def dump_chunk(self, chunk, datasource=None, slices=None, executor=None):
+    def dump_chunk(self, chunk, datasource=None, slices=None):
         """
         Dump chunk data into target datasource.
         :param chunk source of chunk data to dump from
@@ -64,9 +65,9 @@ class DatasourceManager:
             # TODO maybe allow the cache for overlap repo once BlockChunkBuffer supports setting and clearing
             datasource = self.get_buffer(datasource)
 
-        return self._perform_chunk_action(chunk.dump_data, datasource, slices=slices, executor=executor)
+        return self._perform_chunk_action(chunk.dump_data, datasource, slices=slices)
 
-    def load_chunk(self, chunk, datasource=None, slices=None, executor=None):
+    def load_chunk(self, chunk, datasource=None, slices=None):
         """
         Load chunk with data from datasource
         :param chunk destination chunk to load data into
@@ -78,20 +79,22 @@ class DatasourceManager:
 
         :returns: chunk if no executor is given, otherwise returns the future returned by the executor
         """
+        executor = None
         if datasource is None:
             datasource = self.overlap_repository.get_datasource(chunk.unit_index)
         else:
             # TODO maybe allow the cache for overlap repo once BlockChunkBuffer supports setting and clearing
-            datasource = self.get_buffer(datasource)
+            # Right now don't use cache for downloading data from datasource
+            executor = self.executor
 
         return self._perform_chunk_action(chunk.load_data, datasource, slices=slices, executor=executor)
 
-    def flush(self, chunk, datasource, executor=None):
+    def flush(self, chunk, datasource):
         datasource_buffer = self.get_buffer(datasource)
         try:
             cleared_chunk = datasource_buffer.clear(chunk)
             if cleared_chunk is not None:
-                return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=executor)
+                return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=self.executor)
         except AttributeError:
             # Not a buffered datasource, no flush needed
             pass

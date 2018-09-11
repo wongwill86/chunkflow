@@ -15,6 +15,7 @@ Why does this file exist, and why not put this in __main__?
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 import ast
+from concurrent.futures import ProcessPoolExecutor
 
 import click
 from chunkblocks.models import Block
@@ -135,7 +136,8 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
             channel_dimensions=(output_cloudvolume_overlap.num_channels,),
             dtype=output_cloudvolume_overlap.dtype,
         ),
-        buffer_generator=create_buffered_cloudvolumeCZYX
+        buffer_generator=create_buffered_cloudvolumeCZYX,
+        executor=ProcessPoolExecutor()
     )
 
     print('Using output_datasource', chunk_datasource_manager.output_datasource.layer_cloudpath)
