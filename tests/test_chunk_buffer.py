@@ -46,7 +46,7 @@ class TestChunkBuffer:
         other_block = Block(bounds=other_bounds, chunk_shape=other_chunk_shape, overlap=other_overlap)
 
         with pytest.raises(AssertionError):
-            cleared_chunks = chunk_buffer.clear(next(other_block.chunk_iterator()))
+            chunk_buffer.clear(next(other_block.chunk_iterator()))
 
     def test_clear_missing_chunk(self, output_cloudvolume):
         chunk_shape = output_cloudvolume.underlying[::-1]

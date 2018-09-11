@@ -161,7 +161,8 @@ class TestCloudVolumeDatasource:
         output_cloudvolume = chunk_datasource_manager.output_datasource
 
         for chunk in block.chunk_iterator():
-            chunk.data = GlobalOffsetArray(np.ones(chunk_shape), global_offset=tuple(s.start for s in chunk.slices))
+            chunk.data = GlobalOffsetArray(np.ones((output_cloudvolume.num_channels,) + chunk_shape),
+                                           global_offset=(0,) + tuple(s.start for s in chunk.slices))
             chunk_datasource_manager.dump_chunk(chunk, datasource=output_cloudvolume)
 
         assert 0 == output_cloudvolume[bounds].sum()
@@ -176,4 +177,4 @@ class TestCloudVolumeDatasource:
         for chunk in cv_block.chunk_iterator():
             chunk_datasource_manager.flush(chunk, output_cloudvolume)
 
-        assert np.product(block.shape) == output_cloudvolume[bounds].sum()
+        assert np.product(block.shape) * output_cloudvolume.num_channels == output_cloudvolume[bounds].sum()

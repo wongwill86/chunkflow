@@ -93,7 +93,7 @@ class DatasourceManager:
             if cleared_chunk is not None:
                 return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=executor)
         except AttributeError:
-            # Not a buffered datasource, not flush needed
+            # Not a buffered datasource, no flush needed
             pass
 
         return chunk
