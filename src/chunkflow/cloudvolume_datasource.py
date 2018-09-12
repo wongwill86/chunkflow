@@ -1,6 +1,7 @@
 import os
 from functools import reduce
 from math import ceil
+from multiprocessing import Lock
 
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
@@ -14,6 +15,7 @@ from chunkflow.datasource_manager import DatasourceManager, OverlapRepository, S
 OVERLAP_POSTFIX = '_overlap%s/'
 CONNECTED_PIDS = set()
 
+RESET_LOCK = Lock()
 
 def get_index_name(index):
     return reduce(lambda x, y: x + '_' + str(y), index, '')
@@ -65,7 +67,10 @@ class CloudVolumeCZYX(CloudVolume):
     """
     def __init__(self, *args, **kwargs):
         if os.getpid() not in CONNECTED_PIDS:
+            RESET_LOCK.acquire()
             reset_connection_pools()
+            CONNECTED_PIDS.add(os.getpid())
+            RESET_LOCK.release()
         super().__init__(*args, **kwargs)
 
     def __reduce__(self):
