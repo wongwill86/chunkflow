@@ -1,4 +1,5 @@
 import itertools
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
@@ -20,15 +21,38 @@ def get_all_mod_index(index):
 
 
 class DatasourceManager:
+    """
+    Class to handle datasources used in chunkflow. Allows user to create buffers for input/output datasources.
+    Executors can be specified to speed up data transfer
+
+    WARNING: There is a deadlock I couldn't debug when sharing the same executor across different rx upload/downloads.
+    As a heavy handed fix, simply use separate executors for each action (technically each stage) until someone figures
+    out why this happens. Oddly enough it works fine when using ThreadPoolExecutor.
+
+    WARNING: dump_executor should not be specified for now when using buffers. BlockChunkBuffer doesn't support setting
+    and clearing yet.
+
+    WARNING: Executors are not supported yet for overlap repositories for same reason above
+    """
     def __init__(self, input_datasource, output_datasource, overlap_repository, output_datasource_final=None,
-                 buffer_generator=None, executor=None):
+                 buffer_generator=None, load_executor=None, dump_executor=None, flush_executor=None):
         self.input_datasource = input_datasource
         self.output_datasource = output_datasource
         self.output_datasource_final = output_datasource_final
         self.overlap_repository = overlap_repository
         self.buffer_generator = buffer_generator
         self.datasource_buffers = dict()
-        self.executor = executor
+        # TODO remove if someone has found a solution
+        assert not (isinstance(load_executor, ProcessPoolExecutor) and load_executor is flush_executor), (
+            'Using the same ProcessPoolExecutor for loading and flushing is known to cause deadlocks.'
+        )
+        # TODO remove when BlockChunkBuffer supports setting and clearing
+        assert dump_executor is None or buffer_generator is None, (
+            "Dumping data to a the BlockChunkBuffer is not yet supported"
+        )
+        self.load_executor = load_executor
+        self.dump_executor = dump_executor
+        self.flush_executor = flush_executor
 
     def download_input(self, chunk):
         return self.load_chunk(chunk, datasource=self.input_datasource)
@@ -55,17 +79,21 @@ class DatasourceManager:
             if not specified, will search for corresponding overlap datasource (HACK this does NOT use the cache buffer
             at the moment)
         :param slices (optional) slices from chunk to dump from. default to chunk's entire bbox if None given
-        :param executor (optional) where to schedule dump command. runs on same thread if None specified
 
-        :returns: chunk if no executor is given, otherwise returns the future returned by the executor
+        :returns: chunk if no executor is configured, otherwise returns the future returned by the executor
         """
+        executor = None
         if datasource is None:
             datasource = self.overlap_repository.get_datasource(chunk.unit_index)
         else:
-            # TODO maybe allow the cache for overlap repo once BlockChunkBuffer supports setting and clearing
-            datasource = self.get_buffer(datasource)
+            buffered_datasource = self.get_buffer(datasource)
+            if buffered_datasource is not None:
+                datasource = buffered_datasource
 
-        return self._perform_chunk_action(chunk.dump_data, datasource, slices=slices)
+            # TODO use for all repo when buffers are supported (see class warnings doc)
+            executor = self.dump_executor
+
+        return self._perform_chunk_action(chunk.dump_data, datasource, slices=slices, executor=executor)
 
     def load_chunk(self, chunk, datasource=None, slices=None):
         """
@@ -75,9 +103,8 @@ class DatasourceManager:
             if not specified, will search for corresponding overlap datasource (HACK this does NOT use the cache buffer
             at the moment)
         :param slices (optional) slices from datasource to load from. default to chunk's entire bbox if None given
-        :param executor (optional) where to schedule load command. runs on same thread if None specified
 
-        :returns: chunk if no executor is given, otherwise returns the future returned by the executor
+        :returns: chunk if no executor is configured, otherwise returns the future returned by the executor
         """
         executor = None
         if datasource is None:
@@ -85,7 +112,7 @@ class DatasourceManager:
         else:
             # TODO maybe allow the cache for overlap repo once BlockChunkBuffer supports setting and clearing
             # Right now don't use cache for downloading data from datasource
-            executor = self.executor
+            executor = self.load_executor
 
         return self._perform_chunk_action(chunk.load_data, datasource, slices=slices, executor=executor)
 
@@ -94,7 +121,7 @@ class DatasourceManager:
         try:
             cleared_chunk = datasource_buffer.clear(chunk)
             if cleared_chunk is not None:
-                return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=self.executor)
+                return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=self.flush_executor)
         except AttributeError:
             # Not a buffered datasource, no flush needed
             pass

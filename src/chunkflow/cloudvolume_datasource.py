@@ -148,7 +148,6 @@ class CloudVolumeOverlapRepository(OverlapRepository):
 
     def create(self, mod_index, *args, **kwargs):
         layer_cloudpath = default_overlap_name(self.output_cloudvolume, mod_index)
-        print('\n\n\ncreating', layer_cloudpath, 'from', self.output_cloudvolume.layer_cloudpath)
         post_protocol_index = layer_cloudpath.find("//") + 2
         base_name = layer_cloudpath[post_protocol_index:]
         layer_cloudpath = self.overlap_protocol + base_name

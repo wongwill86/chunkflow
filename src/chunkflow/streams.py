@@ -21,6 +21,7 @@ def from_item_or_future(item_or_future):
     else:
         return Observable.of(item_or_future)
 
+
 @extensionmethod(Observable)
 def distinct_hash(self, key_selector=None, seed=None, lock=None):
     """
@@ -171,7 +172,6 @@ def create_upload_stream(block, datasource_manager):
                 lambda slices: DumpArguments(datasource_manager.output_datasource, slices)
             )
         )
-        .do_action(lambda x: print('*&*(*&******************dumping from upload stream'))
         .map(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
         .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future))
         # .flat_map(lambda chunk_or_future: Observable.just(chunk_or_future) if executor is None else chunk_or_future)
