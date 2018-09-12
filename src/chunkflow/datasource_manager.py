@@ -19,6 +19,9 @@ def get_all_mod_index(index):
     return itertools.chain([index], map(get_mod_index, UnitIterator().get_all_neighbors(index)))
 
 
+from concurrent.futures import ProcessPoolExecutor
+
+
 class DatasourceManager:
     def __init__(self, input_datasource, output_datasource, overlap_repository, output_datasource_final=None,
                  buffer_generator=None, executor=None):
@@ -29,6 +32,8 @@ class DatasourceManager:
         self.buffer_generator = buffer_generator
         self.datasource_buffers = dict()
         self.executor = executor
+        self.other_exec = ProcessPoolExecutor()
+        self.ops = []
 
     def download_input(self, chunk):
         return self.load_chunk(chunk, datasource=self.input_datasource)
@@ -39,13 +44,33 @@ class DatasourceManager:
             if datasource_key not in self.datasource_buffers:
                 self.datasource_buffers[datasource_key] = self.buffer_generator(datasource)
             return self.datasource_buffers[datasource_key]
-        return None
+        return datasource
 
-    def _perform_chunk_action(self, chunk_action, datasource, slices=None, executor=None):
+    def get_key(self, tchunk, action, ds, slices):
+        if slices is None:
+            slices = tchunk.slices
+        s_key = tuple((s.start, s.stop) if s is not None else s for s in slices)
+        return (action.__func__.__name__, ds, tchunk.unit_index)
+
+    def get_mark_done(self, tchunk, action, ds, slices):
+        def inner(something):
+            key = self.get_key(tchunk, action, ds.layer_cloudpath, slices)
+            self.ops.remove(key)
+            print('done exec, remaining:', key, 'remaining now has', len(self.ops), self.ops, self.executor._call_queue.qsize())
+        return inner
+
+    def _perform_chunk_action(self, tchunk, chunk_action, datasource, slices=None, executor=None):
         if executor is None:
             return chunk_action(datasource, slices=slices)
         else:
-            return executor.submit(chunk_action, datasource, slices)
+            key = self.get_key(tchunk, chunk_action, datasource.layer_cloudpath, slices)
+            self.ops.append(key)
+            print('submit exec for', key, 'now contain int:', 'now has', len(self.ops), self.ops,
+                  self.executor._call_queue.qsize())
+            # return executor.submit(chunk_action, datasource, slices)
+            fut = executor.submit(chunk_action, datasource, slices)
+            fut.add_done_callback(self.get_mark_done(tchunk, chunk_action, datasource, slices))
+            return fut
 
     def dump_chunk(self, chunk, datasource=None, slices=None):
         """
@@ -63,9 +88,11 @@ class DatasourceManager:
             datasource = self.overlap_repository.get_datasource(chunk.unit_index)
         else:
             # TODO maybe allow the cache for overlap repo once BlockChunkBuffer supports setting and clearing
-            datasource = self.get_buffer(datasource)
+            buffer_datasource = self.get_buffer(datasource)
+            if buffer_datasource is not None:
+                datasource = buffer_datasource
 
-        return self._perform_chunk_action(chunk.dump_data, datasource, slices=slices)
+        return self._perform_chunk_action(chunk, chunk.dump_data, datasource, slices=slices)
 
     def load_chunk(self, chunk, datasource=None, slices=None):
         """
@@ -79,6 +106,8 @@ class DatasourceManager:
 
         :returns: chunk if no executor is given, otherwise returns the future returned by the executor
         """
+        import os
+        print('calling load chunk ', chunk.unit_index, 'from', datasource.layer_cloudpath, os.getpid())
         executor = None
         if datasource is None:
             datasource = self.overlap_repository.get_datasource(chunk.unit_index)
@@ -87,14 +116,14 @@ class DatasourceManager:
             # Right now don't use cache for downloading data from datasource
             executor = self.executor
 
-        return self._perform_chunk_action(chunk.load_data, datasource, slices=slices, executor=executor)
+        return self._perform_chunk_action(chunk, chunk.load_data, datasource, slices=slices, executor=executor)
 
     def flush(self, chunk, datasource):
         datasource_buffer = self.get_buffer(datasource)
         try:
             cleared_chunk = datasource_buffer.clear(chunk)
             if cleared_chunk is not None:
-                return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=self.executor)
+                return self._perform_chunk_action(chunk, cleared_chunk.dump_data, datasource, executor=self.executor)
         except AttributeError:
             # Not a buffered datasource, no flush needed
             pass

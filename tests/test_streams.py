@@ -113,20 +113,32 @@ class TestInferenceStream:
             datasource_manager=datasource_manager
         )
 
+        print('finish0')
+        print(datasource_manager.output_datasource[bounds])
+        print(datasource_manager.output_datasource_final[bounds])
         test_chunk_0_0 = block.unit_index_to_chunk((0, 0))
         assert not block.is_checkpointed(test_chunk_0_0)
         Observable.just(test_chunk_0_0).flat_map(task_stream).subscribe(print)
         assert block.is_checkpointed(test_chunk_0_0)
+        print('finish1')
+        print(datasource_manager.output_datasource[bounds])
+        print(datasource_manager.output_datasource_final[bounds])
 
         test_chunk_0_1 = block.unit_index_to_chunk((0, 1))
         assert not block.is_checkpointed(test_chunk_0_1)
         Observable.just(test_chunk_0_1).flat_map(task_stream).subscribe(print)
         assert block.is_checkpointed(test_chunk_0_1)
 
+        print('finish2')
+        print(datasource_manager.output_datasource[bounds])
+        print(datasource_manager.output_datasource_final[bounds])
         test_chunk_1_0 = block.unit_index_to_chunk((1, 0))
         assert not block.is_checkpointed(test_chunk_1_0)
         Observable.just(test_chunk_1_0).flat_map(task_stream).subscribe(print)
         assert block.is_checkpointed(test_chunk_1_0)
+        print('finish3')
+        print(datasource_manager.output_datasource[bounds])
+        print(datasource_manager.output_datasource_final[bounds])
 
         assert 0 == \
             datasource_manager.output_datasource.sum() + \

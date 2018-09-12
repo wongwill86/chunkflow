@@ -137,7 +137,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
             dtype=output_cloudvolume_overlap.dtype,
         ),
         buffer_generator=create_buffered_cloudvolumeCZYX,
-        executor=ProcessPoolExecutor()
+        executor=ProcessPoolExecutor(max_workers=8)
     )
 
     print('Using output_datasource', chunk_datasource_manager.output_datasource.layer_cloudpath)

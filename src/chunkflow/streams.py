@@ -182,7 +182,9 @@ def create_upload_stream(block, datasource_manager):
 def create_checkpoint_observable(block, stage):
     return lambda chunk: (
         Observable.just(chunk)
-        .do_action(lambda chunk: block.checkpoint(chunk, stage=stage.value))
+        .do_action(lambda chunk: block.checkpoint(chunk, stage=stage.value) or print('c', chunk.unit_index, ' neighbors:', list(
+            ch.unit_index for ch in block.get_all_neighbors(chunk)), 'checkpointed  at stage\n', stage, 'are ',
+            block.ensure_checkpoint_stage(stage.value)))
         # check both the current chunk we just ran inference on as well as the neighboring chunks
         .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
         .filter(lambda chunk: block.is_checkpointed(chunk, stage=stage.value))
@@ -204,11 +206,15 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
     if reference_buffer is not None:
         return lambda uploaded_chunk: (
             Observable.from_(reference_buffer.block.slices_to_chunks(uploaded_chunk.slices))
-            .filter(lambda datasource_chunk: block.all_checkpointed(
+            .filter(lambda datasource_chunk: print('original block', block.bounds, block.overlap, block.chunk_shape) or
+                    print('ref bl', reference_buffer.block.bounds, reference_buffer.block.overlap, reference_buffer.block.chunk_shape) or
+                    print('ds chunkuni index is', datasource_chunk.unit_index, datasource_chunk.slices) or
+                    block.all_checkpointed(
                 block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
             .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage_to_complete.hashset)
             .flat_map(
                 lambda datasource_chunk:
+                # Observable.from_([datasource_manager.output_datasource])
                 Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
                 .map(lambda datasource: datasource_manager.flush(datasource_chunk, datasource))
                 # .flat_map(lambda chunk_or_future:
@@ -217,6 +223,9 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
             )
             .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk)  # reduce to wait for all to complete transferring
             .map(lambda _: uploaded_chunk)
+            .do_action(lambda c: block.checkpoint(c, stage=stage_to_complete.value) or print('c', c.unit_index, ' neighbors:', list(
+                ch.unit_index for ch in block.get_all_neighbors(c)), 'checkpointed  at stage\n', stage_to_complete, 'are ',
+                block.ensure_checkpoint_stage(stage_to_complete.value)))
         )
     else:
         return lambda uploaded_chunk: Observable.just(uploaded_chunk)
@@ -230,21 +239,26 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         def __init__(self, *args, **kwargs):
             self.hashset = set()
 
+    import os
     return lambda chunk: (
         Observable.just(chunk)
-        .do_action(lambda chunk: print('Start ', chunk.unit_index))
+        .do_action(lambda chunk: print('Start ', chunk.unit_index, os.getpid()))
         .flat_map(create_download_stream(block, datasource_manager))
-        .do_action(lambda chunk: print('Finish Download ', chunk.unit_index))
+        .do_action(lambda chunk: print('Finish Download ', chunk.unit_index, os.getpid()))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
-        .do_action(lambda chunk: print('Finish Inference ', chunk.unit_index))
+        .do_action(lambda chunk: print('Finish Inference ', chunk.unit_index, os.getpid()))
         .flat_map(create_checkpoint_observable(block, Stages.INFERENCE_DONE))
+        # .do_action(lambda c: print('\n\nINFERENCE DONE for', c.unit_index, 'SET is ',
+        #                            block.ensure_checkpoint_stage(Stages.INFERENCE_DONE.value)))
 
         .flat_map(create_aggregate_stream(block, datasource_manager))
-        .do_action(lambda chunk: print('Finish Aggregate ', chunk.unit_index))
+        .do_action(lambda chunk: print('Finish Aggregate ', chunk.unit_index, os.getpid()))
         .flat_map(create_upload_stream(block, datasource_manager))
-        .do_action(lambda chunk: print('Finish Upload ', chunk.unit_index))
+        .do_action(lambda chunk: print('Finish Upload ', chunk.unit_index, os.getpid()))
 
         .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
+        # .do_action(lambda c: print('\n\nUpload  DONE for', c.unit_index, 'SET is ',
+        #                            block.ensure_checkpoint_stage(Stages.UPLOAD_DONE.value)))
         # .do_action(datasource_manager.overlap_repository.clear)
 
         .flat_map(create_flush_datasource_observable(datasource_manager, block, Stages.UPLOAD_DONE, Stages.FLUSH_DONE))
