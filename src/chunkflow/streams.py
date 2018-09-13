@@ -11,13 +11,15 @@ from rx.internal import extensionmethod
 
 
 @extensionmethod(Observable)
-def from_item_or_future(item_or_future):
+def from_item_or_future(item_or_future, default=None):
     """
     Checks the item to see if it is a future-like. (could be asyncio future which is not part of the concurrent.futures
     package).
     """
     if hasattr(item_or_future, 'result'):  # should probably check if it is callable too
         return Observable.from_future(item_or_future)
+    elif item_or_future is None:
+        return Observable.of(default)
     else:
         return Observable.of(item_or_future)
 
@@ -124,11 +126,10 @@ def aggregate(slices, aggregate, datasource):
 
 def create_download_stream(block, datasource_manager, executor=None):
     return lambda chunk: Observable.just(chunk).map(
+        # todo no need forlambda
         lambda chunk: datasource_manager.download_input(chunk)
     ).flat_map(
         lambda x: Observable.from_item_or_future(x)
-        # lambda chunk_or_future: Observable.just(chunk_or_future) if isinstance(chunk_or_future, Future) else
-        #     Observable.from_future(chunk_or_future)
     )
 
 
@@ -174,7 +175,6 @@ def create_upload_stream(block, datasource_manager):
         )
         .map(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
         .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future))
-        # .flat_map(lambda chunk_or_future: Observable.just(chunk_or_future) if executor is None else chunk_or_future)
         .reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
     )
 
@@ -211,8 +211,6 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
                 lambda datasource_chunk:
                 Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
                 .map(lambda datasource: datasource_manager.flush(datasource_chunk, datasource))
-                # .flat_map(lambda chunk_or_future:
-                #           Observable.just(chunk_or_future) if executor is None else chunk_or_future)
                 .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future))
             )
             .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk)  # reduce to wait for all to complete transferring
@@ -256,19 +254,53 @@ def create_blend_stream(block, datasource_manager):
     """
     Assume block is a dataset with chunks to represent each task!
     """
-    return lambda chunk: (
-        Observable.just(chunk)
-        .flat_map(block.overlap_chunk_slices)
-        .flat_map(
-            lambda chunk_slices:
-            (
-                # create temp list of repositories values at time of iteration
-                Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
-                .reduce(partial(aggregate, chunk_slices))
-                .do_action(
-                    partial(chunk.copy_data, destination=datasource_manager.output_datasource, slices=chunk_slices)
+    class Stages(Enum):
+        AGGREGATE_DONE, FLUSH_DONE = range(2)
+
+        def __init__(self, *args, **kwargs):
+            self.hashset = set()
+
+    output_buffer = datasource_manager.get_buffer(datasource_manager.output_datasource)
+
+    # assuming buffer blocks are same for both output and output_final
+    reference_buffer = (output_buffer if output_buffer is not None else None)
+
+    if reference_buffer is not None:
+        return lambda dataset_chunk: (
+            Observable.just(dataset_chunk)
+            .flat_map(block.overlap_chunk_slices)
+            .flat_map(
+                lambda dataset_chunk_slices:
+                (
+                    # create temp list of repositories values at time of iteration
+                    Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
+                    .reduce(partial(aggregate, dataset_chunk_slices), seed=0)
+                    .do_action(
+                        partial(datasource_manager.copy, dataset_chunk, datasource=datasource_manager.output_datasource,
+                                slices=dataset_chunk_slices)
+                    )
                 )
             )
+            # reduce to wait for everything to xfer into buffer
+            .reduce(lambda x, y: dataset_chunk, seed=dataset_chunk).map(lambda _: dataset_chunk)
+            .map(lambda _: datasource_manager.flush(None, datasource=datasource_manager.output_datasource))
+            .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future, default=dataset_chunk))
         )
-        .map(lambda _: chunk)
-    )
+    else:
+        return lambda chunk: (
+            Observable.just(chunk)
+            .flat_map(block.overlap_chunk_slices)
+            .flat_map(
+                lambda chunk_slices:
+                (
+                    # create temp list of repositories values at time of iteration
+                    Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
+                    .reduce(partial(aggregate, chunk_slices), seed=0)
+                    .do_action(
+                        partial(datasource_manager.copy, chunk, datasource=datasource_manager.output_datasource,
+                                slices=chunk_slices)
+                    )
+                )
+            )
+            .map(lambda _: chunk)
+        )

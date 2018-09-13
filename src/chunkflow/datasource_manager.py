@@ -120,13 +120,26 @@ class DatasourceManager:
         datasource_buffer = self.get_buffer(datasource)
         try:
             cleared_chunk = datasource_buffer.clear(chunk)
-            if cleared_chunk is not None:
-                return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=self.flush_executor)
         except AttributeError:
             # Not a buffered datasource, no flush needed
             pass
+        else:
+            try:
+                return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=self.flush_executor)
+            except AttributeError:
+                # cleared chunk doesn't have dump_data must be a list
+                return [
+                    self._perform_chunk_action(chunk.dump_data, datasource, executor=self.flush_executor) for chunk in
+                    cleared_chunk
+                ]
 
         return chunk
+
+    def copy(self, chunk, source, datasource, slices=None):
+        buffered_datasource = self.get_buffer(datasource)
+        if buffered_datasource is not None:
+            datasource = buffered_datasource
+        return chunk.copy_data(source=source, destination=datasource, slices=slices)
 
     def create_overlap_datasources(self, center_index):
         """

@@ -438,6 +438,37 @@ class TestBlendStream:
         assert np.product(task_shape) * np.product(block.num_chunks) * 3 == \
             block_datasource_manager.output_datasource[block.bounds].sum()
 
+    def test_blend_multichannel_3d_cloudvolume_buffered(self, block_datasource_manager):
+        task_shape = (5, 5, 5)
+        overlap = (1, 1, 1)
+        num_chunks = (3, 3, 3)
+
+        input_datasource = block_datasource_manager.input_datasource
+        offsets = input_datasource.voxel_offset[::-1]
+
+        block = Block(num_chunks=num_chunks, offset=offsets, chunk_shape=task_shape, overlap=overlap)
+        block_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
+
+        # set up test data
+        for chunk in block.chunk_iterator():
+            overlap_datasource = block_datasource_manager.overlap_repository.get_datasource(chunk.unit_index)
+            core_datasource = block_datasource_manager.output_datasource
+
+            core_slices = chunk.core_slices()
+            core_datasource[core_slices] = np.ones((3,) + tuple(s.stop - s.start for s in core_slices),
+                                                   dtype=np.dtype(core_datasource.data_type))
+
+            for overlap_slices in chunk.border_slices():
+                overlap_datasource[overlap_slices] = np.ones((3,) + tuple(s.stop - s.start for s in overlap_slices),
+                                                             dtype=overlap_datasource.data_type)
+
+        blend_stream = create_blend_stream(block, block_datasource_manager)
+        Observable.just(next(block.chunk_iterator())).flat_map(blend_stream).subscribe(print)
+
+        print(block_datasource_manager.output_datasource[block.bounds][0])
+        assert 0 == block_datasource_manager.output_datasource[block.bounds].sum()
+        assert False
+
 
 class TestPerformance:
 
