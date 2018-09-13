@@ -385,31 +385,33 @@ class TestBlendStream:
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
         output_shape = (3,) + fake_data.shape
 
-        datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=output_shape)
+        block_datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=output_shape)
 
-        chunk_index = (1, 1, 1)
+        for chunk in block.chunk_iterator():
+            overlap_datasource = block_datasource_manager.overlap_repository.get_datasource(chunk.unit_index)
+            core_datasource = block_datasource_manager.output_datasource
 
-        chunk = block.unit_index_to_chunk(chunk_index)
+            core_slices = (slice(None, None),) + chunk.core_slices()
+            core_datasource[core_slices] = np.ones(core_datasource[core_slices].shape,
+                                                   dtype=np.dtype(core_datasource.dtype))
+
+            for overlap_slices in chunk.border_slices():
+                overlap_slices = (slice(None, None),) + overlap_slices
+                overlap_datasource[overlap_slices] = np.ones(overlap_datasource[overlap_slices].shape,
+                                                             dtype=overlap_datasource.dtype)
 
         # set up test data
-        datasource_manager.create_overlap_datasources(chunk_index)
-        for datasource in datasource_manager.overlap_repository.datasources.values():
-            datasource[(slice(None),) + chunk.slices] = 1
 
-        blend_stream = create_blend_stream(block, datasource_manager)
+        blend_stream = create_blend_stream(block, block_datasource_manager)
 
-        Observable.just(chunk).flat_map(blend_stream).subscribe(print)
+        Observable.from_(block.chunk_iterator()).flat_map(blend_stream).subscribe(print)
 
-        np.set_printoptions(threshold=np.nan)
-
-        assert 3 ** len(chunk_index) * 7 * 3 == \
-            datasource_manager.output_datasource.sum()
-        # assert False
+        assert np.product(task_shape) * np.product(block.num_chunks) * 3 == \
+            block_datasource_manager.output_datasource.sum()
 
     def test_blend_multichannel_3d_cloudvolume(self, block_datasource_manager):
-        task_shape = (3, 30, 30)
-        overlap = (1, 10, 10)
-        output_shape = (3,) + task_shape
+        task_shape = (5, 5, 5)
+        overlap = (1, 1, 1)
         num_chunks = (3, 3, 3)
 
         input_datasource = block_datasource_manager.input_datasource
@@ -417,26 +419,24 @@ class TestBlendStream:
 
         block = Block(num_chunks=num_chunks, offset=offsets, chunk_shape=task_shape, overlap=overlap)
 
-        chunk_index = (1, 1, 1)
-
-        chunk = block.unit_index_to_chunk(chunk_index)
-
         # set up test data
-        block_datasource_manager.create_overlap_datasources(chunk_index)
-        for datasource in block_datasource_manager.overlap_repository.datasources.values():
-            datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
+        for chunk in block.chunk_iterator():
+            overlap_datasource = block_datasource_manager.overlap_repository.get_datasource(chunk.unit_index)
+            core_datasource = block_datasource_manager.output_datasource
 
-        datasource = block_datasource_manager.overlap_repository.get_datasource(chunk_index)
-        datasource[chunk.slices] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
+            core_slices = chunk.core_slices()
+            core_datasource[core_slices] = np.ones((3,) + tuple(s.stop - s.start for s in core_slices),
+                                                   dtype=np.dtype(core_datasource.data_type))
+
+            for overlap_slices in chunk.border_slices():
+                overlap_datasource[overlap_slices] = np.ones((3,) + tuple(s.stop - s.start for s in overlap_slices),
+                                                             dtype=overlap_datasource.data_type)
 
         blend_stream = create_blend_stream(block, block_datasource_manager)
+        Observable.from_(block.chunk_iterator()).flat_map(blend_stream).subscribe(print)
 
-        Observable.just(chunk).flat_map(blend_stream).subscribe(print)
-
-        volume_size = input_datasource.volume_size[::-1]
-        dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offsets, volume_size))
-        assert np.product(task_shape) * 7 * 3 == \
-            block_datasource_manager.output_datasource[dataset_bounds].sum()
+        assert np.product(task_shape) * np.product(block.num_chunks) * 3 == \
+            block_datasource_manager.output_datasource[block.bounds].sum()
 
 
 class TestPerformance:

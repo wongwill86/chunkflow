@@ -17,6 +17,7 @@ CONNECTED_PIDS = set()
 
 RESET_LOCK = Lock()
 
+
 def get_index_name(index):
     return reduce(lambda x, y: x + '_' + str(y), index, '')
 
