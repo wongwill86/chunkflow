@@ -195,7 +195,7 @@ def test_blend_bad_param(block_datasource_manager):
     np.set_printoptions(threshold=np.inf)
 
     print(result.output)
-    assert result.exit_code == -1
+    assert result.exit_code != 0
 
 
 def test_check(block_datasource_manager, output_cloudvolume_overlaps):
@@ -238,7 +238,7 @@ def test_check_bad_chunksize(block_datasource_manager, output_cloudvolume_overla
         'check',
     ])
     print(result.output)
-    assert result.exit_code == -1
+    assert result.exit_code != 0
 
 
 def test_check_missing_overlaps_not_needed(block_datasource_manager):
@@ -275,7 +275,7 @@ def test_check_missing_overlaps_needed(block_datasource_manager):
         'check',
     ])
     print(result.output)
-    assert result.exit_code == -1
+    assert result.exit_code != 0
 
 
 def test_check_missing_cloudvolume():
@@ -292,7 +292,7 @@ def test_check_missing_cloudvolume():
         'check',
     ])
     print(result.output)
-    assert result.exit_code == -1
+    assert result.exit_code != 0
 
 
 def test_create_cloudvolume(input_cloudvolume):
@@ -421,4 +421,4 @@ def test_create_cloudvolume_mixed_chunk_size(input_cloudvolume, output_cloudvolu
 
     print(result.output)
 
-    assert result.exit_code == -1
+    assert result.exit_code != 0
