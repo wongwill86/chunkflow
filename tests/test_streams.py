@@ -450,23 +450,30 @@ class TestBlendStream:
         block_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
 
         # set up test data
+        data_sum = 0
         for chunk in block.chunk_iterator():
             overlap_datasource = block_datasource_manager.overlap_repository.get_datasource(chunk.unit_index)
             core_datasource = block_datasource_manager.output_datasource
 
             core_slices = chunk.core_slices()
             core_datasource[core_slices] = np.ones((3,) + tuple(s.stop - s.start for s in core_slices),
-                                                   dtype=np.dtype(core_datasource.data_type))
+                                                   dtype=np.dtype(core_datasource.data_type)) * 3
+            data_sum += core_datasource[core_slices].sum()
 
             for overlap_slices in chunk.border_slices():
                 overlap_datasource[overlap_slices] = np.ones((3,) + tuple(s.stop - s.start for s in overlap_slices),
                                                              dtype=overlap_datasource.data_type)
+                data_sum += overlap_datasource[overlap_slices].sum()
+
 
         blend_stream = create_blend_stream(block, block_datasource_manager)
-        Observable.just(next(block.chunk_iterator())).flat_map(blend_stream).subscribe(print)
-
-        print(block_datasource_manager.output_datasource[block.bounds][0])
-        assert 0 == block_datasource_manager.output_datasource[block.bounds].sum()
+        (
+            Observable.from_(list(block.chunk_iterator())).flat_map(blend_stream)
+            .reduce(lambda x, y: x)
+            .map(lambda _: block_datasource_manager.flush(None, datasource=block_datasource_manager.output_datasource))
+            .subscribe(print)
+        )
+        assert data_sum == block_datasource_manager.output_datasource[block.bounds].sum()
         assert False
 
 

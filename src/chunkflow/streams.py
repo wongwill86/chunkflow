@@ -205,7 +205,7 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
         return lambda uploaded_chunk: (
             Observable.from_(reference_buffer.block.slices_to_chunks(uploaded_chunk.slices))
             .filter(lambda datasource_chunk: block.all_checkpointed(
-                block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
+                block.slices_to_chunks(datasource_chunk.slices), stage=len(stage_to_check.value))
             .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage_to_complete.hashset)
             .flat_map(
                 lambda datasource_chunk:
@@ -220,8 +220,7 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
         return lambda uploaded_chunk: Observable.just(uploaded_chunk)
 
 
-def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager,
-                                      io_executor=None):
+def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
     class Stages(Enum):
         INFERENCE_DONE, UPLOAD_DONE, FLUSH_DONE = range(3)
 
@@ -243,6 +242,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .do_action(lambda chunk: print('Finish Upload ', chunk.unit_index))
 
         .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
+        # TODO should figure out if clear works
         # .do_action(datasource_manager.overlap_repository.clear)
 
         .flat_map(create_flush_datasource_observable(datasource_manager, block, Stages.UPLOAD_DONE, Stages.FLUSH_DONE))
@@ -254,22 +254,31 @@ def create_blend_stream(block, datasource_manager):
     """
     Assume block is a dataset with chunks to represent each task!
     """
-    class Stages(Enum):
-        AGGREGATE_DONE, FLUSH_DONE = range(2)
-
-        def __init__(self, *args, **kwargs):
-            self.hashset = set()
-
     output_buffer = datasource_manager.get_buffer(datasource_manager.output_datasource)
 
     # assuming buffer blocks are same for both output and output_final
     reference_buffer = (output_buffer if output_buffer is not None else None)
 
+    preloaded_dataset_chunks = set()
+
     if reference_buffer is not None:
         return lambda dataset_chunk: (
             Observable.just(dataset_chunk)
+            # Preload the output cache with the the original core data first!
+            .flat_map(
+                lambda dataset_chunk: (
+                    Observable.from_(reference_buffer.block.slices_to_chunks(dataset_chunk.slices))
+                    .distinct_hash(key_selector=lambda c: c.unit_index, seed=preloaded_dataset_chunks)
+                    .do_action(lambda datasource_chunk:
+                            datasource_manager.copy(datasource_chunk, datasource_manager.output_datasource,
+                                                    datasource=datasource_manager.output_datasource))
+                    .reduce(lambda x, y: dataset_chunk, seed=dataset_chunk).map(
+                        lambda _: dataset_chunk)
+                )
+            )
             .flat_map(block.overlap_chunk_slices)
             .flat_map(
+                # Aggregate overlap dataset
                 lambda dataset_chunk_slices:
                 (
                     # create temp list of repositories values at time of iteration
@@ -283,8 +292,6 @@ def create_blend_stream(block, datasource_manager):
             )
             # reduce to wait for everything to xfer into buffer
             .reduce(lambda x, y: dataset_chunk, seed=dataset_chunk).map(lambda _: dataset_chunk)
-            .map(lambda _: datasource_manager.flush(None, datasource=datasource_manager.output_datasource))
-            .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future, default=dataset_chunk))
         )
     else:
         return lambda chunk: (
