@@ -125,7 +125,8 @@ class DatasourceManager:
             pass
         else:
             try:
-                return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=self.flush_executor)
+                if cleared_chunk is not None:
+                    return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=self.flush_executor)
             except AttributeError:
                 # cleared chunk doesn't have dump_data must be a list
                 return [
