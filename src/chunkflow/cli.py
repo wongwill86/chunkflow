@@ -32,7 +32,7 @@ from chunkflow.cloudvolume_datasource import (
 )
 from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk_sizes, valid_cloudvolume
 from chunkflow.datasource_manager import SparseOverlapRepository, get_absolute_index, get_all_mod_index
-from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
+from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream, create_preload_datasource_stream
 
 
 # https://stackoverflow.com/a/47730333
@@ -192,6 +192,7 @@ def blend(obj, **kwargs):
         print(dataset_bounds)
 
     datasource_manager = obj['block_datasource_manager']
+    datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
 
     print(obj['voxel_offset'])
     print(obj['volume_size'])
@@ -203,7 +204,16 @@ def blend(obj, **kwargs):
 
     chunk_index = block.chunk_slices_to_unit_index(obj['task_bounds'])
     chunk = block.unit_index_to_chunk(chunk_index)
-    Observable.just(chunk).flat_map(blend_stream).subscribe(print)
+
+    (
+        Observable.just(chunk)
+        .flat_map(create_preload_datasource_stream(datasource_manager,
+                                                   datasource_manager.output_datasource))
+        .flat_map(blend_stream)
+        .reduce(lambda x, y: x)
+        .map(lambda _: datasource_manager.flush(None, datasource=datasource_manager.output_datasource))
+        .subscribe(print)
+    )
 
     print('Finished blend!')
 

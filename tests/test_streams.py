@@ -10,7 +10,7 @@ from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkflow.cloudvolume_datasource import create_buffered_cloudvolumeCZYX, create_sparse_overlap_cloudvolumeCZYX
 from chunkflow.datasource_manager import DatasourceManager, OverlapRepository, SparseOverlapRepository
-from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream
+from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream, create_preload_datasource_stream
 
 
 class NumpyDatasourceManager(DatasourceManager):
@@ -465,16 +465,18 @@ class TestBlendStream:
                                                              dtype=overlap_datasource.data_type)
                 data_sum += overlap_datasource[overlap_slices].sum()
 
-
         blend_stream = create_blend_stream(block, block_datasource_manager)
         (
-            Observable.from_(list(block.chunk_iterator())).flat_map(blend_stream)
+            Observable.from_(list(block.chunk_iterator()))
+            .flat_map(create_preload_datasource_stream(block_datasource_manager,
+                                                       block_datasource_manager.output_datasource))
+            .flat_map(blend_stream)
             .reduce(lambda x, y: x)
             .map(lambda _: block_datasource_manager.flush(None, datasource=block_datasource_manager.output_datasource))
             .subscribe(print)
         )
+        print(block_datasource_manager.output_datasource[block.bounds][0])
         assert data_sum == block_datasource_manager.output_datasource[block.bounds].sum()
-        assert False
 
 
 class TestPerformance:
@@ -569,7 +571,7 @@ class TestPerformance:
         assert np.product(block.shape) * 111 == actual
 
 
-class TestRxExtenstion:
+class TestRxExtension:
 
     def test_distinct_hash(self):
         completed_distinct = []
