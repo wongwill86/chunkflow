@@ -16,7 +16,11 @@ class TestChunkBuffer:
         block = Block(bounds=bounds, chunk_shape=chunk_shape)
 
         chunk_buffer = ChunkBuffer(block, output_cloudvolume, (output_cloudvolume.num_channels,))
-        slices = (slice(200, 203), slice(100, 122), slice(50, 78))
+        slices = (
+            slice(offset[0], offset[0] + chunk_shape[0] * 1 + chunk_shape[0] // 2),
+            slice(offset[1], offset[1] + chunk_shape[1] * 1 + chunk_shape[0] // 3),
+            slice(offset[2], offset[2] + chunk_shape[2] * 1 + chunk_shape[0] // 4),
+        )
         item_shape = (output_cloudvolume.num_channels,) + tuple(s.stop - s.start for s in slices)
         chunk_buffer[slices] = np.ones(item_shape)
         assert np.array_equal(output_cloudvolume[slices], np.zeros(item_shape))
@@ -72,13 +76,19 @@ class TestChunkBuffer:
 
         chunk_buffer = ChunkBuffer(block, output_cloudvolume, (output_cloudvolume.num_channels,))
 
-        slices = (slice(200, 203), slice(100, 122), slice(50, 78))
+        slices = (
+            slice(offset[0], offset[0] + chunk_shape[0] * 1 + chunk_shape[0] // 2),
+            slice(offset[1], offset[1] + chunk_shape[1] * 1 + chunk_shape[0] // 3),
+            slice(offset[2], offset[2] + chunk_shape[2] * 1 + chunk_shape[0] // 4),
+        )
         item_shape = (output_cloudvolume.num_channels,) + tuple(s.stop - s.start for s in slices)
         chunk_buffer[slices] = np.ones(item_shape)
 
         chunk_to_clear = next(block.chunk_iterator())
 
+        print('before!', [c for c in chunk_buffer.local_cache])
         cleared_chunk = chunk_buffer.clear(chunk_to_clear)
+        print('after!', [c for c in chunk_buffer.local_cache])
 
         assert cleared_chunk.unit_index == chunk_to_clear.unit_index
         assert len(chunk_buffer.local_cache) == (1 << 3) - 1

@@ -410,8 +410,8 @@ class TestBlendStream:
             block_datasource_manager.output_datasource.sum()
 
     def test_blend_multichannel_3d_cloudvolume(self, block_datasource_manager):
-        task_shape = (5, 5, 5)
-        overlap = (1, 1, 1)
+        task_shape = (10, 20, 20)
+        overlap = (2, 5, 5)
         num_chunks = (3, 3, 3)
 
         input_datasource = block_datasource_manager.input_datasource
@@ -439,8 +439,9 @@ class TestBlendStream:
             block_datasource_manager.output_datasource[block.bounds].sum()
 
     def test_blend_multichannel_3d_cloudvolume_buffered(self, block_datasource_manager):
-        task_shape = (5, 5, 5)
-        overlap = (1, 1, 1)
+        print('starting test')
+        task_shape = (10, 20, 20)
+        overlap = (2, 5, 5)
         num_chunks = (3, 3, 3)
 
         input_datasource = block_datasource_manager.input_datasource
@@ -451,7 +452,7 @@ class TestBlendStream:
 
         # set up test data
         data_sum = 0
-        for chunk in block.chunk_iterator():
+        for chunk in list(block.chunk_iterator()):
             overlap_datasource = block_datasource_manager.overlap_repository.get_datasource(chunk.unit_index)
             core_datasource = block_datasource_manager.output_datasource
 
@@ -468,13 +469,15 @@ class TestBlendStream:
         blend_stream = create_blend_stream(block, block_datasource_manager)
         (
             Observable.from_(list(block.chunk_iterator()))
-            .flat_map(create_preload_datasource_stream(block_datasource_manager,
+            .flat_map(create_preload_datasource_stream(block, block_datasource_manager,
                                                        block_datasource_manager.output_datasource))
             .flat_map(blend_stream)
             .reduce(lambda x, y: x)
             .map(lambda _: block_datasource_manager.flush(None, datasource=block_datasource_manager.output_datasource))
+            .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future))
             .subscribe(print)
         )
+        np.set_printoptions(threshold=np.nan, linewidth=400)
         print(block_datasource_manager.output_datasource[block.bounds][0])
         assert data_sum == block_datasource_manager.output_datasource[block.bounds].sum()
 

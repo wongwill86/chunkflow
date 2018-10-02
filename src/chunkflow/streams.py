@@ -250,17 +250,19 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
     )
 
 
-def create_preload_datasource_stream(datasource_manager, datasource):
+def create_preload_datasource_stream(dataset_block, datasource_manager, datasource):
     output_buffer = datasource_manager.get_buffer(datasource_manager.output_datasource)
 
     if output_buffer is None:
         raise NotImplementedError("Datasource does not have a buffer therefore, does not require preloading")
 
-    preloaded_dataset_chunks = set()
-
     return lambda dataset_chunk: (
-        Observable.from_(output_buffer.block.slices_to_chunks(dataset_chunk.slices))
-        .distinct_hash(key_selector=lambda c: c.unit_index, seed=preloaded_dataset_chunks)
+        Observable.just(dataset_chunk)
+        .do_action(lambda dataset_chunk: print('Working on dataset chunk:', dataset_chunk.unit_index))
+        .flat_map(dataset_block.overlap_chunk_slices)
+        .flat_map(output_buffer.block.slices_to_chunks)
+        .do_action(lambda datasource_chunk: print('Blending dataset chunk:', dataset_chunk.unit_index,
+                                                  'Datasource chunk:', datasource_chunk.unit_index))
         .do_action(lambda datasource_chunk:
                    datasource_manager.copy(datasource_chunk, datasource, datasource=datasource))
         .reduce(lambda x, y: dataset_chunk, seed=dataset_chunk)
@@ -274,7 +276,6 @@ def create_blend_stream(block, datasource_manager):
     """
     return lambda dataset_chunk: (
         Observable.just(dataset_chunk)
-        # Preload the output cache with the the original core data first!
         .flat_map(block.overlap_chunk_slices)
         .flat_map(
             # Aggregate overlap dataset

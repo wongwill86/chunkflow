@@ -15,7 +15,7 @@ Why does this file exist, and why not put this in __main__?
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 import ast
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import click
 from chunkblocks.models import Block
@@ -100,7 +100,8 @@ def task(obj, **kwargs):
         obj['output_destination'], cache=False, fill_missing=True, non_aligned_writes=True)
 
     obj['block_datasource_manager'] = CloudVolumeDatasourceManager(
-        input_cloudvolume=input_cloudvolume, output_cloudvolume=output_cloudvolume_final)
+        input_cloudvolume=input_cloudvolume, output_cloudvolume=output_cloudvolume_final,
+        load_executor=ProcessPoolExecutor(), flush_executor=ProcessPoolExecutor())
 
 
 @task.command()
@@ -207,12 +208,14 @@ def blend(obj, **kwargs):
 
     (
         Observable.just(chunk)
-        .flat_map(create_preload_datasource_stream(datasource_manager,
+        .flat_map(create_preload_datasource_stream(block, datasource_manager,
                                                    datasource_manager.output_datasource))
         .flat_map(blend_stream)
         .reduce(lambda x, y: x)
+        # flushing everything returns a list of futures
         .map(lambda _: datasource_manager.flush(None, datasource=datasource_manager.output_datasource))
-        .subscribe(print)
+        .flat_map(lambda futures: as_completed(futures))
+        .subscribe(lambda a: print('Completed Blend of datasource_chunk:!', a.result().unit_index))
     )
 
     print('Finished blend!')
