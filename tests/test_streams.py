@@ -256,8 +256,6 @@ class TestInferenceStream:
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
-        print(chunk_datasource_manager.output_datasource[bounds])
-        print(chunk_datasource_manager.output_datasource_final[bounds])
         assert np.product(block.shape) * 111 == \
             chunk_datasource_manager.output_datasource[bounds].sum() + \
             chunk_datasource_manager.output_datasource_final[bounds].sum()
@@ -281,18 +279,21 @@ class TestInferenceStream:
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
-        print(chunk_datasource_manager.output_datasource[bounds])
-        print(chunk_datasource_manager.output_datasource_final[bounds])
         assert np.product(block.shape) * 111 == \
             chunk_datasource_manager.output_datasource[bounds].sum() + \
             chunk_datasource_manager.output_datasource_final[bounds].sum()
 
     def test_process_cloudvolume_sparse_buffered(self, chunk_datasource_manager):
-        bounds = (slice(200, 203), slice(100, 103), slice(50, 53))
-        chunk_shape = (3, 3, 3)
-        overlap = (1, 1, 1)
+        task_shape = (10, 20, 20)
+        overlap = (2, 5, 5)
+        num_chunks = (3, 3, 3)
 
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+        input_datasource = chunk_datasource_manager.input_datasource
+        offsets = input_datasource.voxel_offset[::-1]
+        bounds = tuple(slice(o, o + (ts - olap) * nc + olap) for o, ts, olap, nc in zip(offsets, task_shape, overlap,
+                                                                                        num_chunks))
+
+        block = Block(num_chunks=num_chunks, offset=offsets, chunk_shape=task_shape, overlap=overlap)
 
         chunk_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
         chunk_datasource_manager.overlap_repository = create_sparse_overlap_cloudvolumeCZYX(
@@ -309,8 +310,6 @@ class TestInferenceStream:
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
 
-        print(chunk_datasource_manager.output_datasource[bounds])
-        print(chunk_datasource_manager.output_datasource_final[bounds])
         assert np.product(block.shape) * 111 == \
             chunk_datasource_manager.output_datasource[bounds].sum() + \
             chunk_datasource_manager.output_datasource_final[bounds].sum()
@@ -439,7 +438,6 @@ class TestBlendStream:
             block_datasource_manager.output_datasource[block.bounds].sum()
 
     def test_blend_multichannel_3d_cloudvolume_buffered(self, block_datasource_manager):
-        print('starting test')
         task_shape = (10, 20, 20)
         overlap = (2, 5, 5)
         num_chunks = (3, 3, 3)

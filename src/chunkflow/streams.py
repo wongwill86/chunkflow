@@ -9,6 +9,8 @@ from rx.core import AnonymousObservable
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod
 
+MAX_RETRIES = 10
+
 
 @extensionmethod(Observable)
 def from_item_or_future(item_or_future, default=None):
@@ -124,13 +126,40 @@ def aggregate(slices, aggregate, datasource):
     return aggregate
 
 
-def create_download_stream(block, datasource_manager, executor=None):
-    return lambda chunk: Observable.just(chunk).map(
-        # todo no need forlambda
-        lambda chunk: datasource_manager.download_input(chunk)
-    ).flat_map(
-        lambda x: Observable.from_item_or_future(x)
-    )
+def create_download_stream(block, datasource_manager, stages):
+    input_buffer = datasource_manager.get_buffer(datasource_manager.input_datasource)
+
+    if input_buffer is None:
+        return lambda patch_chunk: Observable.just(patch_chunk).map(
+            lambda patch_chunk: datasource_manager.download_input(patch_chunk)
+        ).flat_map(
+            lambda x: Observable.from_item_or_future(x)
+        ).do_action(
+            lambda patch_chunk: block.checkpoint(patch_chunk, stage=stages.DOWNLOAD_DONE.value)
+        )
+    else:
+        return lambda patch_chunk: (
+            Observable.just(patch_chunk)
+            .flat_map(lambda patch_chunk: input_buffer.block.slices_to_chunks(patch_chunk.slices))
+            # load chunk specifically from input not buffered input
+            .map(lambda datasource_chunk: datasource_manager.load_chunk(
+                datasource_chunk, datasource=datasource_manager.input_datasource
+            ))
+            .flat_map(lambda x: Observable.from_item_or_future(x))
+            # transfer downloaded data into the input_buffer
+            .map(lambda datasource_chunk: datasource_manager.dump_chunk(
+                datasource_chunk, datasource=input_buffer)
+            )
+            .reduce(lambda x, y: patch_chunk)
+            .do_action(lambda patch_chunk: block.checkpoint(patch_chunk, stage=stages.DOWNLOAD_DONE.value))
+            .distinct_hash(key_selector=lambda c: c.unit_index, seed=stages.DOWNLOAD_DONE.hashset)
+            # aggregate from input_buffer into patch_chunk
+            .map(lambda _: datasource_manager.download_input(patch_chunk))
+            .flat_map(
+                lambda x: Observable.from_item_or_future(x)
+            )
+            .retry(MAX_RETRIES)
+        )
 
 
 def create_inference_stream(block, inference_operation, blend_operation, datasource_manager):
@@ -176,6 +205,7 @@ def create_upload_stream(block, datasource_manager):
         .map(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
         .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future))
         .reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
+        .retry(MAX_RETRIES)
     )
 
 
@@ -215,6 +245,7 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
             )
             .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk)  # reduce to wait for all to complete transferring
             .map(lambda _: uploaded_chunk)
+            .retry(MAX_RETRIES)
         )
     else:
         return lambda uploaded_chunk: Observable.just(uploaded_chunk)
@@ -222,7 +253,7 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
 
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
     class Stages(Enum):
-        INFERENCE_DONE, UPLOAD_DONE, FLUSH_DONE = range(3)
+        DOWNLOAD_DONE, INFERENCE_DONE, UPLOAD_DONE, FLUSH_DONE = range(4)
 
         def __init__(self, *args, **kwargs):
             self.hashset = set()
@@ -230,7 +261,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
     return lambda chunk: (
         Observable.just(chunk)
         .do_action(lambda chunk: print('Start ', chunk.unit_index))
-        .flat_map(create_download_stream(block, datasource_manager))
+        .flat_map(create_download_stream(block, datasource_manager, Stages))
         .do_action(lambda chunk: print('Finish Download ', chunk.unit_index))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
         .do_action(lambda chunk: print('Finish Inference ', chunk.unit_index))

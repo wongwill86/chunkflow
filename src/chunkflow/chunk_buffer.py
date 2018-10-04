@@ -37,7 +37,6 @@ class ChunkBuffer:
             chunk.load_data(item, slices=slices)
 
     def __getitem__(self, slices):
-        return self.datasource[slices]
         unit_indices = self.block.slices_to_unit_indices(slices)
         missing = list(unit_index for unit_index in unit_indices if unit_index not in self.local_cache)
 

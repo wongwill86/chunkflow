@@ -42,7 +42,10 @@ def default_overlap_datasource(path_or_cv, mod_index):
 
 
 def create_buffered_cloudvolumeCZYX(cloudvolume):
-    chunk_shape = cloudvolume.underlying[::-1]
+    try:
+        chunk_shape = cloudvolume.underlying[::-1]
+    except AttributeError:
+        return cloudvolume
     offset = cloudvolume.voxel_offset[::-1]
     size = cloudvolume.volume_size[::-1]
 
