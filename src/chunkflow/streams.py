@@ -144,23 +144,30 @@ def download_retry(datasource_manager, datasource, patch_chunk):
     """
     buffered_datasource = datasource_manager.get_buffer(datasource)
     use_executor = buffered_datasource is None
+
+    def add_future_to_cache(datasource_chunk):  # if multithreading, this needs to be synchronized
+        if datasource_chunk.unit_index not in buffered_datasource.local_cache:
+            future = datasource_manager.load_chunk(
+                datasource_chunk, datasource=datasource, use_buffer=False)
+            buffered_datasource.local_cache[datasource_chunk.unit_index] = future
+        return Observable.from_item_or_future(buffered_datasource.local_cache[datasource_chunk.unit_index])
+
+    def save_to_cache(datasource_chunk):
+        if not hasattr(buffered_datasource.local_cache[datasource_chunk.unit_index], 'data'):
+            datasource_manager.dump_chunk(datasource_chunk, datasource=datasource, use_executor=False)
+        return datasource_chunk
+
     try:
         # try loading chunk and put in into an observable for consistency
         return Observable.from_item_or_future(datasource_manager.load_chunk(
-            patch_chunk, datasource=datasource, use_executor=use_executor)).do_action(lambda blah: print(blah))
+            patch_chunk, datasource=datasource, use_executor=use_executor))
     except CacheMiss as cm:
         return (
             Observable.from_(cm.misses)
             # creates a temp chunk to throw away
             .map(buffered_datasource.block.unit_index_to_chunk)
-            .filter(lambda datasource_chunk: datasource_chunk.unit_index not in buffered_datasource.local_cache)
-            .map(lambda datasource_chunk: datasource_manager.load_chunk(
-                datasource_chunk, datasource=datasource, use_buffer=False))
-            .flat_map(Observable.from_item_or_future)
-            # dump back into buffer
-            .map(lambda datasource_chunk: datasource_manager.dump_chunk(
-                datasource_chunk, datasource=datasource, use_executor=False)
-            )
+            .flat_map(add_future_to_cache)
+            .do_action(save_to_cache)
             .reduce(lambda x, y: patch_chunk)
             .map(lambda _: datasource_manager.load_chunk(patch_chunk, datasource=datasource, use_executor=False))
         )

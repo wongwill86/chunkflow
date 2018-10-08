@@ -26,19 +26,22 @@ class ChunkBuffer:
 
         chunk_indices = self.block.slices_to_unit_indices(slices)
         for chunk_index in chunk_indices:
-            if chunk_index not in self.local_cache:
+            try:
+                chunk = self.local_cache[chunk_index]
+                chunk.load_data(item, slices=slices)
+            except (KeyError, AttributeError):
                 chunk = self.block.unit_index_to_chunk(chunk_index)
                 chunk.data = GlobalOffsetArray(
                     np.zeros(self.channel_dimensions + self.block.chunk_shape, dtype=self.dtype),
                     global_offset=(0,) + chunk.offset
                 )
                 self.local_cache[chunk_index] = chunk
-            chunk = self.local_cache[chunk_index]
-            chunk.load_data(item, slices=slices)
+                chunk.load_data(item, slices=slices)
 
     def __getitem__(self, slices):
         unit_indices = list(self.block.slices_to_unit_indices(slices))
-        misses = list(unit_index for unit_index in unit_indices if unit_index not in self.local_cache)
+        misses = list(unit_index for unit_index in unit_indices if unit_index not in self.local_cache or
+                      not hasattr(self.local_cache[unit_index], 'data'))
 
         if len(misses) > 0:
             raise CacheMiss(misses=misses)
