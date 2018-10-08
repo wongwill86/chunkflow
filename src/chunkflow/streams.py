@@ -9,6 +9,8 @@ from rx.core import AnonymousObservable
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod
 
+from chunkflow.chunk_buffer import CacheMiss
+
 MAX_RETRIES = 10
 
 
@@ -23,7 +25,12 @@ def from_item_or_future(item_or_future, default=None):
     elif item_or_future is None:
         return Observable.of(default)
     else:
-        return Observable.of(item_or_future)
+        try:
+            iter(item_or_future)
+        except TypeError:
+            return Observable.of(item_or_future)
+        else:
+            return Observable.from_(item_or_future).flat_map(from_item_or_future)
 
 
 @extensionmethod(Observable)
@@ -88,6 +95,8 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None, t
         try:
             if on_error:
                 on_error(src)
+            else:
+                raise src
         finally:
             latch.set()
 
@@ -126,40 +135,42 @@ def aggregate(slices, aggregate, datasource):
     return aggregate
 
 
-def create_download_stream(block, datasource_manager, stages):
-    input_buffer = datasource_manager.get_buffer(datasource_manager.input_datasource)
-
-    if input_buffer is None:
-        return lambda patch_chunk: Observable.just(patch_chunk).map(
-            lambda patch_chunk: datasource_manager.download_input(patch_chunk)
-        ).flat_map(
-            lambda x: Observable.from_item_or_future(x)
-        ).do_action(
-            lambda patch_chunk: block.checkpoint(patch_chunk, stage=stages.DOWNLOAD_DONE.value)
-        )
-    else:
-        return lambda patch_chunk: (
-            Observable.just(patch_chunk)
-            .flat_map(lambda patch_chunk: input_buffer.block.slices_to_chunks(patch_chunk.slices))
-            # load chunk specifically from input not buffered input
+def download_retry(datasource_manager, datasource, patch_chunk):
+    """
+    Try to load from cache if available
+    returns either:
+        Future - flatmap
+        Observable - flatmap
+    """
+    buffered_datasource = datasource_manager.get_buffer(datasource)
+    use_executor = buffered_datasource is None
+    try:
+        # try loading chunk and put in into an observable for consistency
+        return Observable.from_item_or_future(datasource_manager.load_chunk(
+            patch_chunk, datasource=datasource, use_executor=use_executor)).do_action(lambda blah: print(blah))
+    except CacheMiss as cm:
+        return (
+            Observable.from_(cm.misses)
+            # creates a temp chunk to throw away
+            .map(buffered_datasource.block.unit_index_to_chunk)
+            .filter(lambda datasource_chunk: datasource_chunk.unit_index not in buffered_datasource.local_cache)
             .map(lambda datasource_chunk: datasource_manager.load_chunk(
-                datasource_chunk, datasource=datasource_manager.input_datasource
-            ))
-            .flat_map(lambda x: Observable.from_item_or_future(x))
-            # transfer downloaded data into the input_buffer
+                datasource_chunk, datasource=datasource, use_buffer=False))
+            .flat_map(Observable.from_item_or_future)
+            # dump back into buffer
             .map(lambda datasource_chunk: datasource_manager.dump_chunk(
-                datasource_chunk, datasource=input_buffer)
+                datasource_chunk, datasource=datasource, use_executor=False)
             )
             .reduce(lambda x, y: patch_chunk)
-            .do_action(lambda patch_chunk: block.checkpoint(patch_chunk, stage=stages.DOWNLOAD_DONE.value))
-            .distinct_hash(key_selector=lambda c: c.unit_index, seed=stages.DOWNLOAD_DONE.hashset)
-            # aggregate from input_buffer into patch_chunk
-            .map(lambda _: datasource_manager.download_input(patch_chunk))
-            .flat_map(
-                lambda x: Observable.from_item_or_future(x)
-            )
-            .retry(MAX_RETRIES)
+            .map(lambda _: datasource_manager.load_chunk(patch_chunk, datasource=datasource, use_executor=False))
         )
+
+
+def create_input_stream(datasource_manager):
+    return lambda patch_chunk: (
+        Observable.just(patch_chunk)
+        .flat_map(partial(download_retry, datasource_manager, datasource_manager.input_datasource))
+    )
 
 
 def create_inference_stream(block, inference_operation, blend_operation, datasource_manager):
@@ -167,7 +178,9 @@ def create_inference_stream(block, inference_operation, blend_operation, datasou
         Observable.just(chunk)
         .map(inference_operation)
         .map(blend_operation)
-        .do_action(datasource_manager.dump_chunk)
+        .do_action(lambda chunk: datasource_manager.dump_chunk(
+            chunk, datasource=datasource_manager.overlap_repository.get_datasource(chunk.unit_index), use_executor=False
+        ))
     )
 
 
@@ -179,7 +192,7 @@ def create_aggregate_stream(block, datasource_manager):
             lambda chunk:
             (
                 # create temp list of repositories values at time of iteration
-                Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
+                Observable.from_(datasource_manager.overlap_repositories())
                 .reduce(partial(aggregate, chunk.slices), seed=0)
                 .do_action(chunk.load_data)
                 .map(lambda _: chunk)
@@ -188,22 +201,28 @@ def create_aggregate_stream(block, datasource_manager):
     )
 
 
-DumpArguments = namedtuple('DumpArguments', 'datasource slices')
+DumpArguments = namedtuple('DumpArguments', 'datasource slices use_executor')
 
 
 def create_upload_stream(block, datasource_manager):
+    output_datasource_final_buffer = datasource_manager.get_buffer(datasource_manager.output_datasource_final)
+    output_datasource_buffer = datasource_manager.get_buffer(datasource_manager.output_datasource)
+
+    use_executor_final = output_datasource_final_buffer is None
+    use_executor = output_datasource_buffer is None
+
     return lambda chunk: (
         Observable.merge(
             # core slices can bypass to the final datasource
             Observable.just(chunk).map(block.core_slices).map(
-                lambda slices: DumpArguments(datasource_manager.output_datasource_final, slices)
+                lambda slices: DumpArguments(datasource_manager.output_datasource_final, slices, use_executor_final)
             ),
             Observable.just(chunk).flat_map(block.overlap_slices).map(
-                lambda slices: DumpArguments(datasource_manager.output_datasource, slices)
+                lambda slices: DumpArguments(datasource_manager.output_datasource, slices, use_executor)
             )
         )
         .map(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
-        .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future))
+        .flat_map(Observable.from_item_or_future)
         .reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
         .retry(MAX_RETRIES)
     )
@@ -240,8 +259,8 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
             .flat_map(
                 lambda datasource_chunk:
                 Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
-                .map(lambda datasource: datasource_manager.flush(datasource_chunk, datasource))
-                .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future))
+                .map(partial(datasource_manager.flush, datasource_chunk))
+                .flat_map(Observable.from_item_or_future)
             )
             .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk)  # reduce to wait for all to complete transferring
             .map(lambda _: uploaded_chunk)
@@ -253,7 +272,7 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
 
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
     class Stages(Enum):
-        DOWNLOAD_DONE, INFERENCE_DONE, UPLOAD_DONE, FLUSH_DONE = range(4)
+        INFERENCE_DONE, UPLOAD_DONE, FLUSH_DONE = range(3)
 
         def __init__(self, *args, **kwargs):
             self.hashset = set()
@@ -261,7 +280,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
     return lambda chunk: (
         Observable.just(chunk)
         .do_action(lambda chunk: print('Start ', chunk.unit_index))
-        .flat_map(create_download_stream(block, datasource_manager, Stages))
+        .flat_map(create_input_stream(datasource_manager))
         .do_action(lambda chunk: print('Finish Download ', chunk.unit_index))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
         .do_action(lambda chunk: print('Finish Inference ', chunk.unit_index))
@@ -273,10 +292,11 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .do_action(lambda chunk: print('Finish Upload ', chunk.unit_index))
 
         .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
-        # TODO should figure out if clear works
-        # .do_action(datasource_manager.overlap_repository.clear)
+        .do_action(lambda chunk: datasource_manager.overlap_repository.clear(chunk.unit_index))
+        .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
 
         .flat_map(create_flush_datasource_observable(datasource_manager, block, Stages.UPLOAD_DONE, Stages.FLUSH_DONE))
+        .do_action(lambda chunk: print('Finish Flushing ', chunk.unit_index))
         .map(lambda _: chunk)
     )
 
@@ -289,13 +309,10 @@ def create_preload_datasource_stream(dataset_block, datasource_manager, datasour
 
     return lambda dataset_chunk: (
         Observable.just(dataset_chunk)
-        .do_action(lambda dataset_chunk: print('Working on dataset chunk:', dataset_chunk.unit_index))
         .flat_map(dataset_block.overlap_chunk_slices)
         .flat_map(output_buffer.block.slices_to_chunks)
-        .do_action(lambda datasource_chunk: print('Blending dataset chunk:', dataset_chunk.unit_index,
-                                                  'Datasource chunk:', datasource_chunk.unit_index))
         .do_action(lambda datasource_chunk:
-                   datasource_manager.copy(datasource_chunk, datasource, datasource=datasource))
+                   datasource_manager.copy(datasource_chunk, datasource, destination=datasource))
         .reduce(lambda x, y: dataset_chunk, seed=dataset_chunk)
         .map(lambda _: dataset_chunk)
     )
@@ -316,7 +333,7 @@ def create_blend_stream(block, datasource_manager):
                 Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
                 .reduce(partial(aggregate, dataset_chunk_slices), seed=0)
                 .do_action(
-                    partial(datasource_manager.copy, dataset_chunk, datasource=datasource_manager.output_datasource,
+                    partial(datasource_manager.copy, dataset_chunk, destination=datasource_manager.output_datasource,
                             slices=dataset_chunk_slices)
                 )
             )

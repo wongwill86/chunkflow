@@ -46,9 +46,8 @@ class DatasourceManager:
         assert not (isinstance(load_executor, ProcessPoolExecutor) and load_executor is flush_executor), (
             'Using the same ProcessPoolExecutor for loading and flushing is known to cause deadlocks.'
         )
-        # TODO remove when BlockChunkBuffer supports setting and clearing
         assert dump_executor is None or buffer_generator is None, (
-            "Dumping data to a the BlockChunkBuffer is not yet supported"
+            "Dumping to an in memory buffer using multi-process will not work properly"
         )
         self.load_executor = load_executor
         self.dump_executor = dump_executor
@@ -58,8 +57,8 @@ class DatasourceManager:
         return self.load_chunk(chunk, datasource=self.input_datasource)
 
     def get_buffer(self, datasource):
-        datasource_key = id(datasource)
         if self.buffer_generator is not None:
+            datasource_key = id(datasource)
             if datasource_key not in self.datasource_buffers:
                 self.datasource_buffers[datasource_key] = self.buffer_generator(datasource)
             return self.datasource_buffers[datasource_key]
@@ -71,7 +70,7 @@ class DatasourceManager:
         else:
             return executor.submit(chunk_action, datasource, slices)
 
-    def dump_chunk(self, chunk, datasource=None, slices=None):
+    def dump_chunk(self, chunk, datasource=None, slices=None, use_buffer=True, use_executor=True):
         """
         Dump chunk data into target datasource.
         :param chunk source of chunk data to dump from
@@ -82,20 +81,15 @@ class DatasourceManager:
 
         :returns: chunk if no executor is configured, otherwise returns the future returned by the executor
         """
-        executor = None
-        if datasource is None:
-            datasource = self.overlap_repository.get_datasource(chunk.unit_index)
-        else:
-            buffered_datasource = self.get_buffer(datasource)
-            if buffered_datasource is not None:
-                datasource = buffered_datasource
+        buffered_datasource = self.get_buffer(datasource) if use_buffer else None
+        if buffered_datasource is not None:
+            datasource = buffered_datasource
 
-            # TODO use for all repo when buffers are supported (see class warnings doc)
-            executor = self.dump_executor
+        executor = self.dump_executor if use_executor else None
 
         return self._perform_chunk_action(chunk.dump_data, datasource, slices=slices, executor=executor)
 
-    def load_chunk(self, chunk, datasource=None, slices=None):
+    def load_chunk(self, chunk, datasource=None, slices=None, use_buffer=True, use_executor=True):
         """
         Load chunk with data from datasource
         :param chunk destination chunk to load data into
@@ -106,15 +100,29 @@ class DatasourceManager:
 
         :returns: chunk if no executor is configured, otherwise returns the future returned by the executor
         """
-        executor = None
-        if datasource is None:
-            datasource = self.overlap_repository.get_datasource(chunk.unit_index)
-        else:
-            # TODO maybe allow the cache for overlap repo once BlockChunkBuffer supports setting and clearing
-            # Right now don't use cache for downloading data from datasource
-            executor = self.load_executor
+        buffered_datasource = self.get_buffer(datasource) if use_buffer else None
+        if buffered_datasource is not None:
+            datasource = buffered_datasource
+
+        executor = self.load_executor if use_executor else None
 
         return self._perform_chunk_action(chunk.load_data, datasource, slices=slices, executor=executor)
+
+    def clear_buffer(self, datasource, chunk=None):
+        datasource_buffer = self.get_buffer(datasource)
+        try:
+            if chunk is None:
+                return datasource_buffer.clear()
+            else:
+                return [
+                    datasource_buffer.clear(datasource_chunk) for datasource_chunk in
+                    datasource_buffer.block.slices_to_unit_index(chunk.slices)
+                ]
+        except AttributeError:
+            # Not a buffered datasource, no flush needed
+            pass
+
+        return None
 
     def flush(self, chunk, datasource):
         datasource_buffer = self.get_buffer(datasource)
@@ -136,11 +144,11 @@ class DatasourceManager:
 
         return chunk
 
-    def copy(self, chunk, source, datasource, slices=None):
-        buffered_datasource = self.get_buffer(datasource)
+    def copy(self, chunk, source, destination, slices=None):
+        buffered_datasource = self.get_buffer(destination)
         if buffered_datasource is not None:
-            datasource = buffered_datasource
-        return chunk.copy_data(source=source, destination=datasource, slices=slices)
+            destination = buffered_datasource
+        return chunk.copy_data(source=source, destination=destination, slices=slices)
 
     def create_overlap_datasources(self, center_index):
         """
@@ -150,6 +158,17 @@ class DatasourceManager:
         """
         for mod_index in get_all_mod_index(center_index):
             self.overlap_repository.get_datasource(mod_index)
+
+    def overlap_repositories(self, chunk=None):
+        if chunk is None:
+            overlap_datasources = self.overlap_repository.datasources.values()
+            buffer_datasources = map(self.get_buffer, overlap_datasources)
+            return [
+                olap if buff is None else buff for olap, buff in zip(overlap_datasources, buffer_datasources)
+            ]
+        else:
+            datasource = self.overlap_repository.get_datasource(chunk.unit_index)
+            return self.get_buffer(datasource) or datasource
 
 
 class OverlapRepository:

@@ -6,6 +6,8 @@ from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkblocks.models import Block
 from rx import Observable
 
+import chunkflow.streams as streams
+from chunkflow.chunk_buffer import CacheMiss
 from chunkflow.chunk_operations.blend_operation import AverageBlend
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkflow.cloudvolume_datasource import create_buffered_cloudvolumeCZYX, create_sparse_overlap_cloudvolumeCZYX
@@ -63,7 +65,6 @@ class IncrementInference(ChunkOperation):
         self.run_inference(chunk)
 
     def run_inference(self, chunk):
-        print('run inference on chunk', chunk.unit_index)
         chunk.data = chunk.data.astype(self.output_dtype)
         chunk.data += self.step
 
@@ -91,6 +92,51 @@ class IncrementThreeChannelInference(ChunkOperation):
         if len(new_data.shape) > len(chunk.data.global_offset):
             global_offset = (0,) + chunk.data.global_offset
         chunk.data = GlobalOffsetArray(new_data, global_offset=global_offset)
+
+
+class TestSubStreams:
+    def test_input_stream(self, chunk_datasource_manager):
+        task_shape = (10, 20, 20)
+        overlap = (2, 5, 5)
+        num_chunks = (3, 3, 3)
+
+        input_datasource = chunk_datasource_manager.input_datasource
+        offsets = input_datasource.voxel_offset[::-1]
+
+        block = Block(num_chunks=num_chunks, offset=offsets, chunk_shape=task_shape, overlap=overlap)
+
+        input_datasource[block.bounds] = np.ones(block.shape, input_datasource.dtype)
+
+        input_stream = streams.create_input_stream(chunk_datasource_manager)
+        chunk_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
+        chunk_datasource_manager.overlap_repository = create_sparse_overlap_cloudvolumeCZYX(
+            chunk_datasource_manager.output_datasource_final, block
+        )
+
+        from concurrent.futures import ProcessPoolExecutor
+        chunk_datasource_manager.load_executor = ProcessPoolExecutor()
+        chunk_datasource_manager.flush_executor = ProcessPoolExecutor()
+
+        def validate():
+            try:
+                assert np.product(block.shape) == chunk_datasource_manager.get_buffer(
+                    chunk_datasource_manager.input_datasource)[block.bounds].sum()
+            except CacheMiss as cm:
+                print('Misses are:', cm.misses)
+                raise cm
+
+        # Run with cold cache
+        Observable.from_(block.chunk_iterator()).flat_map(input_stream).to_blocking().blocking_subscribe(print)
+        validate()
+
+        # Run with warm cache doesn't fail
+        Observable.from_(block.chunk_iterator()).flat_map(input_stream).to_blocking().blocking_subscribe(print)
+        validate()
+
+        # Test with no buffer
+        chunk_datasource_manager.buffer_generator = None
+        chunk_datasource_manager.datasource_buffers.clear()
+        Observable.from_(block.chunk_iterator()).flat_map(input_stream).to_blocking().blocking_subscribe(print)
 
 
 class TestInferenceStream:
@@ -299,6 +345,9 @@ class TestInferenceStream:
         chunk_datasource_manager.overlap_repository = create_sparse_overlap_cloudvolumeCZYX(
             chunk_datasource_manager.output_datasource_final, block
         )
+        from concurrent.futures import ProcessPoolExecutor
+        chunk_datasource_manager.load_executor = ProcessPoolExecutor()
+        chunk_datasource_manager.flush_executor = ProcessPoolExecutor()
 
         task_stream = create_inference_and_blend_stream(
             block=block,
@@ -308,7 +357,7 @@ class TestInferenceStream:
             datasource_manager=chunk_datasource_manager
         )
 
-        Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
+        Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(print)
 
         assert np.product(block.shape) * 111 == \
             chunk_datasource_manager.output_datasource[bounds].sum() + \

@@ -37,27 +37,41 @@ class ChunkBuffer:
             chunk.load_data(item, slices=slices)
 
     def __getitem__(self, slices):
-        unit_indices = self.block.slices_to_unit_indices(slices)
-        missing = list(unit_index for unit_index in unit_indices if unit_index not in self.local_cache)
+        unit_indices = list(self.block.slices_to_unit_indices(slices))
+        misses = list(unit_index for unit_index in unit_indices if unit_index not in self.local_cache)
 
-        if len(missing) > 0:
-            raise CacheMiss(misses=missing)
-        else:
-            offset = tuple(s.start for s in slices)
-            size = tuple(s.stop - s.start for s in slices)
-            data = GlobalOffsetArray(
-                np.zeros(self.channel_dimensions + size, dtype=self.dtype),
-                global_offset=(0,) * len(self.channel_dimensions) + offset
-            )
-            for unit_index in unit_indices:
-                chunk = self.local_cache[unit_index]
-                # TODO need to fix this
-                data[chunk.slices] = chunk[slices]
+        if len(misses) > 0:
+            raise CacheMiss(misses=misses)
+
+        channel_slices = self.normalize_channel_slices(slices)
+        full_slices = channel_slices + slices[-len(self.block.shape):]
+
+        offset = tuple(s.start for s in full_slices)
+        size = tuple(s.stop - s.start for s in full_slices)
+        data = GlobalOffsetArray(np.zeros(size, dtype=self.dtype), global_offset=offset)
+        slices = full_slices[len(self.channel_dimensions):]
+
+        for unit_index in unit_indices:
+            chunk = self.local_cache[unit_index]
+            normalized_slices = channel_slices + tuple(
+                slice(s1.start if s2.start < s1.start else s2.start, s1.stop if s2.stop > s1.stop else s2.stop)
+                for s1, s2 in zip(chunk.slices, slices))
+            data[normalized_slices] = chunk.data[normalized_slices]
         return data
+
+    def normalize_channel_slices(self, slices):
+        channel_slices = slices[0:-len(self.block.shape)]
+        if len(channel_slices) > 0:
+            return tuple(slice(0, c) if s.start is None else s for c, s in zip(self.channel_dimensions,
+                                                                               channel_slices))
+        else:
+            return tuple(slice(0, c) for c in self.channel_dimensions)
 
     def clear(self, chunk=None):
         if chunk is not None:
-            assert chunk.block.bounds == self.block.bounds and chunk.block.overlap == self.block.overlap
+            assert chunk.block.bounds == self.block.bounds and chunk.block.overlap == self.block.overlap, (
+                'Attempting to clear with chunk of incorrect overlap and bounds'
+            )
 
         if chunk is None:
             chunks = list(self.local_cache.values())
