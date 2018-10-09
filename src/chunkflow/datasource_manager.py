@@ -186,7 +186,10 @@ class OverlapRepository:
 
     def clear(self, index):
         mod_index = get_mod_index(index)
-        return self.datasources.pop(mod_index)
+        try:
+            return self.datasources.pop(mod_index)
+        except KeyError:
+            return None
 
 
 class SparseOverlapRepository(OverlapRepository):

@@ -12,8 +12,8 @@ def test_inference(block_datasource_manager):
     runner = CliRunner()
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    task_shape = [3, 30, 30]
-    overlap = [1, 10, 10]
+    task_shape = [10, 20, 20]
+    overlap = [2, 5, 5]
 
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
 
@@ -28,7 +28,7 @@ def test_inference(block_datasource_manager):
         '--task_shape', list(task_shape),
         '--overlap', overlap,
         'inference',
-        '--patch_shape', [3, 30, 30],
+        '--patch_shape', [4, 10, 10],
         '--inference_framework', 'identity',
         '--blend_framework', 'average',
     ])

@@ -118,9 +118,13 @@ def aggregate(slices, aggregate, datasource):
     channel_dimensions = len(datasource.shape) - len(slices)
     channel_slices = (slice(None),) * (channel_dimensions) + slices
 
+    try:
+        data = datasource[channel_slices]
+    except CacheMiss:
+        data = datasource.get_item(channel_slices, fill_missing=True)
+
     # 0 from seed
     if aggregate is 0:
-        data = datasource[channel_slices]
         slice_shape = tuple(s.stop - s.start for s in slices)
         offset = (0,) * channel_dimensions + tuple(s.start for s in slices)
 
@@ -130,7 +134,7 @@ def aggregate(slices, aggregate, datasource):
         )
         aggregate += data
     else:
-        aggregate[channel_slices] += datasource[channel_slices]
+        aggregate[channel_slices] += data
 
     return aggregate
 
