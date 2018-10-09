@@ -7,35 +7,36 @@ from chunkflow.chunk_operations.blend_operation import AverageBlend
 
 class TestAverageBlend:
     def test_weight_mapping_2d(self):
-        bounds = (slice(0, 7), slice(0, 7))
-        chunk_shape = (3, 3)
-        overlap = (1, 1)
+        chunk_shape = (2, 4)
+        overlap = (1, 2)
+        offset = (0, 0)
+        num_chunks = (4, 3)
 
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+        block = Block(offset=offset, num_chunks=num_chunks, chunk_shape=chunk_shape, overlap=overlap)
 
         chunk = Chunk(block, (0, 0))
 
         blend_operation = AverageBlend(block)
 
-        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0, 0))
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=offset)
         for chunk in block.chunk_iterator((0, 0)):
             chunk.data = np.zeros(1, dtype=np.float32)
-            fake_data[chunk.slices] += blend_operation.generate_weight_mapping(chunk)
+            fake_data[chunk.slices] += blend_operation.get_weight_mapping(chunk)
 
         assert fake_data.sum() == np.product(fake_data.shape)
 
     def test_weight_mapping_3d(self):
-        bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-        chunk_shape = (3, 3, 3)
-        overlap = (1, 1, 1)
-
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+        chunk_shape = (2, 4, 4)
+        overlap = (1, 2, 2)
+        offset = (0, 0, 0)
+        num_chunks = (3, 3, 5)
+        block = Block(offset=offset, num_chunks=num_chunks, chunk_shape=chunk_shape, overlap=overlap)
 
         chunk = Chunk(block, (0, 0, 0))
 
         blend_operation = AverageBlend(block)
 
-        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0, 0, 0))
+        fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=offset)
         for chunk in block.chunk_iterator((0, 0, 0)):
             chunk.data = np.zeros(1, dtype=np.float32)
             fake_data[chunk.slices] += blend_operation.generate_weight_mapping(chunk)

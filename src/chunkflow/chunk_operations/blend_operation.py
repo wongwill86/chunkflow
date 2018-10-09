@@ -28,9 +28,13 @@ class AverageBlend(ChunkOperation):
         return
 
     def is_border_slice(self, slices):
+        """
+        Because overlap of inference chunk is the same as across task blocks. we can assume any chunk borders will be
+        entirely encapsulated within a task border
+        """
         for s, b, olap in zip(slices, self.block.bounds, self.block.overlap):
-            if not ((s.start > b.start + olap and s.start < b.stop - olap) or
-                    (s.stop > b.start + olap and s.stop < b.stop - olap)):
+            if not ((s.start >= b.start + olap and s.start < b.stop - olap) or
+                    (s.stop > b.start + olap and s.stop <= b.stop - olap)):
                 return True
         return False
 
@@ -48,7 +52,6 @@ class AverageBlend(ChunkOperation):
             weight_mapping[slices] *= 2
 
         weight_mapping = 1 / weight_mapping
-
         return weight_mapping
 
     def get_weight_mapping(self, chunk):
