@@ -1,9 +1,12 @@
 import traceback
+from collections import deque
 from datetime import datetime
 from functools import reduce
 from threading import current_thread
 from chunkblocks.iterators import UnitIterator
 from chunkflow.streams import blocking_subscribe
+import itertools
+import functools
 
 from rx import Observable
 
@@ -16,12 +19,22 @@ class ReadyNeighborIterator(UnitIterator):
     def get(self, start=None, dimensions=None):
         if start is None:
             start = (0,) * len(self.num_chunks)
-        queue = []
-        queue.append(start)
-
+        queue = deque()
         queued = set()
+        queue.append(start)
+        queued.add(start)
+        start_neighbors = list(self.get_all_neighbors(start, self.num_chunks))
+        start_neighbor_neighbors = [neighbor_neighbor for neighbor in start_neighbors for neighbor_neighbor in
+                           self.get_all_neighbors(neighbor, self.num_chunks)]
+
+        for item in itertools.chain(start_neighbors, start_neighbor_neighbors):
+            if item not in queued:
+                queue.append(item)
+                queued.add(item)
+
         completed = set()
         def mark_done(marked_index):
+            print('marking done', marked_index)
             completed.add(marked_index)
             candidate_list = []
             for neighbor_index in self.get_all_neighbors(marked_index, self.num_chunks):
@@ -37,19 +50,24 @@ class ReadyNeighborIterator(UnitIterator):
                 candidate for candidates in candidate_list for candidate in candidates if candidate not in queued
             ]
 
-            queue.extend(to_queue)
             for item in to_queue:
-                queued.add(item)
-
-        mark_done(start)
+                if item not in queued:
+                    queued.add(item)
+                    queue.append(item)
 
         mark = None
-        while len(queue) > 0:
+        while len(completed) != functools.reduce(lambda x, y: x * y, self.num_chunks): #len(queue) > 0 or mark is not None:
+            # print('mark start with ', mark)
             if mark is None:
-                mark = yield self.block.unit_index_to_chunk(queue.pop())
+                blah = self.block.unit_index_to_chunk(queue.popleft())
+                print('\t\tyielding ', blah.unit_index, queue)
+                print('\t\tcompleted', blah.unit_index, completed)
+                mark = yield blah
             else:
                 mark_done(mark.unit_index)
                 mark = yield None
+            # print('\tqueue', len(queue), mark, queue)
+        print('i am finished iterating')
 
 
 class BlockProcessor:
@@ -72,9 +90,13 @@ class BlockProcessor:
 
         if self.iterator is None:
             iterator = self.block.chunk_iterator(start)
+        else:
+            iterator = self.iterator
+        print(type(iterator))
+        observable = Observable.from_(iterator).controlled()
 
         (
-            Observable.from_(iterator)
+            observable
             .do_action(lambda ugh: print('ugh is ', ugh))
             .flat_map(processing_stream)
             .to_blocking()

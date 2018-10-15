@@ -21,7 +21,7 @@ import click
 from chunkblocks.models import Block
 from rx import Observable
 
-from chunkflow.block_processor import BlockProcessor
+from chunkflow.block_processor import BlockProcessor, ReadyNeighborIterator
 from chunkflow.chunk_operations.blend_operation import BlendFactory
 from chunkflow.chunk_operations.inference_operation import InferenceFactory
 from chunkflow.cloudvolume_datasource import (
@@ -34,6 +34,7 @@ from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk
 from chunkflow.datasource_manager import SparseOverlapRepository, get_absolute_index, get_all_mod_index
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream, create_preload_datasource_stream
 
+from memory_profiler import profile
 
 # https://stackoverflow.com/a/47730333
 class PythonLiteralOption(click.Option):
@@ -116,6 +117,7 @@ def task(obj, **kwargs):
 @click.option('--accelerator_ids', type=list, help="ids of cpus/gpus to use",
               cls=PythonLiteralOption, callback=validate_literal, default=[1])
 @click.pass_obj
+@profile
 def inference(obj, patch_shape, inference_framework, blend_framework, model_path, net_path, accelerator_ids):
     """
     Run inference on task
@@ -157,7 +159,14 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         datasource_manager=chunk_datasource_manager,
     )
 
-    BlockProcessor(block).process(task_stream)
+    iterator = ReadyNeighborIterator(block).get()
+    def update_iterator(chunk):
+        try:
+            iterator.send(chunk)
+        except StopIteration:
+            print('got stop iteration')
+            pass
+    BlockProcessor(block, iterator=iterator, on_next=update_iterator).process(task_stream)
     print('Finished inference!')
 
 
