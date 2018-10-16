@@ -13,7 +13,6 @@ from chunkflow.chunk_buffer import CacheMiss
 
 MAX_RETRIES = 10
 
-
 @extensionmethod(Observable)
 def from_item_or_future(item_or_future, default=None):
     """
@@ -296,15 +295,13 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
         .do_action(lambda chunk: print('Finish Inference ', chunk.unit_index))
         .flat_map(create_checkpoint_observable(block, Stages.INFERENCE_DONE))
-
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .do_action(lambda chunk: print('Finish Aggregate ', chunk.unit_index))
         .flat_map(create_upload_stream(block, datasource_manager))
-        .do_action(lambda chunk: print('Finish Upload ', chunk.unit_index))
-
         .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
         .do_action(lambda chunk: datasource_manager.overlap_repository.clear(chunk.unit_index))
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
+        .do_action(lambda chunk: datasource_manager.clear_buffer(datasource_manager.input_datasource, chunk))
 
         .flat_map(create_flush_datasource_observable(datasource_manager, block, Stages.UPLOAD_DONE, Stages.FLUSH_DONE))
         .do_action(lambda chunk: print('Finish Flushing ', chunk.unit_index))

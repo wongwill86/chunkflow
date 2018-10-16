@@ -34,8 +34,6 @@ from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk
 from chunkflow.datasource_manager import SparseOverlapRepository, get_absolute_index, get_all_mod_index
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream, create_preload_datasource_stream
 
-from memory_profiler import profile
-
 # https://stackoverflow.com/a/47730333
 class PythonLiteralOption(click.Option):
     def type_cast_value(self, ctx, value):
@@ -117,7 +115,6 @@ def task(obj, **kwargs):
 @click.option('--accelerator_ids', type=list, help="ids of cpus/gpus to use",
               cls=PythonLiteralOption, callback=validate_literal, default=[1])
 @click.pass_obj
-@profile
 def inference(obj, patch_shape, inference_framework, blend_framework, model_path, net_path, accelerator_ids):
     """
     Run inference on task
@@ -126,6 +123,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     block_datasource_manager = obj['block_datasource_manager']
 
     block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
+    # block.base_iterator = ReadyNeighborIterator(block.num_chunks)
 
     absolute_index = get_absolute_index(obj['task_offset_coordinates'], obj['overlap'], obj['task_shape'])
     output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource(absolute_index)
@@ -159,14 +157,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         datasource_manager=chunk_datasource_manager,
     )
 
-    iterator = ReadyNeighborIterator(block).get()
-    def update_iterator(chunk):
-        try:
-            iterator.send(chunk)
-        except StopIteration:
-            print('got stop iteration')
-            pass
-    BlockProcessor(block, iterator=iterator, on_next=update_iterator).process(task_stream)
+    BlockProcessor(block).process(task_stream)
     print('Finished inference!')
 
 

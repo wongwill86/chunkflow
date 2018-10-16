@@ -7,71 +7,86 @@ from chunkblocks.iterators import UnitIterator
 from chunkflow.streams import blocking_subscribe
 import itertools
 import functools
+import numpy as np
 
 from rx import Observable
 
 
 class ReadyNeighborIterator(UnitIterator):
-    def __init__(self, block):
-        self.block = block
-        self.num_chunks = block.num_chunks
+    def __init__(self, num_chunks):
+        self.num_chunks = num_chunks
+
+    def generate_queue(self, start):
+        """
+        Ghetto space filling curve that's kinda like z-order, but probably worse and not performant
+        """
+        unfinished = np.ones(self.num_chunks, dtype=np.uint8)
+        it = np.nditer(unfinished, flags=['multi_index'])
+        while not it.finished:
+            unfinished[it.multi_index] += len(self.get_all_neighbors(it.multi_index, self.num_chunks))
+            it.iternext()
+
+        # print(unfinished, np.any(unfinished))
+
+        queue = deque()
+        queued = set()
+        index = start
+
+        FINISHED_FLAG = np.iinfo(np.uint8).max
+        while index is not None:
+            # simulate completion at index
+            unfinished[index] -= 1
+
+            queue.append(index)
+            queued.add(index)
+            neighbors = self.get_all_neighbors(index, self.num_chunks)
+
+            for neighbor in neighbors:
+                new_value = unfinished[neighbor] - 1
+                if new_value == 0:
+                    new_value = FINISHED_FLAG
+                unfinished[neighbor] = new_value
+
+            # find next least work chunk to work on next
+            index = np.unravel_index(np.argmin(unfinished), unfinished.shape)
+
+            new_neighbors = self.get_all_neighbors(index, self.num_chunks)
+
+            min_value = FINISHED_FLAG
+            index = None
+            for new_neighbor in new_neighbors:
+                if new_neighbor not in queued:
+                    value = unfinished[new_neighbor]
+                    if value < min_value:
+                        index = new_neighbor
+                        min_value = value
+
+        return queue
+
 
     def get(self, start=None, dimensions=None):
         if start is None:
             start = (0,) * len(self.num_chunks)
-        queue = deque()
-        queued = set()
-        queue.append(start)
-        queued.add(start)
-        start_neighbors = list(self.get_all_neighbors(start, self.num_chunks))
-        start_neighbor_neighbors = [neighbor_neighbor for neighbor in start_neighbors for neighbor_neighbor in
-                           self.get_all_neighbors(neighbor, self.num_chunks)]
 
-        for item in itertools.chain(start_neighbors, start_neighbor_neighbors):
-            if item not in queued:
-                queue.append(item)
-                queued.add(item)
+        queue = self.generate_queue(start)
+        queue = deque(queue)
 
-        completed = set()
-        def mark_done(marked_index):
-            print('marking done', marked_index)
-            completed.add(marked_index)
-            candidate_list = []
-            for neighbor_index in self.get_all_neighbors(marked_index, self.num_chunks):
-                candidates = []
-                # schedule neighbors of neighbors if necessary
-                for neighbor_neighbor_index in self.get_all_neighbors(neighbor_index, self.num_chunks):
-                    if neighbor_neighbor_index not in completed:
-                        candidates.append(neighbor_neighbor_index)
-                candidate_list.append(candidates)
+        path = np.zeros(self.num_chunks)
 
-            candidate_list.sort(key=len)
-            to_queue = [
-                candidate for candidates in candidate_list for candidate in candidates if candidate not in queued
-            ]
 
-            for item in to_queue:
-                if item not in queued:
-                    queued.add(item)
-                    queue.append(item)
+        print('The path to take is')
+        for i in range(0, len(queue)):
+            path[queue[i]] = i
+        print(path)
 
-        mark = None
-        while len(completed) != functools.reduce(lambda x, y: x * y, self.num_chunks): #len(queue) > 0 or mark is not None:
-            # print('mark start with ', mark)
-            if mark is None:
-                blah = self.block.unit_index_to_chunk(queue.popleft())
-                print('\t\tyielding ', blah.unit_index, queue)
-                print('\t\tcompleted', blah.unit_index, completed)
-                mark = yield blah
-            else:
-                mark_done(mark.unit_index)
-                mark = yield None
-            # print('\tqueue', len(queue), mark, queue)
+        while len(queue) > 0:
+            yield queue.popleft()
+
         print('i am finished iterating')
 
 
 class BlockProcessor:
-    def __init__(self, block, iterator=None, on_next=None, on_error=None, on_completed=None):
+    def __init__(self, block, on_next=None, on_error=None, on_completed=None):
         self.block = block
         self.num_chunks = reduce(lambda x, y: x * y, block.num_chunks)
         self.completed = 0
@@ -79,28 +94,49 @@ class BlockProcessor:
         self.on_next = on_next
         self.on_error = on_error
         self.on_completed = on_completed
-        self.iterator = iterator
 
-    def process(self, processing_stream, start_slice=None):
+    def process(self, processing_stream, start_slice=None, get_neighbors=None):
         print('Num_chunks %s' % (self.block.num_chunks,))
         if start_slice:
             start = self.block.slices_to_unit_index(start_slice)
         else:
             start = tuple([0] * len(self.block.bounds))
 
-        if self.iterator is None:
-            iterator = self.block.chunk_iterator(start)
-        else:
-            iterator = self.iterator
-        print(type(iterator))
-        observable = Observable.from_(iterator).controlled()
+        min_step = pow(3, len(start))
+        print('min_step is ', min_step)
 
+        if get_neighbors is None:
+            get_neighbors = self.block.get_all_neighbors
+
+
+        observable = Observable.from_(self.block.chunk_iterator(start)).controlled()
+        observable.request(10000)
+
+        completed = set()
+        previous_num_completed = [0]
+        finished = np.zeros(self.block.num_chunks, dtype=np.uint8)
+
+        def throttled_next(chunk):
+            self._on_next(chunk)
+
+            finished[chunk.unit_index] = 1
+            completed.add(chunk.unit_index)
+            for neighbor in get_neighbors(chunk):
+                finished[neighbor.unit_index] = 1
+                completed.add(neighbor.unit_index)
+
+            completed_since = len(completed) - previous_num_completed[-1]
+            if  completed_since >= min_step or (completed_since + min_step > self.num_chunks):
+                previous_num_completed[-1] = len(completed)
+                print('\n\n\nrequesting', min_step)
+                observable.request(min_step)
+
+        print('about to begin')
         (
             observable
-            .do_action(lambda ugh: print('ugh is ', ugh))
             .flat_map(processing_stream)
             .to_blocking()
-            .blocking_subscribe(self._on_next, on_error=self._on_error, on_completed=self._on_completed)
+            .blocking_subscribe(throttled_next, on_error=self._on_error, on_completed=self._on_completed)
         )
 
     def _on_completed(self):

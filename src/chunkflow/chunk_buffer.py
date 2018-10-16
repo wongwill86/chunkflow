@@ -10,7 +10,6 @@ class CacheMiss(Exception):
     def __str__(self):
         return 'Cache miss: %s %s' % (self.message if self.message is not None else '', self.misses)
 
-
 class ChunkBuffer:
     def __init__(self, block, datasource, channel_dimensions):
         self.block = block
