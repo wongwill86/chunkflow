@@ -7,6 +7,9 @@ from chunkblocks.iterators import UnitIterator
 from chunkflow.streams import blocking_subscribe
 import itertools
 import functools
+import psutil
+import os
+import gc
 import numpy as np
 
 from rx import Observable
@@ -20,6 +23,7 @@ class ReadyNeighborIterator(UnitIterator):
         """
         Ghetto space filling curve that's kinda like z-order, but probably worse and not performant
         """
+        print('generating queue')
         unfinished = np.ones(self.num_chunks, dtype=np.uint8)
         it = np.nditer(unfinished, flags=['multi_index'])
         while not it.finished:
@@ -33,10 +37,10 @@ class ReadyNeighborIterator(UnitIterator):
         index = start
 
         FINISHED_FLAG = np.iinfo(np.uint8).max
+        print('start is ', index)
         while index is not None:
             # simulate completion at index
             unfinished[index] -= 1
-
             queue.append(index)
             queued.add(index)
             neighbors = self.get_all_neighbors(index, self.num_chunks)
@@ -47,10 +51,13 @@ class ReadyNeighborIterator(UnitIterator):
                     new_value = FINISHED_FLAG
                 unfinished[neighbor] = new_value
 
-            # find next least work chunk to work on next
-            index = np.unravel_index(np.argmin(unfinished), unfinished.shape)
 
-            new_neighbors = self.get_all_neighbors(index, self.num_chunks)
+            # find next least work chunk to work on next
+            focus_index = np.unravel_index(np.argmin(unfinished), unfinished.shape)
+            # print('processed', index, 'now focusing on ', focus_index)
+            # print(unfinished)
+
+            new_neighbors = self.get_all_neighbors(focus_index, self.num_chunks)
 
             min_value = FINISHED_FLAG
             index = None
@@ -60,11 +67,13 @@ class ReadyNeighborIterator(UnitIterator):
                     if value < min_value:
                         index = new_neighbor
                         min_value = value
+        print(queue)
 
         return queue
 
 
     def get(self, start=None, dimensions=None):
+        print('called get')
         if start is None:
             start = (0,) * len(self.num_chunks)
 
@@ -80,7 +89,9 @@ class ReadyNeighborIterator(UnitIterator):
         print(path)
 
         while len(queue) > 0:
-            yield queue.popleft()
+            item = queue.popleft()
+            yield item
+            # yield queue.popleft()
 
         print('i am finished iterating')
 
@@ -103,21 +114,27 @@ class BlockProcessor:
             start = tuple([0] * len(self.block.bounds))
 
         min_step = pow(3, len(start))
+        min_step = 9
         print('min_step is ', min_step)
 
         if get_neighbors is None:
             get_neighbors = self.block.get_all_neighbors
 
 
-        observable = Observable.from_(self.block.chunk_iterator(start)).controlled()
-        observable.request(10000)
+        # observable = Observable.from_(self.block.chunk_iterator(start)).controlled()
+        # observable.request(27)
 
         completed = set()
+        started_count = [0]
+        counts = []
         previous_num_completed = [0]
         finished = np.zeros(self.block.num_chunks, dtype=np.uint8)
 
         def throttled_next(chunk):
             self._on_next(chunk)
+            print('finally next', started_count)
+            counts.append(started_count[0])
+            print('counts are ', counts)
 
             finished[chunk.unit_index] = 1
             completed.add(chunk.unit_index)
@@ -126,18 +143,45 @@ class BlockProcessor:
                 completed.add(neighbor.unit_index)
 
             completed_since = len(completed) - previous_num_completed[-1]
-            if  completed_since >= min_step or (completed_since + min_step > self.num_chunks):
+            print('complted_since is', completed_since)
+            if completed_since >= min_step or (completed_since + min_step > self.num_chunks):
                 previous_num_completed[-1] = len(completed)
-                print('\n\n\nrequesting', min_step)
-                observable.request(min_step)
+                # print('\n\n\nrequesting', min_step)
+                # observable.request(min_step)
+
+        iterator = self.block.chunk_iterator(start)
+        current_process = psutil.Process()
+
+        def get_memory(process):
+            return process.memory_info()[0] / 2. ** 30
+
+        def throttle_iterator(x):
+            memory = get_memory(current_process)
+            children_memory = sum(map(get_memory, current_process.children(recursive=True)))
+            total_memory = memory + children_memory
+
+            print('Memory used:', memory, 'Children:', children_memory, 'Total:', total_memory)
+            if total_memory < 2:
+                return next(iterator)
+            else:
+                gc.collect()
 
         print('about to begin')
         (
-            observable
+            # observable
+            Observable.interval(100)
+            .map(throttle_iterator)
             .flat_map(processing_stream)
             .to_blocking()
             .blocking_subscribe(throttled_next, on_error=self._on_error, on_completed=self._on_completed)
+            # .subscribe(throttled_next, on_error=self._on_error, on_completed=self._on_completed)
         )
+        # import time
+        # sleepy = 20
+        # print('sleeping for ', sleepy)
+        # time.sleep(sleepy)
+        # print('done sleeping for', sleepy)
+        assert False
 
     def _on_completed(self):
         print('Finished processing', self.num_chunks)

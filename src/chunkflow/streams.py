@@ -286,25 +286,36 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
 
         def __init__(self, *args, **kwargs):
             self.hashset = set()
+    import numpy as np
+    finished = np.zeros(block.num_chunks, dtype=np.uint8)
+    def mark(chunk):
+        finished[chunk.unit_index] += 1
+        return True
 
     return lambda chunk: (
         Observable.just(chunk)
-        .do_action(lambda chunk: print('Start ', chunk.unit_index))
+        .do_action(lambda chunk: mark(chunk) and print('Start ', chunk.unit_index))
+        .do_action(mark)
         .flat_map(create_input_stream(datasource_manager))
-        .do_action(lambda chunk: print('Finish Download ', chunk.unit_index))
+        .do_action(lambda chunk: mark(chunk) and print('Finish Download ', chunk.unit_index))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
-        .do_action(lambda chunk: print('Finish Inference ', chunk.unit_index))
+        .do_action(lambda chunk: mark(chunk) and print('Finish Inference ', chunk.unit_index))
         .flat_map(create_checkpoint_observable(block, Stages.INFERENCE_DONE))
+
         .flat_map(create_aggregate_stream(block, datasource_manager))
-        .do_action(lambda chunk: print('Finish Aggregate ', chunk.unit_index))
+        .do_action(lambda chunk: mark(chunk) and print('Finish Aggregate ', chunk.unit_index))
         .flat_map(create_upload_stream(block, datasource_manager))
         .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE))
+        .do_action(lambda chunk: mark(chunk) and print('Finish Upload', chunk.unit_index))
+
         .do_action(lambda chunk: datasource_manager.overlap_repository.clear(chunk.unit_index))
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
         .do_action(lambda chunk: datasource_manager.clear_buffer(datasource_manager.input_datasource, chunk))
+        .do_action(lambda chunk: mark(chunk) and print('Finish Clearing', chunk.unit_index))
 
         .flat_map(create_flush_datasource_observable(datasource_manager, block, Stages.UPLOAD_DONE, Stages.FLUSH_DONE))
-        .do_action(lambda chunk: print('Finish Flushing ', chunk.unit_index))
+        .do_action(lambda chunk: mark(chunk) and print('Finish Flushing ', chunk.unit_index))
+        .do_action(lambda x: print('status is \n', finished))
         .map(lambda _: chunk)
     )
 

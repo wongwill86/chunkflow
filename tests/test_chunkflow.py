@@ -12,7 +12,7 @@ def test_inference(block_datasource_manager):
     runner = CliRunner()
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    task_shape = [10, 20, 20]
+    task_shape = [24, 55, 55]
     overlap = [2, 5, 5]
 
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
@@ -52,6 +52,44 @@ def test_inference(block_datasource_manager):
     assert result.exception is None
     assert np.prod(task_shape) * 3 == data.sum()
 
+
+def test_inference_blah(block_datasource_manager, chunk_datasource_manager):
+    print('hello')
+    offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
+    volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
+    task_shape = (24, 55, 55)
+    patch_shape = (5, 12, 12)
+    overlap = (2, 4, 4)
+    num_chunks = (8, 8, 8)
+
+    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
+    from chunkblocks.models import Block
+    from chunkflow.chunk_operations.blend_operation import BlendFactory
+    from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream, create_preload_datasource_stream
+    from chunkflow.chunk_operations.inference_operation import InferenceFactory
+    from chunkflow.block_processor import ReadyNeighborIterator, BlockProcessor
+
+    block = Block(num_chunks=num_chunks, offset=offset, chunk_shape=patch_shape, overlap=overlap)
+    # block.base_iterator = ReadyNeighborIterator(block.num_chunks)
+
+    # block_datasource_manager.input_datasource[dataset_bounds] = np.ones(
+    #     volume_shape, dtype=np.dtype(block_datasource_manager.input_datasource.data_type))
+
+    output_datasource = chunk_datasource_manager.output_datasource
+    inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
+                                         output_data_type=output_datasource.data_type)
+    blend_factory = BlendFactory(block)
+
+    task_stream = create_inference_and_blend_stream(
+        block=block,
+        inference_operation=inference_factory.get_operation('identity', '', '', []),
+        blend_operation=blend_factory.get_operation('average'),
+        datasource_manager=chunk_datasource_manager,
+    )
+
+    BlockProcessor(block).process(task_stream)
+
+    assert False
 
 def test_blend_with_offset_top_edge_task(block_datasource_manager):
     return False
