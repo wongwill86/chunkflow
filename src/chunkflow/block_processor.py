@@ -7,7 +7,9 @@ from chunkblocks.iterators import UnitIterator
 from chunkflow.streams import blocking_subscribe
 import itertools
 import functools
+from concurrent.futures import as_completed
 import psutil
+import time
 import os
 import gc
 import numpy as np
@@ -97,7 +99,7 @@ class ReadyNeighborIterator(UnitIterator):
 
 
 class BlockProcessor:
-    def __init__(self, block, on_next=None, on_error=None, on_completed=None):
+    def __init__(self, block, on_next=None, on_error=None, on_completed=None, datasource_manager=None):
         self.block = block
         self.num_chunks = reduce(lambda x, y: x * y, block.num_chunks)
         self.completed = 0
@@ -105,6 +107,7 @@ class BlockProcessor:
         self.on_next = on_next
         self.on_error = on_error
         self.on_completed = on_completed
+        self.datasource_manager = datasource_manager
 
     def process(self, processing_stream, start_slice=None, get_neighbors=None):
         print('Num_chunks %s' % (self.block.num_chunks,))
@@ -128,6 +131,7 @@ class BlockProcessor:
         started_count = [0]
         counts = []
         previous_num_completed = [0]
+        started = np.zeros(self.block.num_chunks, dtype=np.uint8)
         finished = np.zeros(self.block.num_chunks, dtype=np.uint8)
 
         def throttled_next(chunk):
@@ -138,12 +142,12 @@ class BlockProcessor:
 
             finished[chunk.unit_index] = 1
             completed.add(chunk.unit_index)
-            for neighbor in get_neighbors(chunk):
-                finished[neighbor.unit_index] = 1
-                completed.add(neighbor.unit_index)
+            # for neighbor in get_neighbors(chunk):
+            #     finished[neighbor.unit_index] = 1
+            #     completed.add(neighbor.unit_index)
 
             completed_since = len(completed) - previous_num_completed[-1]
-            print('complted_since is', completed_since)
+            print('completed since is', completed_since)
             if completed_since >= min_step or (completed_since + min_step > self.num_chunks):
                 previous_num_completed[-1] = len(completed)
                 # print('\n\n\nrequesting', min_step)
@@ -152,25 +156,110 @@ class BlockProcessor:
         iterator = self.block.chunk_iterator(start)
         current_process = psutil.Process()
 
-        def get_memory(process):
-            return process.memory_info()[0] / 2. ** 30
+        last_start_time = [time.time()]
 
-        def throttle_iterator(x):
-            memory = get_memory(current_process)
-            children_memory = sum(map(get_memory, current_process.children(recursive=True)))
-            total_memory = memory + children_memory
+        def get_memory_uss(process):
+            # use uss to take account of shared library memory
+            return process.memory_full_info().uss / 2. ** 30
 
-            print('Memory used:', memory, 'Children:', children_memory, 'Total:', total_memory)
-            if total_memory < 2:
-                return next(iterator)
+        def get_memory_pss(process):
+            # use uss to take account of shared library memory
+            return process.memory_full_info().pss / 2. ** 30
+
+        def get_buffer_info(name, chunk_buffer):
+            if not chunk_buffer:
+                return 0
+            if  len(chunk_buffer.local_cache) == 0:
+                keys = datas = []
             else:
+                keys, chunks = zip(*chunk_buffer.local_cache.items())
+                datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
+            return get_mem_info(name, keys, datas)
+
+        def get_mem_info(name, keys, datas):
+            keys = list(keys)
+            keys.sort()
+            infos = [(x.shape, x.dtype, x.nbytes) for x in datas]
+            memory_used = sum(info[2] for info in infos) / 2. ** 30
+            if len(set(infos)) > 1:
+                print('\n\n\nTHIS SHOULD NOT happen should not have more than one type of data... yet', infos)
+            print('%s contains %s/%s (Futures ?: %s),entries of shape %s, total memory: %.3f GiB, entries:%s' % (
+                name, len(infos), len(keys), len(keys) - len(infos),
+                infos[0][1] if len(infos) else {}, memory_used, keys
+            ))
+            return memory_used
+
+        def throttle_iterator(tick):
+            gc.collect()
+            processes = [current_process] + current_process.children(recursive=True)
+            total_memory_pss = sum(map(get_memory_pss, processes))
+            total_memory_uss = sum(map(get_memory_uss, processes))
+            print('Total pss: %.3f' % total_memory_pss, 'Total uss: %.3f' % total_memory_uss, 'started:',
+                  started_count[0], 'completed:', len(completed))
+            if self.datasource_manager is not None:
+                input_buffer = self.datasource_manager.get_buffer(self.datasource_manager.input_datasource)
+                output_buffer = self.datasource_manager.get_buffer(self.datasource_manager.output_datasource)
+                output_final_buffer = self.datasource_manager.get_buffer(
+                    self.datasource_manager.output_datasource_final)
+
+                memory_used = 0
+                memory_used += get_buffer_info('input_buffer', input_buffer)
+                memory_used += get_buffer_info('output_buffer', output_buffer)
+                memory_used += get_buffer_info('output_final_buffer', output_final_buffer)
+                memory_used += get_mem_info('SparseOverlapRepository',
+                                            self.datasource_manager.overlap_repository.datasources.keys(),
+                                            self.datasource_manager.overlap_repository.datasources.values()
+                                            )
+                discrepancy = abs(total_memory_pss - memory_used)
+                print('TOTAL expected memory used is %.3f but actual is pss %.3f, uss %.3f, discrepancy is: %.3f' % (
+                    memory_used, total_memory_pss, total_memory_uss, discrepancy
+                ))
+
+            since_last_start = time.time() - last_start_time[0]
+            overdue = since_last_start > 10
+            if overdue:
+                print('OVERDUE, shoving more chunks to see if it passes', overdue)
+            if total_memory_pss < 6 or overdue:
+                chunk = next(iterator)
+                started[chunk.unit_index] = 1
+                started_count[0] += 1
+                last_start_time[0] = time.time()
+                print('Starting', chunk.unit_index, ' now:\n', started)
+                return Observable.just(chunk)
+            else:
+
                 gc.collect()
+                gc.collect()
+                gc.collect()
+                if self.datasource_manager is not None:
+                    load_collect = [
+                        self.datasource_manager.load_executor.submit(gc.collect)
+                        for i in range(0, 12)
+                    ]
+                    flush_collect = [
+                        self.datasource_manager.flush_executor.submit(gc.collect)
+                        for i in range(0, 12)
+                    ]
+
+                    print('wait for flush to copmlete')
+                    for future in as_completed(itertools.chain(load_collect, flush_collect)):
+                        future.result()
+                    print('done waiting for flush')
+
+
+                processes = [current_process] + current_process.children(recursive=True)
+                total_memory_pss = sum(map(get_memory_pss, processes))
+                total_memory_uss = sum(map(get_memory_uss, processes))
+                print('Tried to collect, memory now (pss):', total_memory_pss, 'memory now (uss):', total_memory_uss)
+                raise Exception('fu')
+                return Observable.never()
 
         print('about to begin')
         (
             # observable
             Observable.interval(100)
-            .map(throttle_iterator)
+            .flat_map(throttle_iterator)
+            # .filter(lambda x: x is not None)
             .flat_map(processing_stream)
             .to_blocking()
             .blocking_subscribe(throttled_next, on_error=self._on_error, on_completed=self._on_completed)

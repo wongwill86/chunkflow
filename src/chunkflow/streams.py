@@ -13,6 +13,11 @@ from chunkflow.chunk_buffer import CacheMiss
 
 MAX_RETRIES = 10
 
+
+def del_data(chunk):
+    del chunk.data
+
+
 @extensionmethod(Observable)
 def from_item_or_future(item_or_future, default=None):
     """
@@ -191,6 +196,7 @@ def create_inference_stream(block, inference_operation, blend_operation, datasou
         .do_action(lambda chunk: datasource_manager.dump_chunk(
             chunk, datasource=datasource_manager.overlap_repository.get_datasource(chunk.unit_index), use_executor=False
         ))
+        .do_action(del_data)
     )
 
 
@@ -235,6 +241,7 @@ def create_upload_stream(block, datasource_manager):
         .flat_map(Observable.from_item_or_future)
         .reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
         .retry(MAX_RETRIES)
+        .do_action(del_data)
     )
 
 
@@ -271,10 +278,12 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
                 Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
                 .map(partial(datasource_manager.flush, datasource_chunk))
                 .flat_map(Observable.from_item_or_future)
+                .do_action(del_data)
             )
             .reduce(lambda x, y: uploaded_chunk, seed=uploaded_chunk)  # reduce to wait for all to complete transferring
             .map(lambda _: uploaded_chunk)
             .retry(MAX_RETRIES)
+            .do_action(del_data)
         )
     else:
         return lambda uploaded_chunk: Observable.just(uploaded_chunk)
