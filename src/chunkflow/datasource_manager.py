@@ -4,6 +4,8 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkblocks.iterators import UnitIterator
+from concurrent.futures import ThreadPoolExecutor, wait
+import objgraph
 
 
 def get_absolute_index(offset, overlap, shape):
@@ -52,6 +54,7 @@ class DatasourceManager:
         self.load_executor = load_executor
         self.dump_executor = dump_executor
         self.flush_executor = flush_executor
+        self.runner = ThreadPoolExecutor(max_workers=12)
 
     def download_input(self, chunk):
         return self.load_chunk(chunk, datasource=self.input_datasource)
@@ -64,11 +67,28 @@ class DatasourceManager:
             return self.datasource_buffers[datasource_key]
         return None
 
+
     def _perform_chunk_action(self, chunk_action, datasource, slices=None, executor=None):
         if executor is None:
             return chunk_action(datasource, slices=slices)
         else:
-            return executor.submit(chunk_action, datasource, slices)
+
+            # return executor.submit(chunk_action, datasource, slices)
+            def run_in_executor(executor, chunk_action, datasource, slices):
+                thread_future = executor.submit(chunk_action, datasource, slices)
+                done, not_done = wait([thread_future])
+                # objgraph.show_backrefs([thread_future], filename='futs/future%s.png' % id(thread_future))
+                # print('showing omost common types for ', id(thread_future))
+                # objgraph.show_most_common_types(objects=[thread_future])
+                ret = done.pop().result()
+                del thread_future
+                return ret
+
+            print('action:', chunk_action, 'datasource is', type(datasource))
+            print(datasource)
+            return self.runner.submit(run_in_executor, executor, chunk_action, datasource, slices)
+
+
 
     def dump_chunk(self, chunk, datasource=None, slices=None, use_buffer=True, use_executor=True):
         """

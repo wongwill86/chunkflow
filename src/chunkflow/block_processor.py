@@ -7,7 +7,8 @@ from chunkblocks.iterators import UnitIterator
 from chunkflow.streams import blocking_subscribe
 import itertools
 import functools
-from concurrent.futures import as_completed
+from memory_profiler import profile
+from concurrent.futures import as_completed, ProcessPoolExecutor
 import psutil
 import time
 import os
@@ -109,6 +110,7 @@ class BlockProcessor:
         self.on_completed = on_completed
         self.datasource_manager = datasource_manager
 
+    @profile
     def process(self, processing_stream, start_slice=None, get_neighbors=None):
         print('Num_chunks %s' % (self.block.num_chunks,))
         if start_slice:
@@ -160,11 +162,17 @@ class BlockProcessor:
 
         def get_memory_uss(process):
             # use uss to take account of shared library memory
-            return process.memory_full_info().uss / 2. ** 30
+            try:
+                return process.memory_full_info().uss / 2. ** 30
+            except psutil._exceptions.NoSuchProcess:
+                return 0
 
         def get_memory_pss(process):
             # use uss to take account of shared library memory
-            return process.memory_full_info().pss / 2. ** 30
+            try:
+                return process.memory_full_info().pss / 2. ** 30
+            except psutil._exceptions.NoSuchProcess:
+                return 0
 
         def get_buffer_info(name, chunk_buffer):
             if not chunk_buffer:
@@ -190,12 +198,15 @@ class BlockProcessor:
             return memory_used
 
         def throttle_iterator(tick):
-            gc.collect()
             processes = [current_process] + current_process.children(recursive=True)
             total_memory_pss = sum(map(get_memory_pss, processes))
             total_memory_uss = sum(map(get_memory_uss, processes))
+            import objgraph
+            print('\n growth:')
+            objgraph.show_growth(limit=10)
             print('Total pss: %.3f' % total_memory_pss, 'Total uss: %.3f' % total_memory_uss, 'started:',
                   started_count[0], 'completed:', len(completed))
+            memory_used = 0
             if self.datasource_manager is not None:
                 input_buffer = self.datasource_manager.get_buffer(self.datasource_manager.input_datasource)
                 output_buffer = self.datasource_manager.get_buffer(self.datasource_manager.output_datasource)
@@ -217,10 +228,31 @@ class BlockProcessor:
 
             since_last_start = time.time() - last_start_time[0]
             overdue = since_last_start > 10
+            if total_memory_pss > 6:
+                print('RESETTIN PPE')
+                self.datasource_manager.load_executor.shutdown(wait=True)
+                self.datasource_manager.flush_executor.shutdown(wait=True)
+                self.datasource_manager.load_executor = ProcessPoolExecutor()
+                self.datasource_manager.flush_executor = ProcessPoolExecutor()
+                print('DONE RESETTING PPE')
+                gc.collect()
+                processes = [current_process] + current_process.children(recursive=True)
+                new_total_memory_pss = sum(map(get_memory_pss, processes))
+                new_total_memory_uss = sum(map(get_memory_uss, processes))
+                import objgraph
+                print('\n growth:')
+                objgraph.show_growth(limit=10)
+                print('after reset ppe, Expected:', memory_used, 'Total pss: %.3f' % new_total_memory_pss, 'Total uss: %.3f'
+                      % new_total_memory_uss, 'started:', started_count[0], 'completed:', len(completed),
+                      'saved', new_total_memory_pss - total_memory_pss)
+
             if overdue:
                 print('OVERDUE, shoving more chunks to see if it passes', overdue)
-            if total_memory_pss < 6 or overdue:
-                chunk = next(iterator)
+            if total_memory_pss < 10 or overdue:
+                try:
+                    chunk = next(iterator)
+                except StopIteration:
+                    return Observable.empty()
                 started[chunk.unit_index] = 1
                 started_count[0] += 1
                 last_start_time[0] = time.time()
@@ -245,7 +277,12 @@ class BlockProcessor:
                     for future in as_completed(itertools.chain(load_collect, flush_collect)):
                         future.result()
                     print('done waiting for flush')
-
+                    print('waiting to shutdown load')
+                    self.datasource_manager.load_executor.shutdown(wait=True)
+                    print('waiting to shutdown flush')
+                    self.datasource_manager.flush_executor.shutdown(wait=True)
+                gc.collect()
+                gc.collect()
 
                 processes = [current_process] + current_process.children(recursive=True)
                 total_memory_pss = sum(map(get_memory_pss, processes))

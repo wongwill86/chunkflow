@@ -15,7 +15,50 @@ MAX_RETRIES = 10
 
 
 def del_data(chunk):
-    del chunk.data
+    if hasattr(chunk, 'data'):
+        del chunk.data
+        chunk.data = None
+
+from rx.core import Observable, AnonymousObservable
+from rx.internal.utils import is_future
+from rx.internal import extensionclassmethod
+import objgraph
+
+
+@extensionclassmethod(Observable)
+def from_my_future(cls, future):
+    """Converts a Future to an Observable sequence
+    Keyword Arguments:
+    future -- {Future} A Python 3 compatible future.
+        https://docs.python.org/3/library/asyncio-task.html#future
+        http://www.tornadoweb.org/en/stable/concurrent.html#tornado.concurrent.Future
+    Returns {Observable} An Observable sequence which wraps the existing
+    future success and failure.
+    """
+
+    def subscribe(observer):
+        def done(future):
+            try:
+                value = future.result()
+                # objgraph.show_backrefs([future], filename='futs/future%s.png' % id(future))
+                # print('showing omost common types for ', id(future))
+                # objgraph.show_most_common_types(objects=[future])
+                # del future
+            except Exception as ex:
+                observer.on_error(ex)
+            else:
+                observer.on_next(value)
+                observer.on_completed()
+
+        future.add_done_callback(done)
+
+        def dispose():
+            if future and future.cancel:
+                future.cancel()
+
+        return dispose
+
+    return AnonymousObservable(subscribe) if is_future(future) else future
 
 
 @extensionmethod(Observable)
@@ -25,7 +68,7 @@ def from_item_or_future(item_or_future, default=None):
     package).
     """
     if hasattr(item_or_future, 'result'):  # should probably check if it is callable too
-        return Observable.from_future(item_or_future)
+        return Observable.from_my_future(item_or_future)
     elif item_or_future is None:
         return Observable.of(default)
     else:
