@@ -84,8 +84,6 @@ class DatasourceManager:
                 del thread_future
                 return ret
 
-            print('action:', chunk_action, 'datasource is', type(datasource))
-            print(datasource)
             return self.runner.submit(run_in_executor, executor, chunk_action, datasource, slices)
 
 

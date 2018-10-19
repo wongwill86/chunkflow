@@ -6,7 +6,14 @@ from click.testing import CliRunner
 from chunkflow.cli import main
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, default_overlap_datasource
 from chunkflow.datasource_manager import get_absolute_index, get_all_mod_index
+from chunkflow.datasource_manager import SparseOverlapRepository, get_absolute_index, get_all_mod_index
 
+from chunkflow.cloudvolume_datasource import (
+    CloudVolumeCZYX,
+    CloudVolumeDatasourceManager,
+    create_buffered_cloudvolumeCZYX,
+    default_overlap_name
+)
 
 def test_inference(block_datasource_manager):
     runner = CliRunner()
@@ -57,10 +64,10 @@ def test_inference_blah(block_datasource_manager, chunk_datasource_manager):
     print('hello')
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    task_shape = (24, 55, 55)
-    patch_shape = (5, 12, 12)
-    overlap = (2, 4, 4)
-    num_chunks = (8, 8, 8)
+    # task_shape = (24, 55, 55)
+    patch_shape = (50, 200, 200)
+    overlap = (10, 40, 40)
+    num_chunks = (4, 4, 4)
 
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
     from chunkblocks.models import Block
@@ -75,6 +82,22 @@ def test_inference_blah(block_datasource_manager, chunk_datasource_manager):
     # block_datasource_manager.input_datasource[dataset_bounds] = np.ones(
     #     volume_shape, dtype=np.dtype(block_datasource_manager.input_datasource.data_type))
 
+    from concurrent.futures import ProcessPoolExecutor
+    output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource((0,0,0))
+    chunk_datasource_manager = CloudVolumeDatasourceManager(
+        block_datasource_manager.input_datasource,
+        output_cloudvolume=output_cloudvolume_overlap,
+        output_cloudvolume_final=block_datasource_manager.output_datasource,
+        overlap_repository=SparseOverlapRepository(
+            block=block,
+            channel_dimensions=(output_cloudvolume_overlap.num_channels,),
+            dtype=output_cloudvolume_overlap.dtype,
+        ),
+        buffer_generator=create_buffered_cloudvolumeCZYX,
+        load_executor=ProcessPoolExecutor(),
+        flush_executor=ProcessPoolExecutor()
+    )
+
     output_datasource = chunk_datasource_manager.output_datasource
     inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
                                          output_data_type=output_datasource.data_type)
@@ -87,7 +110,7 @@ def test_inference_blah(block_datasource_manager, chunk_datasource_manager):
         datasource_manager=chunk_datasource_manager,
     )
 
-    BlockProcessor(block).process(task_stream)
+    BlockProcessor(block, datasource_manager=chunk_datasource_manager).process(task_stream)
 
     assert False
 

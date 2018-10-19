@@ -17,6 +17,45 @@ import numpy as np
 
 from rx import Observable
 
+SENTINEL = 1337
+
+def get_memory_uss(process):
+    # use uss to take account of shared library memory
+    try:
+        return process.memory_full_info().uss / 2. ** 30
+    except psutil._exceptions.NoSuchProcess:
+        return 0
+
+def get_memory_pss(process):
+    # use uss to take account of shared library memory
+    try:
+        return process.memory_full_info().pss / 2. ** 30
+    except psutil._exceptions.NoSuchProcess:
+        return 0
+
+def get_buffer_info(name, chunk_buffer):
+    if not chunk_buffer:
+        return 0
+    if  len(chunk_buffer.local_cache) == 0:
+        keys = datas = []
+    else:
+        keys, chunks = zip(*chunk_buffer.local_cache.items())
+        datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
+    return get_mem_info(name, keys, datas)
+
+def get_mem_info(name, keys, datas):
+    keys = list(keys)
+    keys.sort()
+    infos = [(x.shape, x.dtype, x.nbytes) for x in datas]
+    memory_used = sum(info[2] for info in infos) / 2. ** 30
+    if len(set(infos)) > 1:
+        print('\n\n\nTHIS SHOULD NOT happen should not have more than one type of data... yet', infos)
+    print('%s contains %s/%s (Futures ?: %s),entries of shape %s, total memory: %.3f GiB, entries:%s' % (
+        name, len(infos), len(keys), len(keys) - len(infos),
+        infos[0][1] if len(infos) else {}, memory_used, []#keys
+    ))
+    return memory_used
+
 
 class ReadyNeighborIterator(UnitIterator):
     def __init__(self, num_chunks):
@@ -99,6 +138,18 @@ class ReadyNeighborIterator(UnitIterator):
         print('i am finished iterating')
 
 
+def print_memory(process):
+    processes = [process] + process.children(recursive=True)
+    total_memory_pss = sum(map(get_memory_pss, processes))
+    total_memory_uss = sum(map(get_memory_uss, processes))
+    import objgraph
+    print('Total pss: %.3f' % total_memory_pss, 'Total uss: %.3f' % total_memory_uss)
+    memory_used = 0
+    return total_memory_pss, total_memory_uss
+
+
+from memory_profiler import profile
+
 class BlockProcessor:
     def __init__(self, block, on_next=None, on_error=None, on_completed=None, datasource_manager=None):
         self.block = block
@@ -160,52 +211,12 @@ class BlockProcessor:
 
         last_start_time = [time.time()]
 
-        def get_memory_uss(process):
-            # use uss to take account of shared library memory
-            try:
-                return process.memory_full_info().uss / 2. ** 30
-            except psutil._exceptions.NoSuchProcess:
-                return 0
-
-        def get_memory_pss(process):
-            # use uss to take account of shared library memory
-            try:
-                return process.memory_full_info().pss / 2. ** 30
-            except psutil._exceptions.NoSuchProcess:
-                return 0
-
-        def get_buffer_info(name, chunk_buffer):
-            if not chunk_buffer:
-                return 0
-            if  len(chunk_buffer.local_cache) == 0:
-                keys = datas = []
-            else:
-                keys, chunks = zip(*chunk_buffer.local_cache.items())
-                datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
-            return get_mem_info(name, keys, datas)
-
-        def get_mem_info(name, keys, datas):
-            keys = list(keys)
-            keys.sort()
-            infos = [(x.shape, x.dtype, x.nbytes) for x in datas]
-            memory_used = sum(info[2] for info in infos) / 2. ** 30
-            if len(set(infos)) > 1:
-                print('\n\n\nTHIS SHOULD NOT happen should not have more than one type of data... yet', infos)
-            print('%s contains %s/%s (Futures ?: %s),entries of shape %s, total memory: %.3f GiB, entries:%s' % (
-                name, len(infos), len(keys), len(keys) - len(infos),
-                infos[0][1] if len(infos) else {}, memory_used, keys
-            ))
-            return memory_used
-
         def throttle_iterator(tick):
-            processes = [current_process] + current_process.children(recursive=True)
-            total_memory_pss = sum(map(get_memory_pss, processes))
-            total_memory_uss = sum(map(get_memory_uss, processes))
-            import objgraph
-            print('\n growth:')
-            objgraph.show_growth(limit=10)
-            print('Total pss: %.3f' % total_memory_pss, 'Total uss: %.3f' % total_memory_uss, 'started:',
-                  started_count[0], 'completed:', len(completed))
+            if tick % 3 == 1 or tick % 3 == 2:
+                return Observable.never()
+            print('started', started_count[0], 'completed:', len(completed))
+            total_memory_pss, total_memory_uss = print_memory(current_process)
+
             memory_used = 0
             if self.datasource_manager is not None:
                 input_buffer = self.datasource_manager.get_buffer(self.datasource_manager.input_datasource)
@@ -228,23 +239,22 @@ class BlockProcessor:
 
             since_last_start = time.time() - last_start_time[0]
             overdue = since_last_start > 10
-            if total_memory_pss > 6:
+            if False or total_memory_pss > 6:
                 print('RESETTIN PPE')
-                self.datasource_manager.load_executor.shutdown(wait=True)
-                self.datasource_manager.flush_executor.shutdown(wait=True)
-                self.datasource_manager.load_executor = ProcessPoolExecutor()
-                self.datasource_manager.flush_executor = ProcessPoolExecutor()
+                if self.datasource_manager.load_executor is not None:
+                    self.datasource_manager.load_executor.shutdown(wait=True)
+                    self.datasource_manager.load_executor = ProcessPoolExecutor()
+                if self.datasource_manager.flush_executor is not None:
+                    self.datasource_manager.flush_executor.shutdown(wait=True)
+                    self.datasource_manager.flush_executor = ProcessPoolExecutor()
                 print('DONE RESETTING PPE')
                 gc.collect()
-                processes = [current_process] + current_process.children(recursive=True)
-                new_total_memory_pss = sum(map(get_memory_pss, processes))
-                new_total_memory_uss = sum(map(get_memory_uss, processes))
+                new_total_memory_pss, new_total_memory_uss = print_memory(current_process)
                 import objgraph
                 print('\n growth:')
                 objgraph.show_growth(limit=10)
                 print('after reset ppe, Expected:', memory_used, 'Total pss: %.3f' % new_total_memory_pss, 'Total uss: %.3f'
-                      % new_total_memory_uss, 'started:', started_count[0], 'completed:', len(completed),
-                      'saved', new_total_memory_pss - total_memory_pss)
+                      % new_total_memory_uss, 'saved', new_total_memory_pss - total_memory_pss)
 
             if overdue:
                 print('OVERDUE, shoving more chunks to see if it passes', overdue)
@@ -252,7 +262,7 @@ class BlockProcessor:
                 try:
                     chunk = next(iterator)
                 except StopIteration:
-                    return Observable.empty()
+                    return Observable.just(SENTINEL)
                 started[chunk.unit_index] = 1
                 started_count[0] += 1
                 last_start_time[0] = time.time()
@@ -288,15 +298,14 @@ class BlockProcessor:
                 total_memory_pss = sum(map(get_memory_pss, processes))
                 total_memory_uss = sum(map(get_memory_uss, processes))
                 print('Tried to collect, memory now (pss):', total_memory_pss, 'memory now (uss):', total_memory_uss)
-                raise Exception('fu')
-                return Observable.never()
+                return Observable.empty()
 
         print('about to begin')
         (
             # observable
-            Observable.interval(100)
+            Observable.interval(50)
             .flat_map(throttle_iterator)
-            # .filter(lambda x: x is not None)
+            .take_while(lambda x: x is not SENTINEL)
             .flat_map(processing_stream)
             .to_blocking()
             .blocking_subscribe(throttled_next, on_error=self._on_error, on_completed=self._on_completed)
@@ -307,10 +316,10 @@ class BlockProcessor:
         # print('sleeping for ', sleepy)
         # time.sleep(sleepy)
         # print('done sleeping for', sleepy)
-        assert False
 
     def _on_completed(self):
         print('Finished processing', self.num_chunks)
+        print_memory(psutil.Process())
         if self.on_completed is not None:
             self.on_completed()
 
@@ -324,6 +333,7 @@ class BlockProcessor:
         raise error
 
     def _on_next(self, chunk, data=None):
+        print_memory(psutil.Process())
         self.completed += 1
         print('****** %s--%s %s. %s of %s done ' % (datetime.now(), current_thread().name, chunk.unit_index,
                                                     self.completed, self.num_chunks))

@@ -16,6 +16,9 @@ MAX_RETRIES = 10
 
 def del_data(chunk):
     if hasattr(chunk, 'data'):
+        # objgraph.show_backrefs([chunk.data], filename='futs/data%s.png' % id(chunk.data))
+        # print('showing omost common types for ', id(chunk.data))
+        # objgraph.show_most_common_types(objects=[chunk.data])
         del chunk.data
         chunk.data = None
 
@@ -363,6 +366,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .do_action(lambda chunk: datasource_manager.overlap_repository.clear(chunk.unit_index))
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
         .do_action(lambda chunk: datasource_manager.clear_buffer(datasource_manager.input_datasource, chunk))
+        .do_action(del_data)
         .do_action(lambda chunk: mark(chunk) and print('Finish Clearing', chunk.unit_index))
 
         .flat_map(create_flush_datasource_observable(datasource_manager, block, Stages.UPLOAD_DONE, Stages.FLUSH_DONE))
