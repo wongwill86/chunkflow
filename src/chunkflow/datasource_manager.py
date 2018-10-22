@@ -230,4 +230,7 @@ class SparseOverlapRepository(OverlapRepository):
         return self.datasources[index]
 
     def clear(self, index):
-        del self.datasources[index]
+        try:
+            del self.datasources[index]
+        except KeyError:
+            pass

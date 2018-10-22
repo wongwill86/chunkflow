@@ -346,8 +346,8 @@ class TestInferenceStream:
             chunk_datasource_manager.output_datasource_final[block.bounds].sum()
 
     def test_process_cloudvolume_sparse_buffered(self, chunk_datasource_manager):
-        task_shape = (10, 20, 20)
-        overlap = (2, 5, 5)
+        task_shape = (5, 10, 10)
+        overlap = (1, 2, 2)
         num_chunks = (3, 3, 3)
 
         input_datasource = chunk_datasource_manager.input_datasource
