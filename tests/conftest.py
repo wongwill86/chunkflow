@@ -5,6 +5,7 @@ from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasou
 
 VOLUME_SIZE = (40, 60, 60)
 VOXEL_OFFSET = (200, 100, 50)
+CLOUD_VOLUME_CHUNK_SIZE = (3, 8, 8)
 CLOUD_VOLUME_CHUNK_SIZE = (4, 10, 10)
 INPUT_DATA_TYPE = 'uint8'
 OUTPUT_DATA_TYPE = 'float32'
