@@ -5,12 +5,12 @@ from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, CloudVolumeDatasou
 
 # VOLUME_SIZE = (40, 60, 60)
 VOLUME_SIZE = (200, 300, 300)
-VOLUME_SIZE = (2000, 3000, 3000)
+# VOLUME_SIZE = (2000, 3000, 3000)
 VOXEL_OFFSET = (200, 100, 50)
 CLOUD_VOLUME_CHUNK_SIZE = (3, 8, 8)
 CLOUD_VOLUME_CHUNK_SIZE = (4, 10, 10)
-CLOUD_VOLUME_CHUNK_SIZE = (2, 5, 5)
-CLOUD_VOLUME_CHUNK_SIZE = (20, 80, 80)
+# CLOUD_VOLUME_CHUNK_SIZE = (2, 5, 5)
+# CLOUD_VOLUME_CHUNK_SIZE = (20, 80, 80)
 INPUT_DATA_TYPE = 'uint8'
 OUTPUT_DATA_TYPE = 'float32'
 NUM_CHANNELS = 3
@@ -100,7 +100,7 @@ def output_cloudvolume_overlap(cloudvolume_factory):
 
 
 @pytest.fixture(scope='function')
-def output_cloudvolume_overlaps(block_datasource_manager):
+def output_cloudvolume_overlaps(blGlobalOffsetArrayock_datasource_manager):
     block_datasource_manager.create_overlap_datasources((0,) * len(VOXEL_OFFSET))
     return block_datasource_manager.overlap_repository.datasources.values()
 

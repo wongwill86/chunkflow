@@ -61,7 +61,6 @@ def test_inference(block_datasource_manager):
 
 
 def test_inference_blah(block_datasource_manager, chunk_datasource_manager):
-    print('hello')
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
     # task_shape = (24, 55, 55)
@@ -111,6 +110,7 @@ def test_inference_blah(block_datasource_manager, chunk_datasource_manager):
     )
 
     BlockProcessor(block, datasource_manager=chunk_datasource_manager).process(task_stream)
+    print(chunk_datasource_manager.output_datasource[block.bounds])
 
     assert False
 

@@ -4,6 +4,7 @@ from functools import partial
 
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
+from chunkblocks.models import Chunk
 from rx import Observable, config
 from rx.core import AnonymousObservable
 from rx.core.blockingobservable import BlockingObservable
@@ -43,6 +44,19 @@ def from_my_future(cls, future):
         def done(future):
             try:
                 value = future.result()
+                if hasattr(value, 'data') and value.data is not None:
+                    chunk_copy = value.block.unit_index_to_chunk(value.unit_index)
+                    chunk_copy.data = value.data.copy()
+                    # objgraph.show_backrefs([blah], filename='futs/fut%s.png' % id(blah))
+                    # print('showing omost common types for ', id(blah))
+                    # objgraph.show_most_common_types(objects=[blah])
+                    if hasattr(value, 'data'):
+                        del value.data
+                    del value
+                    del future
+                    value = chunk_copy
+
+
                 # objgraph.show_backrefs([future], filename='futs/future%s.png' % id(future))
                 # print('showing omost common types for ', id(future))
                 # objgraph.show_most_common_types(objects=[future])
@@ -391,18 +405,30 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
     return lambda chunk: (
         Observable.just(chunk)
         .flat_map(create_checkpoint_observable(block, stages.START, notify_neighbors=False))
+        .do_action(lambda chunk: print('start', chunk.data.nbytes if chunk.data is not None else 0) or
+                   datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_input_stream(datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
+        .do_action(lambda chunk: print('data after inference', chunk.data.nbytes if chunk.data is not None else 0) or
+                   datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_checkpoint_observable(block, stages.INFERENCE_DONE))
 
         .flat_map(create_aggregate_stream(block, datasource_manager))
+        .do_action(lambda chunk: print('data after aggregate', chunk.data.nbytes if chunk.data is not None else 0) or
+                   datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_upload_stream(block, datasource_manager))
+        .do_action(lambda chunk: print('data after upload', chunk.data.nbytes if chunk.data is not None else 0) or
+                   datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_checkpoint_observable(block, stages.UPLOAD_DONE, notify_neighbors=False))
-        .do_action(lambda x: print('about to clear buffer input', x.unit_index))
+        .do_action(lambda x: print('about to clear buffer input', x.unit_index) or
+                   datasource_manager.print_cache_stats() or objgraph.show_growth())
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
-        .do_action(lambda x: print('ifinsih clear fluhin about flush', x.unit_index))
+        .do_action(lambda x: print('ifinsih clear fluhin about flush', x.unit_index) or
+                   datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_flush_datasource_observable(datasource_manager, block, stages.UPLOAD_DONE,
                                                      stages.DATASOURCE_FLUSH_DONE))
+        .do_action(lambda chunk: print('data after flush', chunk.data.nbytes if chunk.data is not None else 0) or
+                   datasource_manager.print_cache_stats() or objgraph.show_growth())
 
         .flat_map(create_checkpoint_observable(block, stages.CHUNK_FLUSH_DONE))
         .do_action(lambda chunk: datasource_manager.overlap_repository.clear(chunk.unit_index))

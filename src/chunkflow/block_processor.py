@@ -8,6 +8,8 @@ from chunkflow.streams import blocking_subscribe
 from chunkflow.memory_utils import print_memory, get_memory_uss, get_memory_pss
 import itertools
 import functools
+import linecache
+import tracemalloc
 from memory_profiler import profile
 from concurrent.futures import as_completed, ProcessPoolExecutor
 import psutil
@@ -19,6 +21,33 @@ import numpy as np
 from rx import Observable
 
 SENTINEL = 1337
+
+
+
+def display_top(snapshot, key_type='lineno', limit=3):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>"),
+    ))
+    top_stats = snapshot.statistics(key_type)
+
+    print("Top %s lines" % limit)
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        # replace "/path/to/module/file.py" with "module/file.py"
+        filename = os.sep.join(frame.filename.split(os.sep)[-2:])
+        print("#%s: %s:%s: %.1f KiB"
+              % (index, filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            print('    %s' % line)
+
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        print("%s other: %.1f KiB" % (len(other), size / 1024))
+    total = sum(stat.size for stat in top_stats)
+    print("Total allocated size: %.1f KiB" % (total / 1024))
 
 class ReadyNeighborIterator(UnitIterator):
     def __init__(self, num_chunks, block=None, datasource_block=None):
@@ -299,43 +328,43 @@ class BlockProcessor:
         force_push = [0]
 
         def throttle_iterator(tick):
-            print('started', started_count[0], 'completed:', len(completed), 'Elapsed', time.time() - start_time)
-            total_memory_pss, total_memory_uss = print_memory(current_process)
-            memory_used = self.datasource_manager.print_cache_stats()
-            discrepancy = total_memory_pss - memory_used
-            print('Memory Discrepancy:', discrepancy)
+            # print('started', started_count[0], 'completed:', len(completed), 'Elapsed', time.time() - start_time)
+            # total_memory_pss, total_memory_uss = print_memory(current_process)
+            # memory_used = self.datasource_manager.print_cache_stats()
+            # discrepancy = total_memory_pss - memory_used
+            # print('Memory Discrepancy:', discrepancy)
 
-            completed_since = len(completed) - previous_num_completed[0]
-            since_last_start = time.time() - last_start_time[0]
-            overdue = since_last_start > 10
+            # completed_since = len(completed) - previous_num_completed[0]
+            # since_last_start = time.time() - last_start_time[0]
+            # overdue = since_last_start > 10
 
-            if overdue and force_push[0] == 0:
-                print('forcing through additional 10')
-                force_push[0] = 10
+            # if overdue and force_push[0] == 0:
+            #     print('forcing through additional 10')
+            #     force_push[0] = 10
 
-            if started_count[0] > 100 and completed_since < 1 and force_push[0] == 0:
-                print('throttling \n\n\n')
-                return Observable.empty().filter(lambda x: x is not None)
+            # if started_count[0] > 100 and completed_since < 1 and force_push[0] == 0:
+            #     print('throttling \n\n\n')
+            #     return Observable.empty().filter(lambda x: x is not None)
 
 
-            if discrepancy > 2.5:
-                print('RESETTIN PPE')
-                if self.datasource_manager.load_executor is not None:
-                    self.datasource_manager.load_executor.shutdown(wait=True)
-                    self.datasource_manager.load_executor = ProcessPoolExecutor()
-                if self.datasource_manager.flush_executor is not None:
-                    self.datasource_manager.flush_executor.shutdown(wait=True)
-                    self.datasource_manager.flush_executor = ProcessPoolExecutor()
-                print('DONE RESETTING PPE')
-                gc.collect()
-                new_total_memory_pss, new_total_memory_uss = print_memory(current_process)
-                import objgraph
-                print('\n growth:')
-                objgraph.show_growth(limit=10)
-                print('after reset ppe, Expected:', memory_used, 'Total pss: %.3f' % new_total_memory_pss, 'Total uss: %.3f'
-                      % new_total_memory_uss, 'saved', new_total_memory_pss - total_memory_pss)
+            # if discrepancy > 2.5:
+            #     print('RESETTIN PPE')
+            #     if self.datasource_manager.load_executor is not None:
+            #         self.datasource_manager.load_executor.shutdown(wait=True)
+            #         self.datasource_manager.load_executor = ProcessPoolExecutor()
+            #     if self.datasource_manager.flush_executor is not None:
+            #         self.datasource_manager.flush_executor.shutdown(wait=True)
+            #         self.datasource_manager.flush_executor = ProcessPoolExecutor()
+            #     print('DONE RESETTING PPE')
+            #     gc.collect()
+            #     new_total_memory_pss, new_total_memory_uss = print_memory(current_process)
+            #     import objgraph
+            #     print('\n growth:')
+            #     objgraph.show_growth(limit=10)
+            #     print('after reset ppe, Expected:', memory_used, 'Total pss: %.3f' % new_total_memory_pss, 'Total uss: %.3f'
+            #           % new_total_memory_uss, 'saved', new_total_memory_pss - total_memory_pss)
 
-            if total_memory_pss < 10:
+            if True or total_memory_pss < 10:
                 try:
                     chunk = next(iterator)
                 except StopIteration:
@@ -376,10 +405,12 @@ class BlockProcessor:
                 return Observable.empty()
 
         print('about to begin')
+        tracemalloc.start()
         (
             # observable
             Observable.interval(50)
             .flat_map(throttle_iterator)
+            # Observable.from_(self.block.chunk_iterator(start))
             .take_while(lambda x: x is not SENTINEL)
             .flat_map(processing_stream)
             .to_blocking()
@@ -394,9 +425,25 @@ class BlockProcessor:
 
     def _on_completed(self):
         print('Finished processing', self.num_chunks)
-        print_memory(psutil.Process())
+        # print('RESETTIN PPE')
+        # total_memory_pss, total_memory_uss = print_memory(psutil.Process())
+        # if self.datasource_manager.load_executor is not None:
+        #     self.datasource_manager.load_executor.shutdown(wait=True)
+        #     self.datasource_manager.load_executor = ProcessPoolExecutor()
+        # if self.datasource_manager.flush_executor is not None:
+        #     self.datasource_manager.flush_executor.shutdown(wait=True)
+        #     self.datasource_manager.flush_executor = ProcessPoolExecutor()
+        # print('DONE RESETTING PPE')
+
+        total_memory_pss, total_memory_uss = print_memory(psutil.Process())
+        memory_used = self.datasource_manager.print_cache_stats()
+        discrepancy = total_memory_pss - memory_used
+        print('Memory Discrepancy:', discrepancy)
         if self.on_completed is not None:
             self.on_completed()
+        snap = tracemalloc.take_snapshot()
+        display_top(snap)
+        __import__('pdb').set_trace()
 
 
     def _on_error(self, error):
