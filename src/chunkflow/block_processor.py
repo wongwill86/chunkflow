@@ -5,6 +5,7 @@ from functools import reduce
 from threading import current_thread
 from chunkblocks.iterators import UnitIterator
 from chunkflow.streams import blocking_subscribe
+from chunkflow.memory_utils import print_memory, get_memory_uss, get_memory_pss
 import itertools
 import functools
 from memory_profiler import profile
@@ -19,49 +20,127 @@ from rx import Observable
 
 SENTINEL = 1337
 
-def get_memory_uss(process):
-    # use uss to take account of shared library memory
-    try:
-        return process.memory_full_info().uss / 2. ** 30
-    except psutil._exceptions.NoSuchProcess:
-        return 0
-
-def get_memory_pss(process):
-    # use uss to take account of shared library memory
-    try:
-        return process.memory_full_info().pss / 2. ** 30
-    except psutil._exceptions.NoSuchProcess:
-        return 0
-
-def get_buffer_info(name, chunk_buffer):
-    if not chunk_buffer:
-        return 0
-    if  len(chunk_buffer.local_cache) == 0:
-        keys = datas = []
-    else:
-        keys, chunks = zip(*chunk_buffer.local_cache.items())
-        datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
-    return get_mem_info(name, keys, datas)
-
-def get_mem_info(name, keys, datas):
-    keys = list(keys)
-    keys.sort()
-    infos = [(x.shape, x.dtype, x.nbytes) for x in datas]
-    memory_used = sum(info[2] for info in infos) / 2. ** 30
-    if len(set(infos)) > 1:
-        print('\n\n\nTHIS SHOULD NOT happen should not have more than one type of data... yet', infos)
-    print('%s contains %s/%s (Futures ?: %s),entries of shape %s, total memory: %.3f GiB, entries:%s' % (
-        name, len(infos), len(keys), len(keys) - len(infos),
-        infos[0][1] if len(infos) else {}, memory_used, []#keys
-    ))
-    return memory_used
-
-
 class ReadyNeighborIterator(UnitIterator):
-    def __init__(self, num_chunks):
+    def __init__(self, num_chunks, block=None, datasource_block=None):
         self.num_chunks = num_chunks
+        self.block = block
+        self.datasource_block = datasource_block
+
+    # def get_all_neighbors(self, index, max=None):
+    #     neighbors = set(super().get_all_neighbors(index, max))
+
+    #     for neighbor in list(neighbors):
+    #         slices = self.block.unit_index_to_slices(neighbor)
+    #         datasource_chunks = self.datasource_block.slices_to_chunks(slices)
+    #         for datasource_chunk in datasource_chunks:
+    #             neighbors.update(set(self.block.slices_to_unit_indices(datasource_chunk.slices)))
+    #     # slices = self.block.unit_index_to_slices(index)
+    #     # datasource_chunks = self.datasource_block.slices_to_chunks(slices)
+    #     # for datasource_chunk in datasource_chunks:
+    #     #     neighbors.update(set(self.block.slices_to_unit_indices(datasource_chunk.slices)))
+    #     return sorted(neighbors)
+
 
     def generate_queue(self, start):
+        print('generating queue')
+        queue_1 = deque()
+        queued_1 = set()
+        queue_2 = deque()
+        queued_2 = set()
+
+        unfinished = np.zeros(self.num_chunks, dtype=np.uint16)
+        it = np.nditer(unfinished, flags=['multi_index'])
+        while not it.finished:
+            index = it.multi_index
+            relevant_neighbors = set()
+            for neighbor in super().get_all_neighbors(index, self.num_chunks):
+                for neighbor_neighbor in super().get_all_neighbors(neighbor, self.num_chunks):
+                    if neighbor_neighbor not in relevant_neighbors:
+                        relevant_neighbors.add(neighbor_neighbor)
+
+            chunk_slices = self.block.unit_index_to_slices(index)
+            for datasource_chunk in self.datasource_block.slices_to_chunks(chunk_slices):
+                for chunk in self.block.slices_to_chunks(datasource_chunk.slices):
+                    if chunk.unit_index not in relevant_neighbors:
+                        relevant_neighbors.add(chunk.unit_index)
+
+            for relevant_neighbor in relevant_neighbors:
+                unfinished[relevant_neighbor] += 1
+
+            # unfinished[it.multi_index] += len(self.get_all_neighbors(it.multi_index, self.num_chunks))
+            it.iternext()
+
+        print('unfinished is\n', unfinished)
+
+
+        chunk_slices = self.block.unit_index_to_slices(start)
+        print('begin with ', start, queue_1, len(queue_1))
+        queue_1.append(start)
+        queued_1.add(start)
+
+        FINISHED_FLAG = np.iinfo(np.uint16).max
+
+        def euclidean_distance(left, right):
+            return sum(map(lambda lr: abs(lr[0] - lr[1]), zip(left, right)))
+
+        things = []
+        things_2 = [0]
+        while len(queue_1) > 0:
+            index = queue_1.popleft()
+            queue_2.append(index)
+            queued_2.add(index)
+            chunk_slices = self.block.unit_index_to_slices(index)
+
+            relevant_neighbors = dict()
+
+            # add neighbor neighbors as upload dependency
+            for neighbor in super().get_all_neighbors(index, self.num_chunks):
+                for neighbor_neighbor in super().get_all_neighbors(neighbor, self.num_chunks):
+                    relevant_neighbors[neighbor_neighbor] = unfinished[neighbor_neighbor]
+
+            # add flush dependencies
+            for datasource_chunk in self.datasource_block.slices_to_chunks(chunk_slices):
+                for chunk in self.block.slices_to_chunks(datasource_chunk.slices):
+                    relevant_neighbors[chunk.unit_index] = unfinished[chunk.unit_index]
+
+            for relevant_neighbor in relevant_neighbors.keys():
+                new_value = unfinished[relevant_neighbor] - 1
+
+                if new_value == 0:
+                    things.append(len(queue_2) - things_2[-1])
+                    things_2.append(len(queue_2))
+                    new_value = FINISHED_FLAG
+                unfinished[relevant_neighbor] = new_value
+
+            # while len(queue_1) > 0:
+            #     q1 = queue_1.pop()
+            #     relevant_neighbors[q1] = unfinished[q1]
+
+            for relevant_neighbor, value in sorted(relevant_neighbors.items(),
+                                                   key=lambda item: (euclidean_distance(item[0], index))):
+                if relevant_neighbor not in queued_1 and relevant_neighbor not in queued_2:
+                # if relevant_neighbor not in queued_2:
+                    queue_1.append(relevant_neighbor)
+                    queued_1.add(relevant_neighbor)
+
+        print('unfinished\n', unfinished)
+        print('queued1 is ', queue_1)
+        print('queued2 is ', queue_2)
+
+        directions = np.zeros(self.num_chunks)
+        print(len(queue_2))
+        print(np.prod(self.num_chunks))
+        for i in range(0, len(queue_2)):
+            directions[queue_2[i]] = i
+
+        print('\n\n\ndirections are')
+        print(directions)
+        print('things are', things)
+        print('things2 are', things_2)
+        return queue_2
+
+
+    def generate_queuea(self, start):
         """
         Ghetto space filling curve that's kinda like z-order, but probably worse and not performant
         """
@@ -72,14 +151,19 @@ class ReadyNeighborIterator(UnitIterator):
             unfinished[it.multi_index] += len(self.get_all_neighbors(it.multi_index, self.num_chunks))
             it.iternext()
 
-        # print(unfinished, np.any(unfinished))
+        print(unfinished, np.any(unfinished))
 
         queue = deque()
         queued = set()
         index = start
 
         FINISHED_FLAG = np.iinfo(np.uint8).max
-        print('start is ', index)
+        print('start is ', index, 'neighbors are', sorted(self.get_all_neighbors(index, self.num_chunks)))
+        print(len(self.get_all_neighbors(index, self.num_chunks)))
+        last_finished_counter = 0
+        last_finished = []
+
+
         while index is not None:
             # simulate completion at index
             unfinished[index] -= 1
@@ -87,10 +171,13 @@ class ReadyNeighborIterator(UnitIterator):
             queued.add(index)
             neighbors = self.get_all_neighbors(index, self.num_chunks)
 
+            last_finished_counter += 1
             for neighbor in neighbors:
                 new_value = unfinished[neighbor] - 1
                 if new_value == 0:
                     new_value = FINISHED_FLAG
+                    last_finished.append(last_finished_counter)
+                    last_finished_counter = 0
                 unfinished[neighbor] = new_value
 
 
@@ -109,7 +196,18 @@ class ReadyNeighborIterator(UnitIterator):
                     if value < min_value:
                         index = new_neighbor
                         min_value = value
+
+        # delete me
+        directions = np.zeros(self.num_chunks)
+        for i in range(0, len(queue)):
+            directions[queue[i]] = i
+
+        print('\n\n\ndirection sare')
+        print(directions)
         print(queue)
+        print('last finished:', last_finished)
+        print(max(last_finished))
+        # delete me
 
         return queue
 
@@ -138,14 +236,6 @@ class ReadyNeighborIterator(UnitIterator):
         print('i am finished iterating')
 
 
-def print_memory(process):
-    processes = [process] + process.children(recursive=True)
-    total_memory_pss = sum(map(get_memory_pss, processes))
-    total_memory_uss = sum(map(get_memory_uss, processes))
-    import objgraph
-    print('Total pss: %.3f' % total_memory_pss, 'Total uss: %.3f' % total_memory_uss)
-    memory_used = 0
-    return total_memory_pss, total_memory_uss
 
 
 from memory_profiler import profile
@@ -182,64 +272,53 @@ class BlockProcessor:
 
         completed = set()
         started_count = [0]
-        counts = []
         previous_num_completed = [0]
         started = np.zeros(self.block.num_chunks, dtype=np.uint8)
         finished = np.zeros(self.block.num_chunks, dtype=np.uint8)
+        start_time = time.time()
 
         def throttled_next(chunk):
             self._on_next(chunk)
-            print('finally next', started_count)
-            counts.append(started_count[0])
-            print('counts are ', counts)
+            self.datasource_manager.print_cache_stats()
+            print('completing ', started_count)
 
             finished[chunk.unit_index] = 1
             completed.add(chunk.unit_index)
-            # for neighbor in get_neighbors(chunk):
-            #     finished[neighbor.unit_index] = 1
-            #     completed.add(neighbor.unit_index)
 
-            completed_since = len(completed) - previous_num_completed[-1]
+            # delete me
+            completed_since = len(completed) - previous_num_completed[0]
             print('completed since is', completed_since)
             if completed_since >= min_step or (completed_since + min_step > self.num_chunks):
-                previous_num_completed[-1] = len(completed)
-                # print('\n\n\nrequesting', min_step)
-                # observable.request(min_step)
+                previous_num_completed[0] = len(completed)
+            # delete me
 
         iterator = self.block.chunk_iterator(start)
         current_process = psutil.Process()
 
         last_start_time = [time.time()]
+        force_push = [0]
 
         def throttle_iterator(tick):
-            if tick % 3 == 1 or tick % 3 == 2:
-                return Observable.never()
-            print('started', started_count[0], 'completed:', len(completed))
+            print('started', started_count[0], 'completed:', len(completed), 'Elapsed', time.time() - start_time)
             total_memory_pss, total_memory_uss = print_memory(current_process)
+            memory_used = self.datasource_manager.print_cache_stats()
+            discrepancy = total_memory_pss - memory_used
+            print('Memory Discrepancy:', discrepancy)
 
-            memory_used = 0
-            if self.datasource_manager is not None:
-                input_buffer = self.datasource_manager.get_buffer(self.datasource_manager.input_datasource)
-                output_buffer = self.datasource_manager.get_buffer(self.datasource_manager.output_datasource)
-                output_final_buffer = self.datasource_manager.get_buffer(
-                    self.datasource_manager.output_datasource_final)
-
-                memory_used = 0
-                memory_used += get_buffer_info('input_buffer', input_buffer)
-                memory_used += get_buffer_info('output_buffer', output_buffer)
-                memory_used += get_buffer_info('output_final_buffer', output_final_buffer)
-                memory_used += get_mem_info('SparseOverlapRepository',
-                                            self.datasource_manager.overlap_repository.datasources.keys(),
-                                            self.datasource_manager.overlap_repository.datasources.values()
-                                            )
-                discrepancy = abs(total_memory_pss - memory_used)
-                print('TOTAL expected memory used is %.3f but actual is pss %.3f, uss %.3f, discrepancy is: %.3f' % (
-                    memory_used, total_memory_pss, total_memory_uss, discrepancy
-                ))
-
+            completed_since = len(completed) - previous_num_completed[0]
             since_last_start = time.time() - last_start_time[0]
             overdue = since_last_start > 10
-            if False or total_memory_pss > 6:
+
+            if overdue and force_push[0] == 0:
+                print('forcing through additional 10')
+                force_push[0] = 10
+
+            if started_count[0] > 100 and completed_since < 1 and force_push[0] == 0:
+                print('throttling \n\n\n')
+                return Observable.empty().filter(lambda x: x is not None)
+
+
+            if discrepancy > 2.5:
                 print('RESETTIN PPE')
                 if self.datasource_manager.load_executor is not None:
                     self.datasource_manager.load_executor.shutdown(wait=True)
@@ -256,9 +335,7 @@ class BlockProcessor:
                 print('after reset ppe, Expected:', memory_used, 'Total pss: %.3f' % new_total_memory_pss, 'Total uss: %.3f'
                       % new_total_memory_uss, 'saved', new_total_memory_pss - total_memory_pss)
 
-            if overdue:
-                print('OVERDUE, shoving more chunks to see if it passes', overdue)
-            if total_memory_pss < 10 or overdue:
+            if total_memory_pss < 10:
                 try:
                     chunk = next(iterator)
                 except StopIteration:
@@ -266,12 +343,11 @@ class BlockProcessor:
                 started[chunk.unit_index] = 1
                 started_count[0] += 1
                 last_start_time[0] = time.time()
-                print('Starting', chunk.unit_index, ' now:\n', started)
+                if force_push[0]:
+                    force_push[0] -= 1
+                print('Starting', chunk.unit_index, ' now:\n')#, started)
                 return Observable.just(chunk)
             else:
-
-                gc.collect()
-                gc.collect()
                 gc.collect()
                 if self.datasource_manager is not None:
                     load_collect = [
@@ -291,7 +367,6 @@ class BlockProcessor:
                     self.datasource_manager.load_executor.shutdown(wait=True)
                     print('waiting to shutdown flush')
                     self.datasource_manager.flush_executor.shutdown(wait=True)
-                gc.collect()
                 gc.collect()
 
                 processes = [current_process] + current_process.children(recursive=True)

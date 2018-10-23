@@ -298,8 +298,20 @@ def create_checkpoint_observable(block, stage, notify_neighbors=True):
                 Observable.just(chunk)
                 # check both the current chunk we just ran this stage on as well as the neighboring chunks
                 .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
+                .do_action(lambda c: print(c.unit_index, 'got to notified by  neighbor 1', chunk.unit_index, 'at',
+                                           stage))
                 .filter(lambda chunk: block.is_checkpointed(chunk, stage=stage.value))
+                .do_action(lambda c: print(
+                    c.unit_index, 'got to notified by  neighbor 2', chunk.unit_index, 'at',
+                    stage, 'looking at neighbors',
+                    list(map(lambda x: x.unit_index, block.get_all_neighbors(c))),
+                    'is al lcheckpoined?',
+                    block.all_neighbors_checkpointed(chunk, stage=stage.value)
+                    )
+                )
                 .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=stage.value))
+                .do_action(lambda c: print(c.unit_index, 'got to notified by  neighbor 3', chunk.unit_index, 'at',
+                                           stage))
             )
         else:
             return Observable.just(chunk)
@@ -307,9 +319,10 @@ def create_checkpoint_observable(block, stage, notify_neighbors=True):
     return lambda chunk: (
         Observable.just(chunk)
         .do_action(lambda chunk: block.checkpoint(chunk, stage=stage.value))
+        .do_action(lambda chunk: stage.mark_done(chunk.unit_index) or print('Checkpointed:', chunk.unit_index, stage.mark_value, stage, '\nstate:\n', stage.state))
         .flat_map(notify_neighbor_stream)
         .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage.hashset)
-        .do_action(lambda chunk: print(stage, 'for', chunk.unit_index, 'checkpointed'))
+        .do_action(lambda chunk: print(chunk.unit_index, 'ready for next', stage))
     )
 
 
@@ -326,8 +339,14 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
     if reference_buffer is not None:
         return lambda uploaded_chunk: (
             Observable.from_(reference_buffer.block.slices_to_chunks(uploaded_chunk.slices))
+            .do_action(lambda ds_c: print('looking at datasource chunk at', ds_c.unit_index, 'referred by',
+                uploaded_chunk.unit_index, 'for', stage_to_check, 'looking at data chunks', stage_to_check.mark_value,
+                ' at indices', list(map(lambda x: x.unit_index, block.slices_to_chunks(ds_c.slices))),
+                block.all_checkpointed(block.slices_to_chunks(ds_c.slices), stage=stage_to_check.value)
+            ))
             .filter(lambda datasource_chunk: block.all_checkpointed(
                 block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
+            .do_action(lambda x: print(x.unit_index, 'GREAT SUCCESSS'))
             .flat_map(
                 lambda datasource_chunk:
                 Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
@@ -336,45 +355,59 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
                 .flat_map(Observable.from_item_or_future)
                 .do_action(del_data)
             )
-            .retry(MAX_RETRIES)
+            # .retry(MAX_RETRIES)
             .do_action(del_data)
             .flat_map(lambda datasource_chunk: block.slices_to_chunks(datasource_chunk.slices))
             .flat_map(create_checkpoint_observable(block, stage_to_complete, notify_neighbors=False))
         )
     else:
-        return lambda uploaded_chunk: Observable.just(uploaded_chunk)
+        return lambda uploaded_chunk: Observable.just(uploaded_chunk).do_action(lambda x: print('\n\n\n\nUGHGHGHGH'))
 
-
-def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
+def create_inference_stages(block):
+    state = np.zeros(block.num_chunks, dtype=np.uint8)
     class Stages(Enum):
         START, INFERENCE_DONE, UPLOAD_DONE, DATASOURCE_FLUSH_DONE, CHUNK_FLUSH_DONE, CLEAR_DONE = range(6)
 
         def __init__(self, *args, **kwargs):
             self.hashset = set()
-    import numpy as np
-    finished = np.zeros(block.num_chunks, dtype=np.uint8)
-    def mark(chunk):
-        finished[chunk.unit_index] += 1
-        return True
+
+        def mark_done(self, index):
+            state[index] |= self.mark_value
+
+        @property
+        def mark_value(self):
+            return 1 << self.value
+
+
+        @property
+        def state(self):
+            return state
+
+    return Stages
+
+def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
+    stages = create_inference_stages(block)
 
     return lambda chunk: (
         Observable.just(chunk)
-        .flat_map(create_checkpoint_observable(block, Stages.START, notify_neighbors=False))
+        .flat_map(create_checkpoint_observable(block, stages.START, notify_neighbors=False))
         .flat_map(create_input_stream(datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
-        .flat_map(create_checkpoint_observable(block, Stages.INFERENCE_DONE))
+        .flat_map(create_checkpoint_observable(block, stages.INFERENCE_DONE))
 
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .flat_map(create_upload_stream(block, datasource_manager))
-        .flat_map(create_checkpoint_observable(block, Stages.UPLOAD_DONE, notify_neighbors=False))
+        .flat_map(create_checkpoint_observable(block, stages.UPLOAD_DONE, notify_neighbors=False))
+        .do_action(lambda x: print('about to clear buffer input', x.unit_index))
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
-        .flat_map(create_flush_datasource_observable(datasource_manager, block, Stages.UPLOAD_DONE,
-                                                     Stages.DATASOURCE_FLUSH_DONE))
+        .do_action(lambda x: print('ifinsih clear fluhin about flush', x.unit_index))
+        .flat_map(create_flush_datasource_observable(datasource_manager, block, stages.UPLOAD_DONE,
+                                                     stages.DATASOURCE_FLUSH_DONE))
 
-        .flat_map(create_checkpoint_observable(block, Stages.CHUNK_FLUSH_DONE))
+        .flat_map(create_checkpoint_observable(block, stages.CHUNK_FLUSH_DONE))
         .do_action(lambda chunk: datasource_manager.overlap_repository.clear(chunk.unit_index))
 
-        .flat_map(create_checkpoint_observable(block, Stages.CLEAR_DONE, notify_neighbors=False))
+        .flat_map(create_checkpoint_observable(block, stages.CLEAR_DONE, notify_neighbors=False))
         .map(lambda _: chunk)
     )
 

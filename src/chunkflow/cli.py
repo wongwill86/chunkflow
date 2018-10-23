@@ -123,7 +123,6 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     block_datasource_manager = obj['block_datasource_manager']
 
     block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
-    # block.base_iterator = ReadyNeighborIterator(block.num_chunks)
 
     absolute_index = get_absolute_index(obj['task_offset_coordinates'], obj['overlap'], obj['task_shape'])
     output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource(absolute_index)
@@ -141,6 +140,8 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         load_executor=ProcessPoolExecutor(),
         flush_executor=ProcessPoolExecutor()
     )
+    block.base_iterator = ReadyNeighborIterator(block.num_chunks, block, chunk_datasource_manager.get_buffer(
+        chunk_datasource_manager.output_datasource).block)
 
     print('Using output_datasource', chunk_datasource_manager.output_datasource.layer_cloudpath)
     print('Using output_datasource_final', chunk_datasource_manager.output_datasource_final.layer_cloudpath)

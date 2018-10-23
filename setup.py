@@ -55,7 +55,8 @@ setup(
         'numpy',
         'rx',
         'urllib3',
-        'chunkblocks'
+        'chunkblocks',
+        'psutil',
     ],
     extras_require={
         # eg:

@@ -22,6 +22,31 @@ def get_all_mod_index(index):
     return itertools.chain([index], map(get_mod_index, UnitIterator().get_all_neighbors(index)))
 
 
+def get_mem_info(name, keys, datas):
+    keys = list(keys)
+    keys.sort()
+    infos = [(x.shape, x.dtype, x.nbytes) for x in datas]
+    memory_used = sum(info[2] for info in infos) / 2. ** 30
+    if len(set(infos)) > 1:
+        print('\n\n\nTHIS SHOULD NOT happen should not have more than one type of data... yet', infos)
+    print('%s contains %s/%s (Futures ?: %s),entries of shape %s, total memory: %.3f GiB, entries:%s' % (
+        name, len(infos), len(keys), len(keys) - len(infos),
+        infos[0][1] if len(infos) else {}, memory_used, []
+    ))
+    return memory_used
+
+
+def get_buffer_info(name, chunk_buffer):
+    if not chunk_buffer:
+        return 0
+    if  len(chunk_buffer.local_cache) == 0:
+        keys = datas = []
+    else:
+        keys, chunks = zip(*chunk_buffer.local_cache.items())
+        datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
+    return get_mem_info(name, keys, datas)
+
+
 class DatasourceManager:
     """
     Class to handle datasources used in chunkflow. Allows user to create buffers for input/output datasources.
@@ -73,7 +98,7 @@ class DatasourceManager:
             return chunk_action(datasource, slices=slices)
         else:
 
-            # return executor.submit(chunk_action, datasource, slices)
+            return executor.submit(chunk_action, datasource, slices)
             def run_in_executor(executor, chunk_action, datasource, slices):
                 thread_future = executor.submit(chunk_action, datasource, slices)
                 done, not_done = wait([thread_future])
@@ -85,7 +110,6 @@ class DatasourceManager:
                 return ret
 
             return self.runner.submit(run_in_executor, executor, chunk_action, datasource, slices)
-
 
 
     def dump_chunk(self, chunk, datasource=None, slices=None, use_buffer=True, use_executor=True):
@@ -187,6 +211,19 @@ class DatasourceManager:
         else:
             datasource = self.overlap_repository.get_datasource(chunk.unit_index)
             return self.get_buffer(datasource) or datasource
+
+
+    def print_cache_stats(self):
+        memory_used = 0
+        memory_used += get_buffer_info('input_buffer', self.get_buffer(self.input_datasource))
+        memory_used += get_buffer_info('output_buffer', self.get_buffer(self.output_datasource))
+        memory_used += get_buffer_info('output_final_buffer', self.get_buffer(self.output_datasource_final))
+        memory_used += get_mem_info('SparseOverlapRepository',
+                                    self.overlap_repository.datasources.keys(),
+                                    self.overlap_repository.datasources.values()
+                                    )
+        print('TOTAL expected memory used by cache is %.3f' % (memory_used))
+        return memory_used
 
 
 class OverlapRepository:
