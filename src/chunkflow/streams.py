@@ -9,6 +9,8 @@ from rx import Observable, config
 from rx.core import AnonymousObservable
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod
+from memory_profiler import profile
+import gc
 
 from chunkflow.chunk_buffer import CacheMiss
 
@@ -44,17 +46,17 @@ def from_my_future(cls, future):
         def done(future):
             try:
                 value = future.result()
-                if hasattr(value, 'data') and value.data is not None:
-                    chunk_copy = value.block.unit_index_to_chunk(value.unit_index)
-                    chunk_copy.data = value.data.copy()
-                    # objgraph.show_backrefs([blah], filename='futs/fut%s.png' % id(blah))
-                    # print('showing omost common types for ', id(blah))
-                    # objgraph.show_most_common_types(objects=[blah])
-                    if hasattr(value, 'data'):
-                        del value.data
-                    del value
-                    del future
-                    value = chunk_copy
+                # if hasattr(value, 'data') and value.data is not None:
+                #     chunk_copy = value.block.unit_index_to_chunk(value.unit_index)
+                #     chunk_copy.data = value.data.copy()
+                #     # objgraph.show_backrefs([blah], filename='futs/fut%s.png' % id(blah))
+                #     # print('showing omost common types for ', id(blah))
+                #     # objgraph.show_most_common_types(objects=[blah])
+                #     if hasattr(value, 'data'):
+                #         del value.data
+                #     del value
+                #     del future
+                #     value = chunk_copy
 
 
                 # objgraph.show_backrefs([future], filename='futs/future%s.png' % id(future))
@@ -77,6 +79,8 @@ def from_my_future(cls, future):
 
     return AnonymousObservable(subscribe) if is_future(future) else future
 
+from multiprocessing import Pool
+pool = dict()  # Pool(maxtasksperchild=20)
 
 @extensionmethod(Observable)
 def from_item_or_future(item_or_future, default=None):
@@ -84,6 +88,28 @@ def from_item_or_future(item_or_future, default=None):
     Checks the item to see if it is a future-like. (could be asyncio future which is not part of the concurrent.futures
     package).
     """
+
+    def exec_subscribe(observer):
+        def done(value):
+            print('\n\n\n\n\n I AM DONE')
+            observer.on_next(value)
+            observer.on_completed()
+
+        result = pool.apply_async(item_or_future[0], item_or_future[1:], callback=done, error_callback=observer.on_error)
+
+        def dispose():
+            print('ugh trying to cancel blah thi sis not good')
+            del result
+            pass
+            if future and future.cancel:
+                future.cancel()
+
+        return dispose
+
+
+    if isinstance(item_or_future, tuple):
+        return AnonymousObservable(exec_subscribe)
+
     if hasattr(item_or_future, 'result'):  # should probably check if it is callable too
         return Observable.from_my_future(item_or_future)
     elif item_or_future is None:
@@ -177,7 +203,8 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None, t
     return disposable
 
 
-def aggregate(slices, aggregate, datasource):
+@profile
+def aggregate(slices, aggregate_chunk, datasource):
     # Account for additional output dimensions
     channel_dimensions = len(datasource.shape) - len(slices)
     channel_slices = (slice(None),) * (channel_dimensions) + slices
@@ -188,19 +215,19 @@ def aggregate(slices, aggregate, datasource):
         data = datasource.get_item(channel_slices, fill_missing=True)
 
     # 0 from seed
-    if aggregate is 0:
+    if aggregate_chunk.data is None:
         slice_shape = tuple(s.stop - s.start for s in slices)
         offset = (0,) * channel_dimensions + tuple(s.start for s in slices)
 
-        aggregate = GlobalOffsetArray(
+        aggregate_chunk.data = GlobalOffsetArray(
             np.zeros(data.shape[0:channel_dimensions] + slice_shape, dtype=data.dtype),
             global_offset=offset
         )
-        aggregate += data
+        aggregate_chunk.data += data
     else:
-        aggregate[channel_slices] += data
+        aggregate_chunk.data[channel_slices] += data
 
-    return aggregate
+    return aggregate_chunk
 
 
 def download_retry(datasource_manager, datasource, patch_chunk):
@@ -251,11 +278,29 @@ def create_input_stream(datasource_manager):
 def create_inference_stream(block, inference_operation, blend_operation, datasource_manager):
     return lambda chunk: (
         Observable.just(chunk)
+        .do_action(
+            lambda chunk:
+            (print('before inference', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
+        )
         .map(inference_operation)
+        .do_action(
+            lambda chunk:
+            (print('before blend', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
+        )
         .map(blend_operation)
+        .do_action(
+            lambda chunk:
+            (print('before dump', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
+        )
         .do_action(lambda chunk: datasource_manager.dump_chunk(
             chunk, datasource=datasource_manager.overlap_repository.get_datasource(chunk.unit_index), use_executor=False
         ))
+        .do_action(
+            lambda chunk:
+            (objgraph.show_backrefs([chunk.data], filename='futs/infdata%s-%s-%s.png' % (chunk.unit_index)) and False) or
+            (print('showing omost common types for ', chunk.unit_index) and False) or
+            (objgraph.show_most_common_types(objects=[chunk.data]) and False)
+        )
         .do_action(del_data)
     )
 
@@ -264,15 +309,24 @@ def create_aggregate_stream(block, datasource_manager):
     return lambda chunk: (
         # sum the different datasources together
         Observable.just(chunk)
+        .do_action(
+            lambda chunk:
+            (print('before aggregate', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
+        )
         .flat_map(
             lambda chunk:
             (
                 # create temp list of repositories values at time of iteration
                 Observable.from_(datasource_manager.overlap_repositories())
-                .reduce(partial(aggregate, chunk.slices), seed=0)
+                .reduce(partial(aggregate, chunk.slices), seed=chunk)
                 .do_action(chunk.load_data)
                 .map(lambda _: chunk)
+                .do_action(del_data)
             )
+        )
+        .do_action(
+            lambda chunk:
+            (print('after aggregate', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
         )
     )
 
@@ -312,20 +366,20 @@ def create_checkpoint_observable(block, stage, notify_neighbors=True):
                 Observable.just(chunk)
                 # check both the current chunk we just ran this stage on as well as the neighboring chunks
                 .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
-                .do_action(lambda c: print(c.unit_index, 'got to notified by  neighbor 1', chunk.unit_index, 'at',
-                                           stage))
+                # .do_action(lambda c: print(c.unit_index, 'got to notified by  neighbor 1', chunk.unit_index, 'at',
+                #                            stage))
                 .filter(lambda chunk: block.is_checkpointed(chunk, stage=stage.value))
-                .do_action(lambda c: print(
-                    c.unit_index, 'got to notified by  neighbor 2', chunk.unit_index, 'at',
-                    stage, 'looking at neighbors',
-                    list(map(lambda x: x.unit_index, block.get_all_neighbors(c))),
-                    'is al lcheckpoined?',
-                    block.all_neighbors_checkpointed(chunk, stage=stage.value)
-                    )
-                )
+                # .do_action(lambda c: print(
+                #     c.unit_index, 'got to notified by  neighbor 2', chunk.unit_index, 'at',
+                #     stage, 'looking at neighbors',
+                #     list(map(lambda x: x.unit_index, block.get_all_neighbors(c))),
+                #     'is al lcheckpoined?',
+                #     block.all_neighbors_checkpointed(chunk, stage=stage.value)
+                #     )
+                # )
                 .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=stage.value))
-                .do_action(lambda c: print(c.unit_index, 'got to notified by  neighbor 3', chunk.unit_index, 'at',
-                                           stage))
+                # .do_action(lambda c: print(c.unit_index, 'got to notified by  neighbor 3', chunk.unit_index, 'at',
+                #                            stage))
             )
         else:
             return Observable.just(chunk)
@@ -416,7 +470,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .do_action(lambda chunk: print('data after aggregate', chunk.data.nbytes if chunk.data is not None else 0) or
                    datasource_manager.print_cache_stats() or objgraph.show_growth())
-        .flat_map(create_upload_stream(block, datasource_manager))
+        # .flat_map(create_upload_stream(block, datasource_manager))
         .do_action(lambda chunk: print('data after upload', chunk.data.nbytes if chunk.data is not None else 0) or
                    datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_checkpoint_observable(block, stages.UPLOAD_DONE, notify_neighbors=False))
@@ -425,13 +479,18 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
         .do_action(lambda x: print('ifinsih clear fluhin about flush', x.unit_index) or
                    datasource_manager.print_cache_stats() or objgraph.show_growth())
-        .flat_map(create_flush_datasource_observable(datasource_manager, block, stages.UPLOAD_DONE,
-                                                     stages.DATASOURCE_FLUSH_DONE))
-        .do_action(lambda chunk: print('data after flush', chunk.data.nbytes if chunk.data is not None else 0) or
-                   datasource_manager.print_cache_stats() or objgraph.show_growth())
+        # .flat_map(create_flush_datasource_observable(datasource_manager, block, stages.UPLOAD_DONE,
+        #                                              stages.DATASOURCE_FLUSH_DONE))
+        # .do_action(lambda chunk: (gc.collect() and False) or print('data after clear', chunk.data.nbytes if chunk.data is not None else 0) or
+        #            datasource_manager.print_cache_stats() or objgraph.show_growth())
 
         .flat_map(create_checkpoint_observable(block, stages.CHUNK_FLUSH_DONE))
-        .do_action(lambda chunk: datasource_manager.overlap_repository.clear(chunk.unit_index))
+        .do_action(lambda chunk:
+                   (datasource_manager.print_cache_stats() and False) or
+                   (datasource_manager.overlap_repository.clear(chunk.unit_index) and False) or
+                   (print('after clear', chunk.unit_index) and False) or
+                   (gc.collect() and False) or (datasource_manager.print_cache_stats() and False)
+                   )
 
         .flat_map(create_checkpoint_observable(block, stages.CLEAR_DONE, notify_neighbors=False))
         .map(lambda _: chunk)
@@ -477,3 +536,4 @@ def create_blend_stream(block, datasource_manager):
         )
         .reduce(lambda x, y: dataset_chunk, seed=dataset_chunk).map(lambda _: dataset_chunk)
     )
+

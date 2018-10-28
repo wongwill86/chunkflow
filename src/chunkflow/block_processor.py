@@ -5,7 +5,6 @@ from functools import reduce
 from threading import current_thread
 from chunkblocks.iterators import UnitIterator
 from chunkflow.streams import blocking_subscribe
-from chunkflow.memory_utils import print_memory, get_memory_uss, get_memory_pss
 import itertools
 import functools
 import linecache
@@ -17,7 +16,7 @@ import time
 import os
 import gc
 import numpy as np
-
+import memorytools
 from rx import Observable
 
 SENTINEL = 1337
@@ -307,6 +306,7 @@ class BlockProcessor:
         start_time = time.time()
 
         def throttled_next(chunk):
+            memorytools.summarize_objects()
             self._on_next(chunk)
             self.datasource_manager.print_cache_stats()
             print('completing ', started_count)
@@ -329,11 +329,6 @@ class BlockProcessor:
 
         def throttle_iterator(tick):
             # print('started', started_count[0], 'completed:', len(completed), 'Elapsed', time.time() - start_time)
-            # total_memory_pss, total_memory_uss = print_memory(current_process)
-            # memory_used = self.datasource_manager.print_cache_stats()
-            # discrepancy = total_memory_pss - memory_used
-            # print('Memory Discrepancy:', discrepancy)
-
             # completed_since = len(completed) - previous_num_completed[0]
             # since_last_start = time.time() - last_start_time[0]
             # overdue = since_last_start > 10
@@ -405,18 +400,31 @@ class BlockProcessor:
                 return Observable.empty()
 
         print('about to begin')
+        started = [0]
+        def inc():
+            started[0] += 1
+
+        def dec():
+            started[0] -= 1
+
         tracemalloc.start()
         (
             # observable
-            Observable.interval(50)
-            .flat_map(throttle_iterator)
-            # Observable.from_(self.block.chunk_iterator(start))
-            .take_while(lambda x: x is not SENTINEL)
+            # Observable.interval(50)
+            # .flat_map(throttle_iterator)
+            Observable.from_(self.block.chunk_iterator(start))
+            .do_action(lambda _: inc() or print('just started, need to process:', started[0], 'elapsed', time.time() -
+                                                start_time))
+            .do_action(lambda x: self.datasource_manager.print_cache_stats())
+            # .take_while(lambda x: x is not SENTINEL)
             .flat_map(processing_stream)
+            .do_action(lambda _: dec() or print('just finished, still need to process:', started[0], 'elapsed',
+                                                time.time() - start_time))
             .to_blocking()
             .blocking_subscribe(throttled_next, on_error=self._on_error, on_completed=self._on_completed)
             # .subscribe(throttled_next, on_error=self._on_error, on_completed=self._on_completed)
         )
+
         # import time
         # sleepy = 20
         # print('sleeping for ', sleepy)
@@ -424,7 +432,9 @@ class BlockProcessor:
         # print('done sleeping for', sleepy)
 
     def _on_completed(self):
+        gc.collect()
         print('Finished processing', self.num_chunks)
+        memorytools.summarize_objects()
         # print('RESETTIN PPE')
         # total_memory_pss, total_memory_uss = print_memory(psutil.Process())
         # if self.datasource_manager.load_executor is not None:
@@ -435,10 +445,6 @@ class BlockProcessor:
         #     self.datasource_manager.flush_executor = ProcessPoolExecutor()
         # print('DONE RESETTING PPE')
 
-        total_memory_pss, total_memory_uss = print_memory(psutil.Process())
-        memory_used = self.datasource_manager.print_cache_stats()
-        discrepancy = total_memory_pss - memory_used
-        print('Memory Discrepancy:', discrepancy)
         if self.on_completed is not None:
             self.on_completed()
         snap = tracemalloc.take_snapshot()
@@ -455,7 +461,6 @@ class BlockProcessor:
         raise error
 
     def _on_next(self, chunk, data=None):
-        print_memory(psutil.Process())
         self.completed += 1
         print('****** %s--%s %s. %s of %s done ' % (datetime.now(), current_thread().name, chunk.unit_index,
                                                     self.completed, self.num_chunks))

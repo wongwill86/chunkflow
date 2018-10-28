@@ -5,7 +5,12 @@ import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkblocks.iterators import UnitIterator
 from concurrent.futures import ThreadPoolExecutor, wait
+from chunkflow.memory_utils import print_memory, get_memory_uss, get_memory_pss
+import psutil
 import objgraph
+from memory_profiler import profile
+import gc
+import weakref
 
 
 def get_absolute_index(offset, overlap, shape):
@@ -45,6 +50,17 @@ def get_buffer_info(name, chunk_buffer):
         keys, chunks = zip(*chunk_buffer.local_cache.items())
         datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
     return get_mem_info(name, keys, datas)
+
+
+@profile
+def do_load(chunk, datasource, slices):
+    chunk.load_data(datasource, slices)
+    return chunk
+
+@profile
+def do_dump(chunk, datasource, slices):
+    chunk.dump_data(datasource, slices)
+    return chunk
 
 
 class DatasourceManager:
@@ -93,23 +109,35 @@ class DatasourceManager:
         return None
 
 
-    def _perform_chunk_action(self, chunk_action, datasource, slices=None, executor=None):
-        if executor is None:
-            return chunk_action(datasource, slices=slices)
+    # def _perform_chunk_action(self, action, chunk_action, datasource, slices=None, executor=None):
+    def _perform_chunk_action(self, action, chunk, datasource, slices=None, executor=None):
+        if True or executor is None:
+            return action(chunk, datasource, slices=slices)
         else:
 
-            return executor.submit(chunk_action, datasource, slices)
-            def run_in_executor(executor, chunk_action, datasource, slices):
-                thread_future = executor.submit(chunk_action, datasource, slices)
+            # return (chunk_action, datasource, slices, True)
+            # return executor.submit(action, chunk, datasource, slices)
+            # def run_in_executor(executor, chunk_action, datasource, slices):
+            def run_in_executor(executor, action, chunk, datasource, slices):
+                # thread_future = executor.submit(chunk_action, datasource, slices)
+                thread_future = executor.submit(action, chunk, datasource, slices)
                 done, not_done = wait([thread_future])
                 # objgraph.show_backrefs([thread_future], filename='futs/future%s.png' % id(thread_future))
                 # print('showing omost common types for ', id(thread_future))
                 # objgraph.show_most_common_types(objects=[thread_future])
                 ret = done.pop().result()
-                del thread_future
+                if hasattr(ret, 'data') and ret.data is not None:
+                    chunk_copy = ret.block.unit_index_to_chunk(ret.unit_index)
+                    if hasattr(chunk_copy, 'block'):
+                        del chunk_copy.block
+                    chunk_copy.data = ret.data.copy()
+                    del ret
+                    del thread_future
+                    ret = chunk_copy
                 return ret
 
-            return self.runner.submit(run_in_executor, executor, chunk_action, datasource, slices)
+            # return self.runner.submit(run_in_executor, executor, chunk_action, datasource, slices)
+            return self.runner.submit(run_in_executor, executor, action, chunk, datasource, slices)
 
 
     def dump_chunk(self, chunk, datasource=None, slices=None, use_buffer=True, use_executor=True):
@@ -129,7 +157,7 @@ class DatasourceManager:
 
         executor = self.dump_executor if use_executor else None
 
-        return self._perform_chunk_action(chunk.dump_data, datasource, slices=slices, executor=executor)
+        return self._perform_chunk_action(do_dump, chunk, datasource, slices=slices, executor=executor)
 
     def load_chunk(self, chunk, datasource=None, slices=None, use_buffer=True, use_executor=True):
         """
@@ -148,7 +176,7 @@ class DatasourceManager:
 
         executor = self.load_executor if use_executor else None
 
-        return self._perform_chunk_action(chunk.load_data, datasource, slices=slices, executor=executor)
+        return self._perform_chunk_action(do_load, chunk, datasource, slices=slices, executor=executor)
 
     def clear_buffer(self, datasource, chunk=None):
         datasource_buffer = self.get_buffer(datasource)
@@ -176,11 +204,11 @@ class DatasourceManager:
         else:
             try:
                 if cleared_chunk is not None:
-                    return self._perform_chunk_action(cleared_chunk.dump_data, datasource, executor=self.flush_executor)
+                    return self._perform_chunk_action(do_dump, cleared_chunk, datasource, executor=self.flush_executor)
             except AttributeError:
                 # cleared chunk doesn't have dump_data must be a list
                 return [
-                    self._perform_chunk_action(chunk.dump_data, datasource, executor=self.flush_executor) for chunk in
+                    self._perform_chunk_action(do_dump, chunk, datasource, executor=self.flush_executor) for chunk in
                     cleared_chunk
                 ]
 
@@ -212,8 +240,8 @@ class DatasourceManager:
             datasource = self.overlap_repository.get_datasource(chunk.unit_index)
             return self.get_buffer(datasource) or datasource
 
-
     def print_cache_stats(self):
+        gc.collect()
         memory_used = 0
         memory_used += get_buffer_info('input_buffer', self.get_buffer(self.input_datasource))
         memory_used += get_buffer_info('output_buffer', self.get_buffer(self.output_datasource))
@@ -222,7 +250,9 @@ class DatasourceManager:
                                     self.overlap_repository.datasources.keys(),
                                     self.overlap_repository.datasources.values()
                                     )
-        print('TOTAL expected memory used by cache is %.3f' % (memory_used))
+        total_memory_pss, total_memory_uss = print_memory(psutil.Process())
+        print('Actual used memory: %.3f GiB Total expected cached memory: %.3f GiB,  Discrepancy is %.3f GiB' % (
+            total_memory_pss, memory_used, total_memory_pss - memory_used))
         return memory_used
 
 
@@ -266,8 +296,14 @@ class SparseOverlapRepository(OverlapRepository):
             self.datasources[index] = self.create(index)
         return self.datasources[index]
 
+    @profile
     def clear(self, index):
         try:
+            obj = self.datasources[index]
+            objgraph.show_backrefs([obj], filename='futs/sparse%s-%s-%s.png' % (index))
+            print('showing omost common types for ', index)
+            objgraph.show_most_common_types(objects=[obj])
             del self.datasources[index]
+            gc.collect()
         except KeyError:
             pass

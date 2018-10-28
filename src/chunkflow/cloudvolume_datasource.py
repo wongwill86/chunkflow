@@ -45,7 +45,8 @@ def create_buffered_cloudvolumeCZYX(cloudvolume):
     try:
         chunk_shape = cloudvolume.underlying[::-1]
     except AttributeError:
-        return cloudvolume
+        # Not actually a cloudvolume object
+        return None
     offset = cloudvolume.voxel_offset[::-1]
     size = cloudvolume.volume_size[::-1]
 

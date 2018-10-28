@@ -137,8 +137,8 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
             dtype=output_cloudvolume_overlap.dtype,
         ),
         buffer_generator=create_buffered_cloudvolumeCZYX,
-        load_executor=ProcessPoolExecutor(),
-        flush_executor=ProcessPoolExecutor()
+        load_executor=ProcessPoolExecutor(max_workers=1),
+        flush_executor=ProcessPoolExecutor(max_workers=1)
     )
     block.base_iterator = ReadyNeighborIterator(block.num_chunks, block, chunk_datasource_manager.get_buffer(
         chunk_datasource_manager.output_datasource).block)
@@ -159,7 +159,14 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     )
 
     BlockProcessor(block, datasource_manager=chunk_datasource_manager).process(task_stream)
+
     print('Finished inference!')
+    print('i am done')
+    import psutil
+    print(psutil.Process().memory_info().rss / 1024 / 1024)
+    from memorytools import summarize_objects
+    summarize_objects()
+    __import__('pdb').set_trace()
 
 
 @task.command()
