@@ -234,7 +234,7 @@ class DatasourceManager:
             overlap_datasources = self.overlap_repository.datasources.values()
             buffer_datasources = map(self.get_buffer, overlap_datasources)
             return [
-                olap if buff is None else buff for olap, buff in zip(overlap_datasources, buffer_datasources)
+                weakref.proxy(olap) if buff is None else weakref.proxy(buff) for olap, buff in zip(overlap_datasources, buffer_datasources)
             ]
         else:
             datasource = self.overlap_repository.get_datasource(chunk.unit_index)

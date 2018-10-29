@@ -328,18 +328,18 @@ class BlockProcessor:
         force_push = [0]
 
         def throttle_iterator(tick):
-            # print('started', started_count[0], 'completed:', len(completed), 'Elapsed', time.time() - start_time)
-            # completed_since = len(completed) - previous_num_completed[0]
-            # since_last_start = time.time() - last_start_time[0]
-            # overdue = since_last_start > 10
+            print('started', started_count[0], 'completed:', len(completed), 'Elapsed', time.time() - start_time)
+            completed_since = len(completed) - previous_num_completed[0]
+            since_last_start = time.time() - last_start_time[0]
+            overdue = since_last_start > 10
 
-            # if overdue and force_push[0] == 0:
-            #     print('forcing through additional 10')
-            #     force_push[0] = 10
+            if overdue and force_push[0] == 0:
+                print('forcing through additional 10')
+                force_push[0] = 10
 
-            # if started_count[0] > 100 and completed_since < 1 and force_push[0] == 0:
-            #     print('throttling \n\n\n')
-            #     return Observable.empty().filter(lambda x: x is not None)
+            if started_count[0] > 100 and completed_since < 1 and force_push[0] == 0:
+                print('throttling \n\n\n')
+                return Observable.empty().filter(lambda x: x is not None)
 
 
             # if discrepancy > 2.5:
@@ -364,7 +364,7 @@ class BlockProcessor:
                     chunk = next(iterator)
                 except StopIteration:
                     return Observable.just(SENTINEL)
-                started[chunk.unit_index] = 1
+                # started[chunk.unit_index] = 1
                 started_count[0] += 1
                 last_start_time[0] = time.time()
                 if force_push[0]:
@@ -391,12 +391,7 @@ class BlockProcessor:
                     self.datasource_manager.load_executor.shutdown(wait=True)
                     print('waiting to shutdown flush')
                     self.datasource_manager.flush_executor.shutdown(wait=True)
-                gc.collect()
 
-                processes = [current_process] + current_process.children(recursive=True)
-                total_memory_pss = sum(map(get_memory_pss, processes))
-                total_memory_uss = sum(map(get_memory_uss, processes))
-                print('Tried to collect, memory now (pss):', total_memory_pss, 'memory now (uss):', total_memory_uss)
                 return Observable.empty()
 
         print('about to begin')
@@ -410,13 +405,13 @@ class BlockProcessor:
         tracemalloc.start()
         (
             # observable
-            # Observable.interval(50)
-            # .flat_map(throttle_iterator)
-            Observable.from_(self.block.chunk_iterator(start))
+            Observable.interval(50)
+            .flat_map(throttle_iterator)
+            # Observable.from_(self.block.chunk_iterator(start))
             .do_action(lambda _: inc() or print('just started, need to process:', started[0], 'elapsed', time.time() -
                                                 start_time))
             .do_action(lambda x: self.datasource_manager.print_cache_stats())
-            # .take_while(lambda x: x is not SENTINEL)
+            .take_while(lambda x: x is not SENTINEL)
             .flat_map(processing_stream)
             .do_action(lambda _: dec() or print('just finished, still need to process:', started[0], 'elapsed',
                                                 time.time() - start_time))

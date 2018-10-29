@@ -203,11 +203,14 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None, t
     return disposable
 
 
-@profile
-def aggregate(slices, aggregate_chunk, datasource):
-    # Account for additional output dimensions
-    channel_dimensions = len(datasource.shape) - len(slices)
-    channel_slices = (slice(None),) * (channel_dimensions) + slices
+# @profile
+def aggregate(slices, aggregate, datasource):
+    try:
+        # Account for additional output dimensions
+        channel_dimensions = len(datasource.shape) - len(slices)
+        channel_slices = (slice(None),) * (channel_dimensions) + slices
+    except ReferenceError:
+        return aggregate
 
     try:
         data = datasource[channel_slices]
@@ -215,19 +218,24 @@ def aggregate(slices, aggregate_chunk, datasource):
         data = datasource.get_item(channel_slices, fill_missing=True)
 
     # 0 from seed
-    if aggregate_chunk.data is None:
+    if aggregate is 0:
         slice_shape = tuple(s.stop - s.start for s in slices)
         offset = (0,) * channel_dimensions + tuple(s.start for s in slices)
 
-        aggregate_chunk.data = GlobalOffsetArray(
+        data = GlobalOffsetArray(
             np.zeros(data.shape[0:channel_dimensions] + slice_shape, dtype=data.dtype),
             global_offset=offset
         )
-        aggregate_chunk.data += data
+        # aggregate_chunk.load_data(GlobalOffsetArray(
+        #     np.zeros(data.shape[0:channel_dimensions] + slice_shape, dtype=data.dtype),
+        #     global_offset=offset
+        # ))
+        # aggregate_chunk.load_data(aggregate_chunk)
+        aggregate = data
     else:
-        aggregate_chunk.data[channel_slices] += data
+        aggregate[channel_slices] += data
 
-    return aggregate_chunk
+    return aggregate
 
 
 def download_retry(datasource_manager, datasource, patch_chunk):
@@ -316,9 +324,9 @@ def create_aggregate_stream(block, datasource_manager):
         .flat_map(
             lambda chunk:
             (
-                # create temp list of repositories values at time of iteration
-                Observable.from_(datasource_manager.overlap_repositories())
-                .reduce(partial(aggregate, chunk.slices), seed=chunk)
+                # create temp list of repositories values at time of iteration / also weakref
+                Observable.from_(list(datasource_manager.overlap_repositories()))
+                .reduce(partial(aggregate, chunk.slices), seed=0)
                 .do_action(chunk.load_data)
                 .map(lambda _: chunk)
                 .do_action(del_data)
@@ -407,11 +415,11 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
     if reference_buffer is not None:
         return lambda uploaded_chunk: (
             Observable.from_(reference_buffer.block.slices_to_chunks(uploaded_chunk.slices))
-            .do_action(lambda ds_c: print('looking at datasource chunk at', ds_c.unit_index, 'referred by',
-                uploaded_chunk.unit_index, 'for', stage_to_check, 'looking at data chunks', stage_to_check.mark_value,
-                ' at indices', list(map(lambda x: x.unit_index, block.slices_to_chunks(ds_c.slices))),
-                block.all_checkpointed(block.slices_to_chunks(ds_c.slices), stage=stage_to_check.value)
-            ))
+            # .do_action(lambda ds_c: print('looking at datasource chunk at', ds_c.unit_index, 'referred by',
+            #     uploaded_chunk.unit_index, 'for', stage_to_check, 'looking at data chunks', stage_to_check.mark_value,
+            #     ' at indices', list(map(lambda x: x.unit_index, block.slices_to_chunks(ds_c.slices))),
+            #     block.all_checkpointed(block.slices_to_chunks(ds_c.slices), stage=stage_to_check.value)
+            # ))
             .filter(lambda datasource_chunk: block.all_checkpointed(
                 block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
             .do_action(lambda x: print(x.unit_index, 'GREAT SUCCESSS'))
@@ -470,7 +478,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .do_action(lambda chunk: print('data after aggregate', chunk.data.nbytes if chunk.data is not None else 0) or
                    datasource_manager.print_cache_stats() or objgraph.show_growth())
-        # .flat_map(create_upload_stream(block, datasource_manager))
+        .flat_map(create_upload_stream(block, datasource_manager))
         .do_action(lambda chunk: print('data after upload', chunk.data.nbytes if chunk.data is not None else 0) or
                    datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_checkpoint_observable(block, stages.UPLOAD_DONE, notify_neighbors=False))
@@ -479,12 +487,12 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
         .do_action(lambda x: print('ifinsih clear fluhin about flush', x.unit_index) or
                    datasource_manager.print_cache_stats() or objgraph.show_growth())
-        # .flat_map(create_flush_datasource_observable(datasource_manager, block, stages.UPLOAD_DONE,
-        #                                              stages.DATASOURCE_FLUSH_DONE))
+        .flat_map(create_flush_datasource_observable(datasource_manager, block, stages.UPLOAD_DONE,
+                                                     stages.DATASOURCE_FLUSH_DONE))
         # .do_action(lambda chunk: (gc.collect() and False) or print('data after clear', chunk.data.nbytes if chunk.data is not None else 0) or
         #            datasource_manager.print_cache_stats() or objgraph.show_growth())
 
-        .flat_map(create_checkpoint_observable(block, stages.CHUNK_FLUSH_DONE))
+        .flat_map(create_checkpoint_observable(block, stages.CHUNK_FLUSH_DONE, notify_neighbors=False))
         .do_action(lambda chunk:
                    (datasource_manager.print_cache_stats() and False) or
                    (datasource_manager.overlap_repository.clear(chunk.unit_index) and False) or
