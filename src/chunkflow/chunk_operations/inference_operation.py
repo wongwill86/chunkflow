@@ -16,6 +16,7 @@ class IdentityInference(ChunkOperation):
             # del chunk.data
             # chunk.data = old_data.astype(self.output_data_type)
             chunk.data = chunk.data.astype(self.output_data_type)
+        print('inference got chunk of shape', chunk.data.shape)
 
         if self.output_channels > 1:
             squeezed_data = chunk.data.squeeze()

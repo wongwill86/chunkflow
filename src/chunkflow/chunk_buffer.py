@@ -1,5 +1,7 @@
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
+from chunkflow.memory_utils import save_objgraph
+from memory_profiler import profile
 
 
 class CacheMiss(Exception):
@@ -17,7 +19,23 @@ class ChunkBuffer:
         self.channel_dimensions = channel_dimensions
         self.local_cache = dict()
 
+    @profile
+    def create(self, offset):
+        shape = self.channel_dimensions + self.block.chunk_shape
+        # shape = (10, 20, 256, 256)
+        print(shape)
+
+        return GlobalOffsetArray(
+            np.ones(shape, dtype=self.dtype) - 1,
+            global_offset=(0,) * len(self.channel_dimensions) + offset
+        )
+
+
     def __setitem__(self, slices, item):
+        self.setme(slices, item)
+
+    @profile
+    def setme(self, slices, item):
         if not isinstance(item, GlobalOffsetArray):
             global_offset = (0,) * len(self.channel_dimensions) + tuple(
                 (0 if s.start is None else s.start) if isinstance(s, slice) else s for s in slices)
@@ -25,17 +43,36 @@ class ChunkBuffer:
 
         chunk_indices = self.block.slices_to_unit_indices(slices)
         for chunk_index in chunk_indices:
+            chunk = self.block.unit_index_to_chunk(chunk_index)
             try:
-                chunk = self.local_cache[chunk_index]
+                chunk.data = self.local_cache[chunk_index]
                 chunk.load_data(item, slices=slices)
-            except (KeyError, AttributeError):
-                chunk = self.block.unit_index_to_chunk(chunk_index)
-                chunk.data = GlobalOffsetArray(
-                    np.zeros(self.channel_dimensions + self.block.chunk_shape, dtype=self.dtype),
-                    global_offset=(0,) + chunk.offset
-                )
-                self.local_cache[chunk_index] = chunk
+                # data = self.local_cache[chunk_index]
+            except (KeyError):  # Attribute error in case of retrieving a future from self.local_cache
+                chunk.data = self.create(chunk.offset)
+                print('datas created size', chunk.data.nbytes, chunk.data.shape)
                 chunk.load_data(item, slices=slices)
+                self.local_cache[chunk_index] = chunk.data
+            del chunk
+            # try:
+            #     chunk = self.local_cache[chunk_index]
+            #     chunk.load_data(item, slices=slices)
+            # except (KeyError, AttributeError):  # Attribute error in case of retrieving a future from self.local_cache
+            #     chunk = self.block.unit_index_to_chunk(chunk_index)
+            #     chunk.data = self.create(chunk.offset)
+            #     self.local_cache[chunk_index] = chunk
+            #     chunk.load_data(item, slices=slices)
+            # try:
+            #     chunk = self.local_cache[chunk_index]
+            #     chunk.load_data(item, slices=slices)
+            # except (KeyError, AttributeError):
+            #     chunk = self.block.unit_index_to_chunk(chunk_index)
+            #     chunk.data = GlobalOffsetArray(
+            #         np.zeros(self.channel_dimensions + self.block.chunk_shape, dtype=self.dtype),
+            #         global_offset=(0,) + chunk.offset
+            #     )
+            #     self.local_cache[chunk_index] = chunk
+            #     chunk.load_data(item, slices=slices)
 
     def __getitem__(self, slices):
         return self.get_item(slices)
@@ -55,12 +92,13 @@ class ChunkBuffer:
 
         offset = tuple(s.start for s in full_slices)
         size = tuple(s.stop - s.start for s in full_slices)
-        data = GlobalOffsetArray(np.zeros(size, dtype=self.dtype), global_offset=offset)
+        data = GlobalOffsetArray(np.ones(size, dtype=self.dtype) - 1, global_offset=offset)
         slices = full_slices[len(self.channel_dimensions):]
 
         for unit_index in unit_indices:
+            chunk = self.block.unit_index_to_chunk(unit_index)
             try:
-                chunk = self.local_cache[unit_index]
+                cache_data = self.local_cache[unit_index]
             except KeyError:
                 # If we had cared about this fill_missing = False should have raised an exception already
                 pass
@@ -68,7 +106,17 @@ class ChunkBuffer:
                 normalized_slices = channel_slices + tuple(
                     slice(s1.start if s2.start < s1.start else s2.start, s1.stop if s2.stop > s1.stop else s2.stop)
                     for s1, s2 in zip(chunk.slices, slices))
-                data[normalized_slices] = chunk.data[normalized_slices]
+                data[normalized_slices] = cache_data[normalized_slices]
+            # try:
+            #     chunk = self.local_cache[unit_index]
+            # except KeyError:
+            #     # If we had cared about this fill_missing = False should have raised an exception already
+            #     pass
+            # else:
+            #     normalized_slices = channel_slices + tuple(
+            #         slice(s1.start if s2.start < s1.start else s2.start, s1.stop if s2.stop > s1.stop else s2.stop)
+            #         for s1, s2 in zip(chunk.slices, slices))
+            #     data[normalized_slices] = chunk.data[normalized_slices]
 
         return data
 
@@ -91,8 +139,7 @@ class ChunkBuffer:
             self.local_cache.clear()
             return chunks
         elif chunk.unit_index in self.local_cache:
-            obj = self.local_cache.pop(chunk.unit_index)
-            return obj
+            return self.local_cache.pop(chunk.unit_index)
         else:
             return None
 

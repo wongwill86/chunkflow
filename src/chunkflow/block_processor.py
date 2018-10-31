@@ -403,6 +403,9 @@ class BlockProcessor:
             started[0] -= 1
 
         tracemalloc.start()
+        # from chunkblocks.global_offset_array import GlobalOffsetArray
+        # __import__('ipdb').set_trace()
+
         (
             # observable
             Observable.interval(50)
@@ -430,21 +433,13 @@ class BlockProcessor:
         gc.collect()
         print('Finished processing', self.num_chunks)
         memorytools.summarize_objects()
-        # print('RESETTIN PPE')
-        # total_memory_pss, total_memory_uss = print_memory(psutil.Process())
-        # if self.datasource_manager.load_executor is not None:
-        #     self.datasource_manager.load_executor.shutdown(wait=True)
-        #     self.datasource_manager.load_executor = ProcessPoolExecutor()
-        # if self.datasource_manager.flush_executor is not None:
-        #     self.datasource_manager.flush_executor.shutdown(wait=True)
-        #     self.datasource_manager.flush_executor = ProcessPoolExecutor()
-        # print('DONE RESETTING PPE')
 
         if self.on_completed is not None:
             self.on_completed()
+        self.datasource_manager.print_cache_stats()
         snap = tracemalloc.take_snapshot()
         display_top(snap)
-        __import__('pdb').set_trace()
+        # __import__('pdb').set_trace()
 
 
     def _on_error(self, error):
@@ -457,6 +452,14 @@ class BlockProcessor:
 
     def _on_next(self, chunk, data=None):
         self.completed += 1
+        # print('RESETTIN PPE')
+        # if self.datasource_manager.load_executor is not None:
+        #     self.datasource_manager.load_executor.shutdown(wait=True)
+        #     self.datasource_manager.load_executor = ProcessPoolExecutor()
+        # if self.datasource_manager.flush_executor is not None:
+        #     self.datasource_manager.flush_executor.shutdown(wait=True)
+        #     self.datasource_manager.flush_executor = ProcessPoolExecutor()
+        # print('DONE RESETTING PPE')
         print('****** %s--%s %s. %s of %s done ' % (datetime.now(), current_thread().name, chunk.unit_index,
                                                     self.completed, self.num_chunks))
         if self.on_next is not None:

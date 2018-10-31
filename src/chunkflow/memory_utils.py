@@ -1,24 +1,30 @@
 import psutil
+import objgraph
 
-def get_memory_uss(process):
-    # use uss to take account of shared library memory
+def get_memory_usage(process, memory_type='pss'):
     try:
-        memory = process.memory_full_info().uss / 2. ** 30
-        print(process, ' is using', memory)
+        memory = getattr(process.memory_full_info(), memory_type) / 2. ** 30
+        print(process, ' is using ', memory, 'GiB', memory_type)
         return memory
     except psutil._exceptions.NoSuchProcess:
         return 0
 
-def get_memory_pss(process):
-    # use uss to take account of shared library memory
-    try:
-        return process.memory_full_info().pss / 2. ** 30
-    except psutil._exceptions.NoSuchProcess:
-        return 0
+def get_memory_usage_pss(process):
+    return get_memory_usage(process, 'pss')
+
+def get_memory_usage_uss(process):
+    uss = get_memory_usage(process, 'uss')
+    return uss
 
 def print_memory(process):
     processes = [process] + process.children(recursive=True)
-    total_memory_pss = sum(map(get_memory_pss, processes))
-    total_memory_uss = sum(map(get_memory_uss, processes))
-    print('Total pss: %.3f GiB' % total_memory_pss, 'Total uss: %.3f GiB' % total_memory_uss)
-    return total_memory_pss, total_memory_uss
+    memory_rss = get_memory_usage(psutil.Process(), memory_type='rss')
+    memory_uss = sum(map(get_memory_usage_uss, processes))
+    memory_pss = sum(map(get_memory_usage_pss, processes))
+    print('Total rss: %.3f GiB, Total pss: %.3f GiB, Total uss %.3f' % (memory_rss, memory_pss, memory_uss))
+    return memory_pss
+
+def save_objgraph(obj, prefix, index=('x',) * 3):
+    objgraph.show_backrefs([obj], filename='futs/%s%s-%s-%s.png' % ((prefix,) + index))
+    print('showing omost common types for ', prefix, index)
+    objgraph.show_most_common_types(objects=[obj])

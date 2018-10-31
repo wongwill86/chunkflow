@@ -33,6 +33,7 @@ from chunkflow.cloudvolume_datasource import (
 from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk_sizes, valid_cloudvolume
 from chunkflow.datasource_manager import SparseOverlapRepository, get_absolute_index, get_all_mod_index
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream, create_preload_datasource_stream
+import time
 
 # https://stackoverflow.com/a/47730333
 class PythonLiteralOption(click.Option):
@@ -137,8 +138,8 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
             dtype=output_cloudvolume_overlap.dtype,
         ),
         buffer_generator=create_buffered_cloudvolumeCZYX,
-        load_executor=ProcessPoolExecutor(max_workers=1),
-        flush_executor=ProcessPoolExecutor(max_workers=1)
+        load_executor=ProcessPoolExecutor(max_workers=4),
+        flush_executor=ProcessPoolExecutor(max_workers=4)
     )
     block.base_iterator = ReadyNeighborIterator(block.num_chunks, block, chunk_datasource_manager.get_buffer(
         chunk_datasource_manager.output_datasource).block)
@@ -158,15 +159,17 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         datasource_manager=chunk_datasource_manager,
     )
 
+    start = time.time()
     BlockProcessor(block, datasource_manager=chunk_datasource_manager).process(task_stream)
 
-    print('Finished inference!')
+    print('Finished inference! Elapsed:', time.time() - start, 's')
     print('i am done')
     import psutil
     print(psutil.Process().memory_info().rss / 1024 / 1024)
     from memorytools import summarize_objects
     summarize_objects()
-    __import__('pdb').set_trace()
+    chunk_datasource_manager.print_cache_stats()
+    # __import__('pdb').set_trace()
 
 
 @task.command()

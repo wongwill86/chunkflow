@@ -5,7 +5,8 @@ import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkblocks.iterators import UnitIterator
 from concurrent.futures import ThreadPoolExecutor, wait
-from chunkflow.memory_utils import print_memory, get_memory_uss, get_memory_pss
+from chunkflow.memory_utils import print_memory
+from chunkblocks.global_offset_array import GLOB, GLOB_BASE
 import psutil
 import objgraph
 from memory_profiler import profile
@@ -47,8 +48,10 @@ def get_buffer_info(name, chunk_buffer):
     if  len(chunk_buffer.local_cache) == 0:
         keys = datas = []
     else:
-        keys, chunks = zip(*chunk_buffer.local_cache.items())
-        datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
+        # keys, chunks = zip(*chunk_buffer.local_cache.items())
+        # datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
+        keys, datas = zip(*chunk_buffer.local_cache.items())
+        datas = [data for data in datas]
     return get_mem_info(name, keys, datas)
 
 
@@ -61,6 +64,11 @@ def do_load(chunk, datasource, slices):
 def do_dump(chunk, datasource, slices):
     chunk.dump_data(datasource, slices)
     return chunk
+
+@profile
+def do_dump_ignore(chunk, datasource, slices):
+    chunk.dump_data(datasource, slices)
+
 
 
 class DatasourceManager:
@@ -116,7 +124,8 @@ class DatasourceManager:
         else:
 
             # return (chunk_action, datasource, slices, True)
-            # return executor.submit(action, chunk, datasource, slices)
+            print('submitting', action, chunk.shape, datasource)
+            return executor.submit(action, chunk, datasource, slices)
             # def run_in_executor(executor, chunk_action, datasource, slices):
             def run_in_executor(executor, action, chunk, datasource, slices):
                 # thread_future = executor.submit(chunk_action, datasource, slices)
@@ -197,18 +206,27 @@ class DatasourceManager:
     def flush(self, chunk, datasource):
         datasource_buffer = self.get_buffer(datasource)
         try:
-            cleared_chunk = datasource_buffer.clear(chunk)
-        except AttributeError:
+            cleared_chunk = datasource_buffer.local_cache[chunk.unit_index]
+            del datasource_buffer.local_cache[chunk.unit_index]
+
+            # cleared_chunk = datasource_buffer.local_cache[chunk.unit_index]
+            # self._perform_chunk_action(do_dump_ignore, cleared_chunk, datasource, executor=self.flush_executor)
+            # del datasource_buffer.local_cache[chunk.unit_index]
+            return chunk
+            # cleared_chunk = datasource_buffer.clear(chunk)
+        except (AttributeError, KeyError):
             # Not a buffered datasource, no flush needed
             pass
         else:
             try:
                 if cleared_chunk is not None:
-                    return self._perform_chunk_action(do_dump, cleared_chunk, datasource, executor=self.flush_executor)
+                    self._perform_chunk_action(do_dump_ignore, cleared_chunk, datasource, executor=self.flush_executor)
+                return chunk
+                    # return self._perform_chunk_action(do_dump_ignore, cleared_chunk, datasource, executor=self.flush_executor)
             except AttributeError:
                 # cleared chunk doesn't have dump_data must be a list
                 return [
-                    self._perform_chunk_action(do_dump, chunk, datasource, executor=self.flush_executor) for chunk in
+                    self._perform_chunk_action(do_dump_ignore, chunk, datasource, executor=self.flush_executor) for chunk in
                     cleared_chunk
                 ]
 
@@ -228,6 +246,17 @@ class DatasourceManager:
         """
         for mod_index in get_all_mod_index(center_index):
             self.overlap_repository.get_datasource(mod_index)
+
+    def get_overlap_datasource(self, chunk):
+        datasource = self.overlap_repository.get_datasource(chunk.unit_index, create_missing=False)
+        buffer_datasource = self.get_buffer(datasource)
+        try:
+            return weakref.proxy(buffer_datasource)
+        except TypeError:
+            try:
+                return weakref.proxy(datasource)
+            except TypeError:
+                return None
 
     def overlap_repositories(self, chunk=None):
         if chunk is None:
@@ -250,9 +279,11 @@ class DatasourceManager:
                                     self.overlap_repository.datasources.keys(),
                                     self.overlap_repository.datasources.values()
                                     )
-        total_memory_pss, total_memory_uss = print_memory(psutil.Process())
-        print('Actual used memory: %.3f GiB Total expected cached memory: %.3f GiB,  Discrepancy is %.3f GiB' % (
-            total_memory_pss, memory_used, total_memory_pss - memory_used))
+        total_memory = print_memory(psutil.Process())
+        print('\nActual: %.3f GiB expected: %.3f GiB,  Discrepancy is %.3f GiB' % (
+            total_memory, memory_used, total_memory - memory_used))
+        print('GlobalOffsets!', len(GLOB), 'summing to', sum(map(lambda x: x.nbytes, GLOB.values())) / 2. ** 30)
+        print('GlobalOffsetsBASE!', len(GLOB_BASE), 'summing to', sum(map(lambda x: x.nbytes, GLOB_BASE.values())) / 2. ** 30)
         return memory_used
 
 
@@ -263,10 +294,16 @@ class OverlapRepository:
     def create(self, mod_index, *args, **kwargs):
         raise NotImplementedError
 
-    def get_datasource(self, index):
-        mod_index = get_mod_index(index)
+    def to_datasource_index(self, index):
+        return get_mod_index(index)
+
+    def get_datasource(self, index, create_missing=True):
+        mod_index = self.to_datasource_index(index)
         if mod_index not in self.datasources:
-            self.datasources[mod_index] = self.create(mod_index)
+            if create_missing:
+                self.datasources[mod_index] = self.create(mod_index)
+            else:
+                return None
         return self.datasources[mod_index]
 
     def clear(self, index):
@@ -291,10 +328,8 @@ class SparseOverlapRepository(OverlapRepository):
             global_offset=global_offset,
         )
 
-    def get_datasource(self, index):
-        if index not in self.datasources:
-            self.datasources[index] = self.create(index)
-        return self.datasources[index]
+    def to_datasource_index(self, index):
+        return index
 
     @profile
     def clear(self, index):
