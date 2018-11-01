@@ -48,27 +48,11 @@ def get_buffer_info(name, chunk_buffer):
     if  len(chunk_buffer.local_cache) == 0:
         keys = datas = []
     else:
-        # keys, chunks = zip(*chunk_buffer.local_cache.items())
-        # datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
-        keys, datas = zip(*chunk_buffer.local_cache.items())
-        datas = [data for data in datas]
+        keys, chunks = zip(*chunk_buffer.local_cache.items())
+        datas = [chunk.data for chunk in chunks if hasattr(chunk, 'data')]
+        # keys, datas = zip(*chunk_buffer.local_cache.items())
+        # datas = [data for data in datas]
     return get_mem_info(name, keys, datas)
-
-
-@profile
-def do_load(chunk, datasource, slices):
-    chunk.load_data(datasource, slices)
-    return chunk
-
-@profile
-def do_dump(chunk, datasource, slices):
-    chunk.dump_data(datasource, slices)
-    return chunk
-
-@profile
-def do_dump_ignore(chunk, datasource, slices):
-    chunk.dump_data(datasource, slices)
-
 
 
 class DatasourceManager:
@@ -122,9 +106,6 @@ class DatasourceManager:
         if True or executor is None:
             return action(chunk, datasource, slices=slices)
         else:
-
-            # return (chunk_action, datasource, slices, True)
-            print('submitting', action, chunk.shape, datasource)
             return executor.submit(action, chunk, datasource, slices)
             # def run_in_executor(executor, chunk_action, datasource, slices):
             def run_in_executor(executor, action, chunk, datasource, slices):
@@ -203,30 +184,22 @@ class DatasourceManager:
 
         return None
 
+    # TODO try reorganize this to delete
     def flush(self, chunk, datasource):
         datasource_buffer = self.get_buffer(datasource)
         try:
-            cleared_chunk = datasource_buffer.local_cache[chunk.unit_index]
-            del datasource_buffer.local_cache[chunk.unit_index]
-
-            # cleared_chunk = datasource_buffer.local_cache[chunk.unit_index]
-            # self._perform_chunk_action(do_dump_ignore, cleared_chunk, datasource, executor=self.flush_executor)
-            # del datasource_buffer.local_cache[chunk.unit_index]
-            return chunk
-            # cleared_chunk = datasource_buffer.clear(chunk)
+            cleared_chunk = datasource_buffer.clear(chunk)
         except (AttributeError, KeyError):
             # Not a buffered datasource, no flush needed
             pass
         else:
             try:
                 if cleared_chunk is not None:
-                    self._perform_chunk_action(do_dump_ignore, cleared_chunk, datasource, executor=self.flush_executor)
-                return chunk
-                    # return self._perform_chunk_action(do_dump_ignore, cleared_chunk, datasource, executor=self.flush_executor)
+                    return self._perform_chunk_action(do_dump, cleared_chunk, datasource, executor=self.flush_executor)
             except AttributeError:
                 # cleared chunk doesn't have dump_data must be a list
                 return [
-                    self._perform_chunk_action(do_dump_ignore, chunk, datasource, executor=self.flush_executor) for chunk in
+                    self._perform_chunk_action(do_dump, chunk, datasource, executor=self.flush_executor) for chunk in
                     cleared_chunk
                 ]
 
@@ -258,19 +231,7 @@ class DatasourceManager:
             except TypeError:
                 return None
 
-    def overlap_repositories(self, chunk=None):
-        if chunk is None:
-            overlap_datasources = self.overlap_repository.datasources.values()
-            buffer_datasources = map(self.get_buffer, overlap_datasources)
-            return [
-                weakref.proxy(olap) if buff is None else weakref.proxy(buff) for olap, buff in zip(overlap_datasources, buffer_datasources)
-            ]
-        else:
-            datasource = self.overlap_repository.get_datasource(chunk.unit_index)
-            return self.get_buffer(datasource) or datasource
-
     def print_cache_stats(self):
-        gc.collect()
         memory_used = 0
         memory_used += get_buffer_info('input_buffer', self.get_buffer(self.input_datasource))
         memory_used += get_buffer_info('output_buffer', self.get_buffer(self.output_datasource))

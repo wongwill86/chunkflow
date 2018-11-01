@@ -229,11 +229,6 @@ def aggregate(slices, aggregate, datasource):
             np.ones(data.shape[0:channel_dimensions] + slice_shape, dtype=data.dtype) - 1,
             global_offset=offset
         )
-        # aggregate_chunk.load_data(GlobalOffsetArray(
-        #     np.zeros(data.shape[0:channel_dimensions] + slice_shape, dtype=data.dtype),
-        #     global_offset=offset
-        # ))
-        # aggregate_chunk.load_data(aggregate_chunk)
         aggregate = data
     else:
         aggregate[channel_slices] += data
@@ -255,15 +250,8 @@ def download_retry(datasource_manager, datasource, patch_chunk):
         if datasource_chunk.unit_index not in buffered_datasource.local_cache:
             future = datasource_manager.load_chunk(
                 datasource_chunk, datasource=datasource, use_buffer=False)
-            print('loaded future', future.shape)
-            buffered_datasource.local_cache[datasource_chunk.unit_index] = future.data # TODO undo data
-
-        # return Observable.from_item_or_future(buffered_datasource.local_cache[datasource_chunk.unit_index])
-
-        # TODO undo data
-        fake_chunk = buffered_datasource.block.unit_index_to_chunk(datasource_chunk.unit_index)
-        fake_chunk.data = buffered_datasource.local_cache[datasource_chunk.unit_index]
-        return Observable.from_item_or_future(fake_chunk)
+            buffered_datasource.local_cache[datasource_chunk.unit_index] = future
+        return Observable.from_item_or_future(buffered_datasource.local_cache[datasource_chunk.unit_index])
 
 
     def save_to_cache(datasource_chunk):
@@ -281,10 +269,9 @@ def download_retry(datasource_manager, datasource, patch_chunk):
             # creates a temp chunk to throw away
             .map(buffered_datasource.block.unit_index_to_chunk)
             .flat_map(add_future_to_cache)
-            # .do_action(save_to_cache) # TODO undo data
+            .do_action(save_to_cache)
             .reduce(lambda x, y: patch_chunk)
             .map(lambda _: datasource_manager.load_chunk(patch_chunk, datasource=datasource, use_executor=False))
-            .do_action(lambda _: print('patch chunk shape is', patch_chunk.data.shape, patch_chunk.shape))
         )
 
 
@@ -298,70 +285,30 @@ def create_input_stream(datasource_manager):
 def create_inference_stream(block, inference_operation, blend_operation, datasource_manager):
     return lambda chunk: (
         Observable.just(chunk)
-        # .do_action(
-        #     lambda chunk:
-        #     (print('before inference', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
-        # )
         .map(inference_operation)
-        # .do_action(
-        #     lambda chunk:
-        #     (print('before blend', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
-        # )
         .map(blend_operation)
-        # .do_action(
-        #     lambda chunk:
-        #     (print('before dump', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
-        # )
-
         .do_action(lambda chunk: datasource_manager.dump_chunk(
             chunk, datasource=datasource_manager.overlap_repository.get_datasource(chunk.unit_index), use_executor=False
         ))
-        # .do_action(lambda chunk: datasource_manager.dump_chunk(
-        #     chunk, datasource=datasource_manager.output_datasource, use_executor=False
-        # ))
-
-        # .do_action(
-        #     lambda chunk:
-        #     (objgraph.show_backrefs([chunk.data], filename='futs/infdata%s-%s-%s.png' % (chunk.unit_index)) and False) or
-        #     (print('showing omost common types for ', chunk.unit_index) and False) or
-        #     (objgraph.show_most_common_types(objects=[chunk.data]) and False)
-        # )
         .do_action(del_data)
     )
 
 
 def create_aggregate_stream(block, datasource_manager):
-    def fill(chunk):
-        chunk.load_data(GlobalOffsetArray(np.ones((3,) + chunk.shape, dtype=np.float32) + 1,
-                                          global_offset=(0,) + chunk.offset))
-        return chunk
-
     return lambda chunk: (
         # sum the different datasources together
         Observable.just(chunk)
-        .do_action(
+        .flat_map(
             lambda chunk:
-            (print('before aggregate', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
-        )
-        .map(fill)
-        # .flat_map(
-        #     lambda chunk:
-        #     (
-        #         # create temp list of repositories values at time of iteration / also weakref
-        #         Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk)
-        #         .map(datasource_manager.get_overlap_datasource)
-        #         # Observable.just(datasource_manager.output_datasource)
-        #         .filter(lambda datasource: datasource is not None)
-        #         # Observable.from_(list(datasource_manager.overlap_repositories()))
-        #         # .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
-        #         .reduce(partial(aggregate, chunk.slices), seed=0)
-        #         .do_action(chunk.load_data)
-        #         .map(lambda _: chunk)
-        #     )
-        # )
-        .do_action(
-            lambda chunk:
-            (print('after aggregate', chunk.unit_index) and False) or (datasource_manager.print_cache_stats() and False)
+            (
+                # create temp list of repositories values at time of iteration / also weakref
+                Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk)
+                .map(datasource_manager.get_overlap_datasource)
+                .filter(lambda datasource: datasource is not None)
+                .reduce(partial(aggregate, chunk.slices), seed=0)
+                .do_action(chunk.load_data)
+                .map(lambda _: chunk)
+            )
         )
     )
 
@@ -376,44 +323,19 @@ def create_upload_stream(block, datasource_manager):
     use_executor_final = output_datasource_final_buffer is None
     use_executor = output_datasource_buffer is None
 
-    @profile
-    def my_dump(chunk):
-        print('before dumping chunk to cache')
-        datasource_manager.print_cache_stats()
-        buff = datasource_manager.get_buffer(datasource_manager.output_datasource)
-        slices = (slice(None, None),) + chunk.slices
-        if np.product(chunk.data[slices].shape) > 0:
-            buff[slices] = chunk.data + 1
-            print('keys are',  buff.local_cache.keys())
-
-        else:
-            print('empty dump')
-
-        print('after dumping chunk to cache')
-        datasource_manager.print_cache_stats()
-
-        # for key in list(buff.local_cache.keys()):
-        #     print('after clear chunk to cache', key)
-        #     del buff.local_cache[key]
-        #     datasource_manager.print_cache_stats()
-        # __import__('ipdb').set_trace()
-        return chunk
-
     return lambda chunk: (
-        # Observable.merge(
-        #     # core slices can bypass to the final datasource
-        #     Observable.just(chunk).map(block.core_slices).map(
-        #         lambda slices: DumpArguments(datasource_manager.output_datasource_final, slices, use_executor_final)
-        #     ),
-        #     Observable.just(chunk).flat_map(block.overlap_slices).map(
-        #         lambda slices: DumpArguments(datasource_manager.output_datasource, slices, use_executor)
-        #     )
-        # )
-        # .map(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
-        Observable.just(chunk)
-        .map(my_dump)
-        # .do_action(lambda chunk: datasource_manager.dump_chunk(chunk, datasource=datasource_manager.output_datasource,
-        #                                                        use_executor=False))
+        Observable.merge(
+            # core slices can bypass to the final datasource
+            Observable.just(chunk).map(block.core_slices).map(
+                lambda slices: DumpArguments(datasource_manager.output_datasource_final, slices, use_executor_final)
+            ),
+            Observable.just(chunk).flat_map(block.overlap_slices).map(
+                lambda slices: DumpArguments(datasource_manager.output_datasource, slices, use_executor)
+            )
+        )
+        .map(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
+        .do_action(lambda chunk: datasource_manager.dump_chunk(chunk, datasource=datasource_manager.output_datasource,
+                                                               use_executor=False))
         .flat_map(Observable.from_item_or_future)
         .reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
         .retry(MAX_RETRIES)
@@ -428,20 +350,8 @@ def create_checkpoint_observable(block, stage, notify_neighbors=True):
                 Observable.just(chunk)
                 # check both the current chunk we just ran this stage on as well as the neighboring chunks
                 .flat_map(lambda chunk: Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk))
-                # .do_action(lambda c: print(c.unit_index, 'got to notified by  neighbor 1', chunk.unit_index, 'at',
-                #                            stage))
                 .filter(lambda chunk: block.is_checkpointed(chunk, stage=stage.value))
-                # .do_action(lambda c: print(
-                #     c.unit_index, 'got to notified by  neighbor 2', chunk.unit_index, 'at',
-                #     stage, 'looking at neighbors',
-                #     list(map(lambda x: x.unit_index, block.get_all_neighbors(c))),
-                #     'is al lcheckpoined?',
-                #     block.all_neighbors_checkpointed(chunk, stage=stage.value)
-                #     )
-                # )
                 .filter(lambda chunk: block.all_neighbors_checkpointed(chunk, stage=stage.value))
-                # .do_action(lambda c: print(c.unit_index, 'got to notified by  neighbor 3', chunk.unit_index, 'at',
-                #                            stage))
             )
         else:
             return Observable.just(chunk)
@@ -466,68 +376,9 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
         output_final_buffer if output_final_buffer is not None else None
     )
 
-    def clearit(chunk):
-        buff = datasource_manager.get_buffer(datasource_manager.output_datasource)
-        print('\n\n\nbefore clearing', buff.local_cache.keys())
-        datasource_manager.print_cache_stats()
-        for key in list(buff.local_cache.keys()):
-            del buff.local_cache[key]
-            print('after deleting cache', key)
-            datasource_manager.print_cache_stats()
-
-        buff.local_cache.clear()
-        print('ful clear')
-        datasource_manager.print_cache_stats()
-        __import__('ipdb').set_trace()
-        return chunk
-
-    def flush_datasource_ob(datasource_chunk):
-        @profile
-        def flush_it(datasource):
-            # datasource_manager.get_buffer(datasource).local_cache[datasource_chunk.unit_index]
-            print('\nbefore flushing datasource_chunk', datasource_chunk.unit_index, datasource.layer_cloudpath)
-            datasource_manager.print_cache_stats()
-            if datasource_chunk.unit_index in datasource_manager.get_buffer(datasource).local_cache and datasource_manager.get_buffer(
-                datasource).local_cache[datasource_chunk.unit_index].data is None:
-                __import__('ipdb').set_trace()
-            # flushed = datasource_manager.flush(datasource_chunk, datasource)
-            # flushed_id = id(flushed)
-
-            # if flushed_id in GLOB:
-            #     size = GLOB[flushed_id].nbytes / 2. ** 30
-            # else:
-            #     size = None
-            # print('after flushing datasource_chunk and deleting:', datasource_chunk.unit_index, 'removed data',
-            #       flushed_id, 'of size', size)
-            if datasource_chunk.unit_index in datasource_manager.get_buffer(datasource).local_cache:
-                del datasource_manager.get_buffer(datasource).local_cache[datasource_chunk.unit_index]
-            else:
-                print('not found in cache', datasource_chunk.unit_index)
-                return datasource_chunk
-
-            print('after flushing datasource_chunk and deleting:', datasource_chunk.unit_index, 'removed data')
-            # print(flushed.data.flags)
-
-            # print('is same as base', flushed.data.base is flushed.data, type(flushed.data.base), flushed.data.shape)
-            # assert GLOB[id(flushed.data)] is flushed.data
-            # data = flushed.data
-            # save_objgraph(flushed, 'ds_chunk', datasource_chunk.unit_index)
-            # import ipdb; ipdb.set_trace()
-            datasource_manager.print_cache_stats()
-            print('\n')
-            import ipdb; ipdb.set_trace()
-            return datasource # flushed
-
-        return flush_it
-
     if reference_buffer is not None:
         return lambda uploaded_chunk: (
             Observable.from_(reference_buffer.block.slices_to_chunks(uploaded_chunk.slices))
-            # .do_action(lambda ds_c: print('looking at datasource chunk at', ds_c.unit_index, 'referred by',
-            #     uploaded_chunk.unit_index, 'for', stage_to_check, 'looking at data chunks', stage_to_check.mark_value,
-            #     ' at indices', list(map(lambda x: x.unit_index, block.slices_to_chunks(ds_c.slices))),
-            #     block.all_checkpointed(block.slices_to_chunks(ds_c.slices), stage=stage_to_check.value)
-            # ))
             .filter(lambda datasource_chunk: block.all_checkpointed(
                 block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
             .do_action(lambda x: print(x.unit_index, 'GREAT SUCCESSS'))
@@ -536,24 +387,10 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
                 lambda datasource_chunk:
                 Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
                 # will skip chunks not found i.e. if the cache is already flushed
-                .map(flush_datasource_ob(datasource_chunk))
-                # .do_action(
-                #     lambda datasource:
-                #     (print('\nbefore flushing datasource_chunk', datasource_chunk.unit_index,
-                #            datasource.layer_cloudpath) and False) or
-                #     (datasource_manager.print_cache_stats() and False)
-                # )
-                # .map(partial(datasource_manager.flush, datasource_chunk))
-                # .flat_map(Observable.from_item_or_future)
-                # .do_action(
-                #     lambda datasource:
-                #     (print('\nafter flushing datasource_chunk and deleting', datasource_chunk.unit_index) and False) or
-                #     (gc.collect() and False) or
-                #     (datasource_manager.print_cache_stats() and False)
-                # )
+                .map(partial(datasource_manager.flush, datasource_chunk))
+                .flat_map(Observable.from_item_or_future)
             )
-            # .retry(MAX_RETRIES)
-            # .do_action(del_data)
+            .retry(MAX_RETRIES)
             .flat_map(lambda datasource_chunk: block.slices_to_chunks(datasource_chunk.slices))
             .flat_map(create_checkpoint_observable(block, stage_to_complete, notify_neighbors=False))
         )
@@ -584,20 +421,6 @@ def create_inference_stages(block):
 
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
     stages = create_inference_stages(block)
-    def clearit(chunk):
-        buff = datasource_manager.get_buffer(datasource_manager.output_datasource)
-        print('\n\n\nbefore clearing', buff.local_cache.keys())
-        datasource_manager.print_cache_stats()
-        for key in list(buff.local_cache.keys()):
-            print('after deleting cache', key, np.product(buff.local_cache[key].shape))
-            del buff.local_cache[key]
-            datasource_manager.print_cache_stats()
-
-        buff.local_cache.clear()
-        print('ful clear')
-        datasource_manager.print_cache_stats()
-        __import__('ipdb').set_trace()
-        return chunk
 
     return lambda chunk: (
         Observable.just(chunk)
@@ -606,36 +429,16 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
                    datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_input_stream(datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
-        # .do_action(lambda chunk: print('data after inference', chunk.data.nbytes if chunk.data is not None else 0) or
-        #            datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_checkpoint_observable(block, stages.INFERENCE_DONE))
 
         .flat_map(create_aggregate_stream(block, datasource_manager))
-        # .do_action(lambda chunk: print('data after aggregate', chunk.data.nbytes if chunk.data is not None else 0) or
-        #            datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_upload_stream(block, datasource_manager))
-        # .do_action(lambda chunk: print('data after upload', chunk.data.nbytes if chunk.data is not None else 0) or
-        #            datasource_manager.print_cache_stats() or objgraph.show_growth())
-        .do_action(clearit)
         .flat_map(create_checkpoint_observable(block, stages.UPLOAD_DONE, notify_neighbors=False))
-        # .do_action(lambda x: print('about to clear buffer input', x.unit_index) or
-        #            datasource_manager.print_cache_stats() or objgraph.show_growth())
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
-        # .do_action(lambda x: print('ifinsih clear fluhin about flush', x.unit_index) or
-        #            datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_flush_datasource_observable(datasource_manager, block, stages.UPLOAD_DONE,
                                                      stages.DATASOURCE_FLUSH_DONE))
-        # .do_action(lambda chunk: (gc.collect() and False) or print('data after clear', chunk.data.nbytes if chunk.data is not None else 0) or
-        #            datasource_manager.print_cache_stats() or objgraph.show_growth())
 
         .flat_map(create_checkpoint_observable(block, stages.CHUNK_FLUSH_DONE, notify_neighbors=False))
-        .do_action(lambda chunk:
-                   (datasource_manager.print_cache_stats() and False) or
-                   (datasource_manager.overlap_repository.clear(chunk.unit_index) and False) or
-                   (print('after clear', chunk.unit_index) and False) or
-                   (gc.collect() and False) or (datasource_manager.print_cache_stats() and False)
-                   )
-
         .flat_map(create_checkpoint_observable(block, stages.CLEAR_DONE, notify_neighbors=False))
         .map(lambda _: chunk)
     )
