@@ -94,14 +94,12 @@ def from_item_or_future(item_or_future, default=None):
 
     def exec_subscribe(observer):
         def done(value):
-            print('\n\n\n\n\n I AM DONE')
             observer.on_next(value)
             observer.on_completed()
 
         result = pool.apply_async(item_or_future[0], item_or_future[1:], callback=done, error_callback=observer.on_error)
 
         def dispose():
-            print('ugh trying to cancel blah thi sis not good')
             del result
             pass
             if future and future.cancel:
@@ -343,7 +341,7 @@ def create_upload_stream(block, datasource_manager):
     )
 
 
-def create_checkpoint_observable(block, stage, notify_neighbors=True):
+def create_checkpoint_observable(block, stage, datasource_manager, notify_neighbors=True):
     def notify_neighbor_stream(chunk):
         if notify_neighbors:
             return (
@@ -359,10 +357,14 @@ def create_checkpoint_observable(block, stage, notify_neighbors=True):
     return lambda chunk: (
         Observable.just(chunk)
         .do_action(lambda chunk: block.checkpoint(chunk, stage=stage.value))
-        .do_action(lambda chunk: stage.mark_done(chunk.unit_index) or print('Checkpointed:', chunk.unit_index, stage.mark_value, stage, '\nstate:\n', stage.state))
+        .do_action(
+            lambda chunk:
+            (stage.mark_done(chunk.unit_index) and False) or
+            (print('Checkpointed:', chunk.unit_index, stage.mark_value, stage, '\nstate:\n', stage.state) and False) or
+            (datasource_manager.print_cache_stats)
+        )
         .flat_map(notify_neighbor_stream)
         .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage.hashset)
-        .do_action(lambda chunk: print(chunk.unit_index, 'ready for next', stage))
     )
 
 
@@ -381,8 +383,6 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
             Observable.from_(reference_buffer.block.slices_to_chunks(uploaded_chunk.slices))
             .filter(lambda datasource_chunk: block.all_checkpointed(
                 block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
-            .do_action(lambda x: print(x.unit_index, 'GREAT SUCCESSS'))
-            .do_action(clearit)
             .flat_map(
                 lambda datasource_chunk:
                 Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
@@ -392,10 +392,11 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
             )
             .retry(MAX_RETRIES)
             .flat_map(lambda datasource_chunk: block.slices_to_chunks(datasource_chunk.slices))
-            .flat_map(create_checkpoint_observable(block, stage_to_complete, notify_neighbors=False))
+            .flat_map(create_checkpoint_observable(block, stage_to_complete, datasource_manager,
+                                                   notify_neighbors=False))
         )
     else:
-        return lambda uploaded_chunk: Observable.just(uploaded_chunk).do_action(lambda x: print('\n\n\n\nUGHGHGHGH'))
+        return lambda uploaded_chunk: Observable.just(uploaded_chunk)
 
 def create_inference_stages(block):
     state = np.zeros(block.num_chunks, dtype=np.uint8)
@@ -424,22 +425,26 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
 
     return lambda chunk: (
         Observable.just(chunk)
-        .flat_map(create_checkpoint_observable(block, stages.START, notify_neighbors=False))
+        .flat_map(create_checkpoint_observable(block, stages.START,datasource_manager,
+                                               notify_neighbors=False))
         .do_action(lambda chunk: print('start', chunk.data.nbytes if chunk.data is not None else 0) or
                    datasource_manager.print_cache_stats() or objgraph.show_growth())
         .flat_map(create_input_stream(datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
-        .flat_map(create_checkpoint_observable(block, stages.INFERENCE_DONE))
+        .flat_map(create_checkpoint_observable(block, stages.INFERENCE_DONE, datasource_manager))
 
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .flat_map(create_upload_stream(block, datasource_manager))
-        .flat_map(create_checkpoint_observable(block, stages.UPLOAD_DONE, notify_neighbors=False))
+        .flat_map(create_checkpoint_observable(block, stages.UPLOAD_DONE, datasource_manager, notify_neighbors=False))
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
+        .do_action(lambda chunk: datasource_manager.overlap_repository.clear(chunk.unit_index))
         .flat_map(create_flush_datasource_observable(datasource_manager, block, stages.UPLOAD_DONE,
                                                      stages.DATASOURCE_FLUSH_DONE))
 
-        .flat_map(create_checkpoint_observable(block, stages.CHUNK_FLUSH_DONE, notify_neighbors=False))
-        .flat_map(create_checkpoint_observable(block, stages.CLEAR_DONE, notify_neighbors=False))
+        .flat_map(create_checkpoint_observable(block, stages.CHUNK_FLUSH_DONE, datasource_manager,
+                                               notify_neighbors=False))
+        .flat_map(create_checkpoint_observable(block, stages.CLEAR_DONE, datasource_manager,
+                                               notify_neighbors=False))
         .map(lambda _: chunk)
     )
 

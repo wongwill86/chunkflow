@@ -55,6 +55,14 @@ def get_buffer_info(name, chunk_buffer):
     return get_mem_info(name, keys, datas)
 
 
+def do_load(chunk, datasource, slices):
+    return chunk.load_data(datasource, slices)
+
+
+def do_dump(chunk, datasource, slices):
+    return chunk.dump_data(datasource, slices)
+
+
 class DatasourceManager:
     """
     Class to handle datasources used in chunkflow. Allows user to create buffers for input/output datasources.
@@ -244,7 +252,9 @@ class DatasourceManager:
         print('\nActual: %.3f GiB expected: %.3f GiB,  Discrepancy is %.3f GiB' % (
             total_memory, memory_used, total_memory - memory_used))
         print('GlobalOffsets!', len(GLOB), 'summing to', sum(map(lambda x: x.nbytes, GLOB.values())) / 2. ** 30)
+        print(list(GLOB.keys()))
         print('GlobalOffsetsBASE!', len(GLOB_BASE), 'summing to', sum(map(lambda x: x.nbytes, GLOB_BASE.values())) / 2. ** 30)
+        print(list(GLOB_BASE.keys()))
         return memory_used
 
 
@@ -292,14 +302,8 @@ class SparseOverlapRepository(OverlapRepository):
     def to_datasource_index(self, index):
         return index
 
-    @profile
     def clear(self, index):
         try:
-            obj = self.datasources[index]
-            objgraph.show_backrefs([obj], filename='futs/sparse%s-%s-%s.png' % (index))
-            print('showing omost common types for ', index)
-            objgraph.show_most_common_types(objects=[obj])
             del self.datasources[index]
-            gc.collect()
         except KeyError:
             pass

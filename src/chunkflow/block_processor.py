@@ -165,6 +165,7 @@ class ReadyNeighborIterator(UnitIterator):
         print(directions)
         print('things are', things)
         print('things2 are', things_2)
+        assert False
         return queue_2
 
 
@@ -341,58 +342,17 @@ class BlockProcessor:
                 print('throttling \n\n\n')
                 return Observable.empty().filter(lambda x: x is not None)
 
-
-            # if discrepancy > 2.5:
-            #     print('RESETTIN PPE')
-            #     if self.datasource_manager.load_executor is not None:
-            #         self.datasource_manager.load_executor.shutdown(wait=True)
-            #         self.datasource_manager.load_executor = ProcessPoolExecutor()
-            #     if self.datasource_manager.flush_executor is not None:
-            #         self.datasource_manager.flush_executor.shutdown(wait=True)
-            #         self.datasource_manager.flush_executor = ProcessPoolExecutor()
-            #     print('DONE RESETTING PPE')
-            #     gc.collect()
-            #     new_total_memory_pss, new_total_memory_uss = print_memory(current_process)
-            #     import objgraph
-            #     print('\n growth:')
-            #     objgraph.show_growth(limit=10)
-            #     print('after reset ppe, Expected:', memory_used, 'Total pss: %.3f' % new_total_memory_pss, 'Total uss: %.3f'
-            #           % new_total_memory_uss, 'saved', new_total_memory_pss - total_memory_pss)
-
-            if True or total_memory_pss < 10:
-                try:
-                    chunk = next(iterator)
-                except StopIteration:
-                    return Observable.just(SENTINEL)
-                # started[chunk.unit_index] = 1
-                started_count[0] += 1
-                last_start_time[0] = time.time()
-                if force_push[0]:
-                    force_push[0] -= 1
-                print('Starting', chunk.unit_index, ' now:\n')#, started)
-                return Observable.just(chunk)
-            else:
-                gc.collect()
-                if self.datasource_manager is not None:
-                    load_collect = [
-                        self.datasource_manager.load_executor.submit(gc.collect)
-                        for i in range(0, 12)
-                    ]
-                    flush_collect = [
-                        self.datasource_manager.flush_executor.submit(gc.collect)
-                        for i in range(0, 12)
-                    ]
-
-                    print('wait for flush to copmlete')
-                    for future in as_completed(itertools.chain(load_collect, flush_collect)):
-                        future.result()
-                    print('done waiting for flush')
-                    print('waiting to shutdown load')
-                    self.datasource_manager.load_executor.shutdown(wait=True)
-                    print('waiting to shutdown flush')
-                    self.datasource_manager.flush_executor.shutdown(wait=True)
-
-                return Observable.empty()
+            try:
+                chunk = next(iterator)
+            except StopIteration:
+                return Observable.just(SENTINEL)
+            # started[chunk.unit_index] = 1
+            started_count[0] += 1
+            last_start_time[0] = time.time()
+            if force_push[0]:
+                force_push[0] -= 1
+            print('Starting', chunk.unit_index, ' now:\n')#, started)
+            return Observable.just(chunk)
 
         print('about to begin')
         started = [0]
@@ -402,9 +362,7 @@ class BlockProcessor:
         def dec():
             started[0] -= 1
 
-        tracemalloc.start()
-        # from chunkblocks.global_offset_array import GlobalOffsetArray
-        # __import__('ipdb').set_trace()
+        # tracemalloc.start()
 
         (
             # observable
@@ -423,23 +381,16 @@ class BlockProcessor:
             # .subscribe(throttled_next, on_error=self._on_error, on_completed=self._on_completed)
         )
 
-        # import time
-        # sleepy = 20
-        # print('sleeping for ', sleepy)
-        # time.sleep(sleepy)
-        # print('done sleeping for', sleepy)
 
     def _on_completed(self):
         gc.collect()
         print('Finished processing', self.num_chunks)
         memorytools.summarize_objects()
-
         if self.on_completed is not None:
             self.on_completed()
         self.datasource_manager.print_cache_stats()
-        snap = tracemalloc.take_snapshot()
-        display_top(snap)
-        # __import__('pdb').set_trace()
+        # snap = tracemalloc.take_snapshot()
+        # display_top(snap)
 
 
     def _on_error(self, error):
@@ -452,14 +403,6 @@ class BlockProcessor:
 
     def _on_next(self, chunk, data=None):
         self.completed += 1
-        # print('RESETTIN PPE')
-        # if self.datasource_manager.load_executor is not None:
-        #     self.datasource_manager.load_executor.shutdown(wait=True)
-        #     self.datasource_manager.load_executor = ProcessPoolExecutor()
-        # if self.datasource_manager.flush_executor is not None:
-        #     self.datasource_manager.flush_executor.shutdown(wait=True)
-        #     self.datasource_manager.flush_executor = ProcessPoolExecutor()
-        # print('DONE RESETTING PPE')
         print('****** %s--%s %s. %s of %s done ' % (datetime.now(), current_thread().name, chunk.unit_index,
                                                     self.completed, self.num_chunks))
         if self.on_next is not None:
