@@ -19,7 +19,6 @@ class ChunkBuffer:
         self.channel_dimensions = channel_dimensions
         self.local_cache = dict()
 
-    @profile
     def create(self, offset):
         shape = self.channel_dimensions + self.block.chunk_shape
         # shape = (10, 20, 256, 256)
@@ -34,7 +33,6 @@ class ChunkBuffer:
     def __setitem__(self, slices, item):
         self.setme(slices, item)
 
-    @profile
     def setme(self, slices, item):
         if not isinstance(item, GlobalOffsetArray):
             global_offset = (0,) * len(self.channel_dimensions) + tuple(

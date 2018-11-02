@@ -138,8 +138,8 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
             dtype=output_cloudvolume_overlap.dtype,
         ),
         buffer_generator=create_buffered_cloudvolumeCZYX,
-        load_executor=ProcessPoolExecutor(max_workers=4),
-        flush_executor=ProcessPoolExecutor(max_workers=4)
+        load_executor=ProcessPoolExecutor(),
+        flush_executor=ProcessPoolExecutor()
     )
     block.base_iterator = ReadyNeighborIterator(block.num_chunks, block, chunk_datasource_manager.get_buffer(
         chunk_datasource_manager.output_datasource).block)

@@ -68,6 +68,19 @@ class ReadyNeighborIterator(UnitIterator):
     #     #     neighbors.update(set(self.block.slices_to_unit_indices(datasource_chunk.slices)))
     #     return sorted(neighbors)
 
+    def get_relevant_neighbors(self, index):
+        relevant_neighbors = set()
+        # add neighbor neighbors as upload dependency
+        for neighbor in super().get_all_neighbors(index, self.num_chunks):
+            for neighbor_neighbor in super().get_all_neighbors(neighbor, self.num_chunks):
+                relevant_neighbors.add(neighbor_neighbor)
+
+        # add flush dependencies
+        chunk_slices = self.block.unit_index_to_slices(index)
+        for datasource_chunk in self.datasource_block.slices_to_chunks(chunk_slices):
+            for chunk in self.block.slices_to_chunks(datasource_chunk.slices):
+                relevant_neighbors.add(chunk.unit_index)
+        return relevant_neighbors
 
     def generate_queue(self, start):
         print('generating queue')
@@ -100,6 +113,10 @@ class ReadyNeighborIterator(UnitIterator):
 
         print('unfinished is\n', unfinished)
 
+        finished_counter = 0
+        finished = np.ones(self.num_chunks, dtype=np.uint8)
+        last_finished_counter = 0
+        last_finished = []
 
         chunk_slices = self.block.unit_index_to_slices(start)
         print('begin with ', start, queue_1, len(queue_1))
@@ -113,39 +130,50 @@ class ReadyNeighborIterator(UnitIterator):
 
         things = []
         things_2 = [0]
+
+
         while len(queue_1) > 0:
             index = queue_1.popleft()
             queue_2.append(index)
             queued_2.add(index)
-            chunk_slices = self.block.unit_index_to_slices(index)
 
-            relevant_neighbors = dict()
+            relevant_neighbors = self.get_relevant_neighbors(index)
 
-            # add neighbor neighbors as upload dependency
-            for neighbor in super().get_all_neighbors(index, self.num_chunks):
-                for neighbor_neighbor in super().get_all_neighbors(neighbor, self.num_chunks):
-                    relevant_neighbors[neighbor_neighbor] = unfinished[neighbor_neighbor]
-
-            # add flush dependencies
-            for datasource_chunk in self.datasource_block.slices_to_chunks(chunk_slices):
-                for chunk in self.block.slices_to_chunks(datasource_chunk.slices):
-                    relevant_neighbors[chunk.unit_index] = unfinished[chunk.unit_index]
-
-            for relevant_neighbor in relevant_neighbors.keys():
+            last_finished_counter += 1
+            for relevant_neighbor in relevant_neighbors:
                 new_value = unfinished[relevant_neighbor] - 1
 
                 if new_value == 0:
                     things.append(len(queue_2) - things_2[-1])
                     things_2.append(len(queue_2))
                     new_value = FINISHED_FLAG
+                    finished_counter += 1
+                    finished[relevant_neighbor] = finished_counter
+                    last_finished.append(last_finished_counter)
+                    last_finished_counter = 0
                 unfinished[relevant_neighbor] = new_value
+
+            relevant_neighbor_values = { relevant_neighbor: unfinished[relevant_neighbor] for relevant_neighbor in
+                                      relevant_neighbors }
+
+            new_weights = np.zeros(self.num_chunks, dtype=np.uint16)
+            it = np.nditer(new_weights, flags=['multi_index'])
+            while not it.finished:
+                index = it.multi_index
+                neighbors = self.get_relevant_neighbors(index)
+                total = 0
+                for neighbor in neighbors:
+                    total += unfinished[neighbor]
+                new_weights[index] = total
+                it.iternext()
 
             # while len(queue_1) > 0:
             #     q1 = queue_1.pop()
             #     relevant_neighbors[q1] = unfinished[q1]
 
-            for relevant_neighbor, value in sorted(relevant_neighbors.items(),
-                                                   key=lambda item: (euclidean_distance(item[0], index))):
+            for relevant_neighbor, value in sorted(relevant_neighbor_values.items(),
+                                                   key=lambda item: new_weights[item[0]]):
+                                                   # key=lambda item: (euclidean_distance(item[0], index))):
                 if relevant_neighbor not in queued_1 and relevant_neighbor not in queued_2:
                 # if relevant_neighbor not in queued_2:
                     queue_1.append(relevant_neighbor)
@@ -165,6 +193,9 @@ class ReadyNeighborIterator(UnitIterator):
         print(directions)
         print('things are', things)
         print('things2 are', things_2)
+        print(finished_counter)
+        print('finish map\n', finished)
+        print('last_finished', last_finished)
         assert False
         return queue_2
 

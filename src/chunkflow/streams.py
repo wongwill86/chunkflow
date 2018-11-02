@@ -9,6 +9,7 @@ from rx import Observable, config
 from rx.core import AnonymousObservable
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod
+from collections import defaultdict
 from chunkblocks.global_offset_array import GLOB
 from memory_profiler import profile
 import gc
@@ -251,7 +252,6 @@ def download_retry(datasource_manager, datasource, patch_chunk):
             buffered_datasource.local_cache[datasource_chunk.unit_index] = future
         return Observable.from_item_or_future(buffered_datasource.local_cache[datasource_chunk.unit_index])
 
-
     def save_to_cache(datasource_chunk):
         if not hasattr(buffered_datasource.local_cache[datasource_chunk.unit_index], 'data'):
             datasource_manager.dump_chunk(datasource_chunk, datasource=datasource, use_executor=False)
@@ -360,7 +360,7 @@ def create_checkpoint_observable(block, stage, datasource_manager, notify_neighb
         .do_action(
             lambda chunk:
             (stage.mark_done(chunk.unit_index) and False) or
-            (print('Checkpointed:', chunk.unit_index, stage.mark_value, stage, '\nstate:\n', stage.state) and False) or
+            (print('Checkpointed:', chunk.unit_index, stage.mark_value, stage, 'state:\n', stage.completion) and False) or
             (datasource_manager.print_cache_stats)
         )
         .flat_map(notify_neighbor_stream)
@@ -400,19 +400,23 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
 
 def create_inference_stages(block):
     state = np.zeros(block.num_chunks, dtype=np.uint8)
+    completions = defaultdict(lambda: np.zeros(block.num_chunks, dtype=np.uint16))
     class Stages(Enum):
         START, INFERENCE_DONE, UPLOAD_DONE, DATASOURCE_FLUSH_DONE, CHUNK_FLUSH_DONE, CLEAR_DONE = range(6)
 
         def __init__(self, *args, **kwargs):
             self.hashset = set()
+            self.completion = completions[self.value]
+            self.marked_done = 0
 
         def mark_done(self, index):
-            state[index] |= self.mark_value
+            self.state[index] |= self.mark_value
+            self.completion[index] = self.marked_done
+            self.marked_done += 1
 
         @property
         def mark_value(self):
             return 1 << self.value
-
 
         @property
         def state(self):
