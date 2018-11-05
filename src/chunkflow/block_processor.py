@@ -156,24 +156,21 @@ class ReadyNeighborIterator(UnitIterator):
             relevant_neighbor_values = { relevant_neighbor: unfinished[relevant_neighbor] for relevant_neighbor in
                                       relevant_neighbors }
 
-            new_weights = np.zeros(self.num_chunks, dtype=np.uint16)
-            it = np.nditer(new_weights, flags=['multi_index'])
-            while not it.finished:
-                index = it.multi_index
-                neighbors = self.get_relevant_neighbors(index)
-                total = 0
-                for neighbor in neighbors:
-                    total += unfinished[neighbor]
-                new_weights[index] = total
-                it.iternext()
-
-            # while len(queue_1) > 0:
-            #     q1 = queue_1.pop()
-            #     relevant_neighbors[q1] = unfinished[q1]
+            # new_weights = np.zeros(self.num_chunks, dtype=np.uint16)
+            # it = np.nditer(new_weights, flags=['multi_index'])
+            # while not it.finished:
+            #     index = it.multi_index
+            #     neighbors = self.get_relevant_neighbors(index)
+            #     total = 0
+            #     for neighbor in neighbors:
+            #         total += unfinished[neighbor]
+            #     new_weights[index] = total
+            #     it.iternext()
+            # print(new_weights)
 
             for relevant_neighbor, value in sorted(relevant_neighbor_values.items(),
-                                                   key=lambda item: new_weights[item[0]]):
-                                                   # key=lambda item: (euclidean_distance(item[0], index))):
+                                                   key=lambda item: (euclidean_distance(item[0], index))):
+                                                   # key=lambda item: new_weights[item[0]]):
                 if relevant_neighbor not in queued_1 and relevant_neighbor not in queued_2:
                 # if relevant_neighbor not in queued_2:
                     queue_1.append(relevant_neighbor)

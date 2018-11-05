@@ -31,7 +31,7 @@ def get_all_mod_index(index):
 def get_mem_info(name, keys, datas):
     keys = list(keys)
     keys.sort()
-    infos = [(x.shape, x.dtype, x.nbytes) for x in datas]
+    infos = [(x.shape, x.dtype, x.nbytes) for x in datas if hasattr(x, 'nbytes')]
     memory_used = sum(info[2] for info in infos) / 2. ** 30
     if len(set(infos)) > 1:
         print('\n\n\nTHIS SHOULD NOT happen should not have more than one type of data... yet', infos)

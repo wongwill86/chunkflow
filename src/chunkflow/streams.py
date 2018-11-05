@@ -223,11 +223,6 @@ def aggregate(slices, aggregate, datasource):
     if aggregate is 0:
         slice_shape = tuple(s.stop - s.start for s in slices)
         offset = (0,) * channel_dimensions + tuple(s.start for s in slices)
-
-        data = GlobalOffsetArray(
-            np.ones(data.shape[0:channel_dimensions] + slice_shape, dtype=data.dtype) - 1,
-            global_offset=offset
-        )
         aggregate = data
     else:
         aggregate[channel_slices] += data
@@ -293,17 +288,43 @@ def create_inference_stream(block, inference_operation, blend_operation, datasou
 
 
 def create_aggregate_stream(block, datasource_manager):
+    def sum_it(c):
+        agg = 0
+        agg2 = 0
+
+        stuff = []
+        import itertools
+        for chunk in itertools.chain(block.get_all_neighbors(c), [c]):
+        # for idx, rep in datasource_manager.overlap_repository.datasources.items():
+            # chunk = block.unit_index_to_chunk(idx)
+            ds = datasource_manager.get_overlap_datasource(chunk)
+            if ds is not None:
+                agg += ds[c.slices]
+                stuff.append(ds)
+                # agg2 += rep[c.slices]
+        print(agg)
+        print(block.bounds)
+
+        print('there is of len', len(datasource_manager.overlap_repository.datasources), len(stuff))
+        # assert False
+    def fail():
+        assert False
+
     return lambda chunk: (
         # sum the different datasources together
         Observable.just(chunk)
+        .do_action(sum_it)
         .flat_map(
             lambda chunk:
             (
                 # create temp list of repositories values at time of iteration / also weakref
                 Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk)
+                .do_action(lambda nc: print('looking at nc', nc.unit_index))
                 .map(datasource_manager.get_overlap_datasource)
                 .filter(lambda datasource: datasource is not None)
+                .do_action(lambda ds: print('ds for', chunk.unit_index, ' is:\n', ds[chunk.block.bounds]))
                 .reduce(partial(aggregate, chunk.slices), seed=0)
+                .do_action(lambda agg: print('ds got', chunk.unit_index, ' is:\n', agg))
                 .do_action(chunk.load_data)
                 .map(lambda _: chunk)
             )
@@ -332,8 +353,6 @@ def create_upload_stream(block, datasource_manager):
             )
         )
         .map(lambda dump_args: datasource_manager.dump_chunk(chunk, **dump_args._asdict()))
-        .do_action(lambda chunk: datasource_manager.dump_chunk(chunk, datasource=datasource_manager.output_datasource,
-                                                               use_executor=False))
         .flat_map(Observable.from_item_or_future)
         .reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
         .retry(MAX_RETRIES)
@@ -482,7 +501,10 @@ def create_blend_stream(block, datasource_manager):
             lambda dataset_chunk_slices:
             (
                 # create temp list of repositories values at time of iteration
-                Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
+                Observable.from_(block.get_all_neighbors(dataset_chunk)).start_with(dataset_chunk)
+                .map(datasource_manager.get_overlap_datasource)
+                .filter(lambda datasource: datasource is not None)
+                # Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
                 .reduce(partial(aggregate, dataset_chunk_slices), seed=0)
                 .do_action(
                     partial(datasource_manager.copy, dataset_chunk, destination=datasource_manager.output_datasource,
