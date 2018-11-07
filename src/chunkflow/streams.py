@@ -11,7 +11,6 @@ from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod
 from collections import defaultdict
 from chunkblocks.global_offset_array import GLOB
-from memory_profiler import profile
 import gc
 from chunkflow.memory_utils import save_objgraph
 
@@ -205,7 +204,6 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None, t
     return disposable
 
 
-# @profile
 def aggregate(slices, aggregate, datasource):
     try:
         # Account for additional output dimensions
@@ -288,43 +286,17 @@ def create_inference_stream(block, inference_operation, blend_operation, datasou
 
 
 def create_aggregate_stream(block, datasource_manager):
-    def sum_it(c):
-        agg = 0
-        agg2 = 0
-
-        stuff = []
-        import itertools
-        for chunk in itertools.chain(block.get_all_neighbors(c), [c]):
-        # for idx, rep in datasource_manager.overlap_repository.datasources.items():
-            # chunk = block.unit_index_to_chunk(idx)
-            ds = datasource_manager.get_overlap_datasource(chunk)
-            if ds is not None:
-                agg += ds[c.slices]
-                stuff.append(ds)
-                # agg2 += rep[c.slices]
-        print(agg)
-        print(block.bounds)
-
-        print('there is of len', len(datasource_manager.overlap_repository.datasources), len(stuff))
-        # assert False
-    def fail():
-        assert False
-
     return lambda chunk: (
         # sum the different datasources together
         Observable.just(chunk)
-        .do_action(sum_it)
         .flat_map(
             lambda chunk:
             (
                 # create temp list of repositories values at time of iteration / also weakref
                 Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk)
-                .do_action(lambda nc: print('looking at nc', nc.unit_index))
                 .map(datasource_manager.get_overlap_datasource)
                 .filter(lambda datasource: datasource is not None)
-                .do_action(lambda ds: print('ds for', chunk.unit_index, ' is:\n', ds[chunk.block.bounds]))
                 .reduce(partial(aggregate, chunk.slices), seed=0)
-                .do_action(lambda agg: print('ds got', chunk.unit_index, ' is:\n', agg))
                 .do_action(chunk.load_data)
                 .map(lambda _: chunk)
             )
@@ -379,8 +351,8 @@ def create_checkpoint_observable(block, stage, datasource_manager, notify_neighb
         .do_action(
             lambda chunk:
             (stage.mark_done(chunk.unit_index) and False) or
-            (print('Checkpointed:', chunk.unit_index, stage.mark_value, stage, 'state:\n', stage.completion) and False) or
-            (datasource_manager.print_cache_stats)
+            (print('Checkpointed:', chunk.unit_index, stage.mark_value, stage, 'state:\n', stage.state) and False) or
+            (False and datasource_manager.print_cache_stats)
         )
         .flat_map(notify_neighbor_stream)
         .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage.hashset)
@@ -402,6 +374,8 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
             Observable.from_(reference_buffer.block.slices_to_chunks(uploaded_chunk.slices))
             .filter(lambda datasource_chunk: block.all_checkpointed(
                 block.slices_to_chunks(datasource_chunk.slices), stage=stage_to_check.value))
+            # this is a different block we are operating on
+            .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage_to_complete.hashset)
             .flat_map(
                 lambda datasource_chunk:
                 Observable.from_([datasource_manager.output_datasource, datasource_manager.output_datasource_final])
@@ -410,9 +384,8 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
                 .flat_map(Observable.from_item_or_future)
             )
             .retry(MAX_RETRIES)
+            .do_action(lambda chunk: reference_buffer.block.checkpoint(chunk, stage=stage_to_complete.value))
             .flat_map(lambda datasource_chunk: block.slices_to_chunks(datasource_chunk.slices))
-            .flat_map(create_checkpoint_observable(block, stage_to_complete, datasource_manager,
-                                                   notify_neighbors=False))
         )
     else:
         return lambda uploaded_chunk: Observable.just(uploaded_chunk)
@@ -422,7 +395,6 @@ def create_inference_stages(block):
     completions = defaultdict(lambda: np.zeros(block.num_chunks, dtype=np.uint16))
     class Stages(Enum):
         START, INFERENCE_DONE, UPLOAD_DONE, DATASOURCE_FLUSH_DONE, CHUNK_FLUSH_DONE, CLEAR_DONE = range(6)
-
         def __init__(self, *args, **kwargs):
             self.hashset = set()
             self.completion = completions[self.value]
@@ -440,7 +412,6 @@ def create_inference_stages(block):
         @property
         def state(self):
             return state
-
     return Stages
 
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
@@ -458,7 +429,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
 
         .flat_map(create_aggregate_stream(block, datasource_manager))
         .flat_map(create_upload_stream(block, datasource_manager))
-        .flat_map(create_checkpoint_observable(block, stages.UPLOAD_DONE, datasource_manager, notify_neighbors=False))
+        .flat_map(create_checkpoint_observable(block, stages.UPLOAD_DONE, datasource_manager))
         .do_action(partial(datasource_manager.clear_buffer, datasource_manager.input_datasource))
         .do_action(lambda chunk: datasource_manager.overlap_repository.clear(chunk.unit_index))
         .flat_map(create_flush_datasource_observable(datasource_manager, block, stages.UPLOAD_DONE,

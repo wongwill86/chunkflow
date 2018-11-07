@@ -1,5 +1,4 @@
 import numpy as np
-from memory_profiler import profile
 
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 
@@ -9,7 +8,6 @@ class IdentityInference(ChunkOperation):
         self.output_data_type = output_data_type
         self.output_channels = output_channels
 
-    @profile
     def _process(self, chunk):
         if self.output_data_type is not None:
             # old_data = chunk.data

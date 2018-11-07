@@ -12,7 +12,9 @@ import objgraph
 from memory_profiler import profile
 import gc
 import weakref
+import time
 
+START = time.time()
 
 def get_absolute_index(offset, overlap, shape):
     return tuple(o // stride for o, stride in zip(
@@ -249,8 +251,8 @@ class DatasourceManager:
                                     self.overlap_repository.datasources.values()
                                     )
         total_memory = print_memory(psutil.Process())
-        print('\nActual: %.3f GiB expected: %.3f GiB,  Discrepancy is %.3f GiB' % (
-            total_memory, memory_used, total_memory - memory_used))
+        print('\nActual: %.3f GiB expected: %.3f GiB,  Discrepancy is %.3f GiB Elapsed: %.2f' % (
+            total_memory, memory_used, total_memory - memory_used, time.time() - START))
         print('GlobalOffsets!', len(GLOB), 'summing to', sum(map(lambda x: x.nbytes, GLOB.values())) / 2. ** 30)
         print(list(GLOB.keys()))
         print('GlobalOffsetsBASE!', len(GLOB_BASE), 'summing to', sum(map(lambda x: x.nbytes, GLOB_BASE.values())) / 2. ** 30)
@@ -278,11 +280,8 @@ class OverlapRepository:
         return self.datasources[mod_index]
 
     def clear(self, index):
-        mod_index = get_mod_index(index)
-        try:
-            return self.datasources.pop(mod_index)
-        except KeyError:
-            return None
+        # standard datasources can not clear
+        pass
 
 
 class SparseOverlapRepository(OverlapRepository):
@@ -304,6 +303,6 @@ class SparseOverlapRepository(OverlapRepository):
 
     def clear(self, index):
         try:
-            del self.datasources[index]
+            return self.datasources.pop(index)
         except KeyError:
             pass

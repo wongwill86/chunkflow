@@ -1,7 +1,6 @@
 import numpy as np
 
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
-from memory_profiler import profile
 
 
 class IdentityBlend(ChunkOperation):
@@ -62,7 +61,6 @@ class AverageBlend(ChunkOperation):
             self.weight_cache[key] = self.generate_weight_mapping(chunk)
         return self.weight_cache[key]
 
-    @profile
     def run_blend(self, chunk):
         memory = sum(map(lambda x: x.nbytes, self.weight_cache.values()))
         weight_mapping = self.get_weight_mapping(chunk)

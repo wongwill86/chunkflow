@@ -9,7 +9,6 @@ import itertools
 import functools
 import linecache
 import tracemalloc
-from memory_profiler import profile
 from concurrent.futures import as_completed, ProcessPoolExecutor
 import psutil
 import time
@@ -20,7 +19,6 @@ import memorytools
 from rx import Observable
 
 SENTINEL = 1337
-
 
 
 def display_top(snapshot, key_type='lineno', limit=3):
@@ -193,7 +191,7 @@ class ReadyNeighborIterator(UnitIterator):
         print(finished_counter)
         print('finish map\n', finished)
         print('last_finished', last_finished)
-        assert False
+        # assert False
         return queue_2
 
 
@@ -308,7 +306,6 @@ class BlockProcessor:
         self.on_completed = on_completed
         self.datasource_manager = datasource_manager
 
-    @profile
     def process(self, processing_stream, start_slice=None, get_neighbors=None):
         print('Num_chunks %s' % (self.block.num_chunks,))
         if start_slice:
@@ -335,7 +332,6 @@ class BlockProcessor:
         start_time = time.time()
 
         def throttled_next(chunk):
-            memorytools.summarize_objects()
             self._on_next(chunk)
             self.datasource_manager.print_cache_stats()
             print('completing ', started_count)
@@ -390,7 +386,6 @@ class BlockProcessor:
         def dec():
             started[0] -= 1
 
-        # tracemalloc.start()
 
         (
             # observable
@@ -413,7 +408,7 @@ class BlockProcessor:
     def _on_completed(self):
         gc.collect()
         print('Finished processing', self.num_chunks)
-        memorytools.summarize_objects()
+        # memorytools.summarize_objects()
         if self.on_completed is not None:
             self.on_completed()
         self.datasource_manager.print_cache_stats()
