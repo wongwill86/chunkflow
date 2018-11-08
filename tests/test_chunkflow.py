@@ -60,60 +60,6 @@ def test_inference(block_datasource_manager):
     assert np.prod(task_shape) * 3 == data.sum()
 
 
-def test_inference_blah(block_datasource_manager, chunk_datasource_manager):
-    offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
-    volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    # task_shape = (24, 55, 55)
-    patch_shape = (50, 200, 200)
-    overlap = (10, 40, 40)
-    num_chunks = (4, 4, 4)
-
-    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
-    from chunkblocks.models import Block
-    from chunkflow.chunk_operations.blend_operation import BlendFactory
-    from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream, create_preload_datasource_stream
-    from chunkflow.chunk_operations.inference_operation import InferenceFactory
-    from chunkflow.block_processor import ReadyNeighborIterator, BlockProcessor
-
-    block = Block(num_chunks=num_chunks, offset=offset, chunk_shape=patch_shape, overlap=overlap)
-    # block.base_iterator = ReadyNeighborIterator(block.num_chunks)
-
-    # block_datasource_manager.input_datasource[dataset_bounds] = np.ones(
-    #     volume_shape, dtype=np.dtype(block_datasource_manager.input_datasource.data_type))
-
-    from concurrent.futures import ProcessPoolExecutor
-    output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource((0,0,0))
-    chunk_datasource_manager = CloudVolumeDatasourceManager(
-        block_datasource_manager.input_datasource,
-        output_cloudvolume=output_cloudvolume_overlap,
-        output_cloudvolume_final=block_datasource_manager.output_datasource,
-        overlap_repository=SparseOverlapRepository(
-            block=block,
-            channel_dimensions=(output_cloudvolume_overlap.num_channels,),
-            dtype=output_cloudvolume_overlap.dtype,
-        ),
-        buffer_generator=create_buffered_cloudvolumeCZYX,
-        load_executor=ProcessPoolExecutor(),
-        flush_executor=ProcessPoolExecutor()
-    )
-
-    output_datasource = chunk_datasource_manager.output_datasource
-    inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
-                                         output_data_type=output_datasource.data_type)
-    blend_factory = BlendFactory(block)
-
-    task_stream = create_inference_and_blend_stream(
-        block=block,
-        inference_operation=inference_factory.get_operation('identity', '', '', []),
-        blend_operation=blend_factory.get_operation('average'),
-        datasource_manager=chunk_datasource_manager,
-    )
-
-    BlockProcessor(block, datasource_manager=chunk_datasource_manager).process(task_stream)
-    print(chunk_datasource_manager.output_datasource[block.bounds])
-
-    assert False
-
 def test_blend_with_offset_top_edge_task(block_datasource_manager):
     return False
     runner = CliRunner()

@@ -113,7 +113,7 @@ class DatasourceManager:
 
     # def _perform_chunk_action(self, action, chunk_action, datasource, slices=None, executor=None):
     def _perform_chunk_action(self, action, chunk, datasource, slices=None, executor=None):
-        if True or executor is None:
+        if executor is None:
             return action(chunk, datasource, slices=slices)
         else:
             return executor.submit(action, chunk, datasource, slices)
@@ -254,9 +254,9 @@ class DatasourceManager:
         print('\nActual: %.3f GiB expected: %.3f GiB,  Discrepancy is %.3f GiB Elapsed: %.2f' % (
             total_memory, memory_used, total_memory - memory_used, time.time() - START))
         print('GlobalOffsets!', len(GLOB), 'summing to', sum(map(lambda x: x.nbytes, GLOB.values())) / 2. ** 30)
-        print(list(GLOB.keys()))
+        # print(list(GLOB.keys()))
         print('GlobalOffsetsBASE!', len(GLOB_BASE), 'summing to', sum(map(lambda x: x.nbytes, GLOB_BASE.values())) / 2. ** 30)
-        print(list(GLOB_BASE.keys()))
+        # print(list(GLOB_BASE.keys()))
         return memory_used
 
 

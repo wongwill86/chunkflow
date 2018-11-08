@@ -21,7 +21,7 @@ import click
 from chunkblocks.models import Block
 from rx import Observable
 
-from chunkflow.block_processor import BlockProcessor, ReadyNeighborIterator
+from chunkflow.block_processor import BlockProcessor
 from chunkflow.chunk_operations.blend_operation import BlendFactory
 from chunkflow.chunk_operations.inference_operation import InferenceFactory
 from chunkflow.cloudvolume_datasource import (
@@ -141,8 +141,6 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         load_executor=ProcessPoolExecutor(),
         flush_executor=ProcessPoolExecutor()
     )
-    block.base_iterator = ReadyNeighborIterator(block.num_chunks, block, chunk_datasource_manager.get_buffer(
-        chunk_datasource_manager.output_datasource).block)
 
     print('Using output_datasource', chunk_datasource_manager.output_datasource.layer_cloudpath)
     print('Using output_datasource_final', chunk_datasource_manager.output_datasource_final.layer_cloudpath)
@@ -160,10 +158,9 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     )
 
     start = time.time()
-    BlockProcessor(block, datasource_manager=chunk_datasource_manager).process(task_stream)
+    BlockProcessor(block).process(task_stream)
 
     print('Finished inference! Elapsed:', time.time() - start, 's')
-    print('i am done')
     import psutil
     print(psutil.Process().memory_info().rss / 1024 / 1024)
     from memorytools import summarize_objects

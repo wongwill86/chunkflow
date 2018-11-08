@@ -49,23 +49,7 @@ def from_my_future(cls, future):
         def done(future):
             try:
                 value = future.result()
-                # if hasattr(value, 'data') and value.data is not None:
-                #     chunk_copy = value.block.unit_index_to_chunk(value.unit_index)
-                #     chunk_copy.data = value.data.copy()
-                #     # objgraph.show_backrefs([blah], filename='futs/fut%s.png' % id(blah))
-                #     # print('showing omost common types for ', id(blah))
-                #     # objgraph.show_most_common_types(objects=[blah])
-                #     if hasattr(value, 'data'):
-                #         del value.data
-                #     del value
-                #     del future
-                #     value = chunk_copy
-
-
-                # objgraph.show_backrefs([future], filename='futs/future%s.png' % id(future))
-                # print('showing omost common types for ', id(future))
-                # objgraph.show_most_common_types(objects=[future])
-                # del future
+                del future
             except Exception as ex:
                 observer.on_error(ex)
             else:
@@ -82,8 +66,6 @@ def from_my_future(cls, future):
 
     return AnonymousObservable(subscribe) if is_future(future) else future
 
-from multiprocessing import Pool
-pool = dict()  # Pool(maxtasksperchild=20)
 
 @extensionmethod(Observable)
 def from_item_or_future(item_or_future, default=None):
@@ -221,7 +203,11 @@ def aggregate(slices, aggregate, datasource):
     if aggregate is 0:
         slice_shape = tuple(s.stop - s.start for s in slices)
         offset = (0,) * channel_dimensions + tuple(s.start for s in slices)
-        aggregate = data
+        aggregate = GlobalOffsetArray(
+            np.zeros(data.shape[0:channel_dimensions] + slice_shape, dtype=data.dtype),
+            global_offset=offset
+        )
+        aggregate += data
     else:
         aggregate[channel_slices] += data
 
@@ -352,7 +338,7 @@ def create_checkpoint_observable(block, stage, datasource_manager, notify_neighb
             lambda chunk:
             (stage.mark_done(chunk.unit_index) and False) or
             (print('Checkpointed:', chunk.unit_index, stage.mark_value, stage, 'state:\n', stage.state) and False) or
-            (False and datasource_manager.print_cache_stats)
+            (datasource_manager.print_cache_stats)
         )
         .flat_map(notify_neighbor_stream)
         .distinct_hash(key_selector=lambda c: c.unit_index, seed=stage.hashset)
@@ -475,7 +461,6 @@ def create_blend_stream(block, datasource_manager):
                 Observable.from_(block.get_all_neighbors(dataset_chunk)).start_with(dataset_chunk)
                 .map(datasource_manager.get_overlap_datasource)
                 .filter(lambda datasource: datasource is not None)
-                # Observable.from_(list(datasource_manager.overlap_repository.datasources.values()))
                 .reduce(partial(aggregate, dataset_chunk_slices), seed=0)
                 .do_action(
                     partial(datasource_manager.copy, dataset_chunk, destination=datasource_manager.output_datasource,
