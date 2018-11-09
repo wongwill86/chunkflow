@@ -147,7 +147,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
 
     output_datasource = chunk_datasource_manager.output_datasource
     inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
-                                         output_data_type=output_datasource.data_type)
+                                         output_datatype=output_datasource.data_type)
     blend_factory = BlendFactory(block)
 
     task_stream = create_inference_and_blend_stream(
