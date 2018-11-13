@@ -112,18 +112,19 @@ def task(obj, **kwargs):
 @click.option('--blend_framework', type=str, help="What blend method to use",
               default='average')
 @click.option('--model_path', type=str, help="the path of convnet model")
-@click.option('--net_path', type=str, help="the path of convnet weights")
+@click.option('--checkpoint_path', type=str, help="the path of convnet weights")
 @click.option('--accelerator_ids', type=list, help="ids of cpus/gpus to use",
               cls=PythonLiteralOption, callback=validate_literal, default=[1])
+@click.option('--gpu/--no-gpu', help="Are we using GPUs", default=False)
 @click.pass_obj
-def inference(obj, patch_shape, inference_framework, blend_framework, model_path, net_path, accelerator_ids):
+def inference(obj, patch_shape, inference_framework, blend_framework, model_path, checkpoint_path, accelerator_ids, gpu):
     """
     Run inference on task
     """
     print('Running inference ...')
     block_datasource_manager = obj['block_datasource_manager']
 
-    block = Block(bounds=obj['task_bounds'], chunk_shape=patch_shape, overlap=obj['overlap'])
+    block = Block(bounds=obj['task_bounds'], chunk_shape=tuple(patch_shape), overlap=obj['overlap'])
 
     absolute_index = get_absolute_index(obj['task_offset_coordinates'], obj['overlap'], obj['task_shape'])
     output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource(absolute_index)
@@ -146,13 +147,14 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     print('Using output_datasource_final', chunk_datasource_manager.output_datasource_final.layer_cloudpath)
 
     output_datasource = chunk_datasource_manager.output_datasource
-    inference_factory = InferenceFactory(patch_shape, output_channels=output_datasource.num_channels,
-                                         output_datatype=output_datasource.data_type)
+    inference_factory = InferenceFactory(tuple(patch_shape), output_channels=output_datasource.num_channels,
+                                         output_datatype=output_datasource.data_type, gpu=gpu,
+                                         accelerator_ids=accelerator_ids)
     blend_factory = BlendFactory(block)
 
     task_stream = create_inference_and_blend_stream(
         block=block,
-        inference_operation=inference_factory.get_operation(inference_framework, model_path, net_path, accelerator_ids),
+        inference_operation=inference_factory.get_operation(inference_framework, model_path, checkpoint_path),
         blend_operation=blend_factory.get_operation(blend_framework),
         datasource_manager=chunk_datasource_manager,
     )

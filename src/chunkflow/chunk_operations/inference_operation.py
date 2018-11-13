@@ -9,9 +9,8 @@ class IdentityInference(ChunkOperation):
         self.output_channels = output_channels
 
     def _process(self, chunk):
-        if self.output_data_type is not None:
+        if self.output_datatype is not None:
             chunk.data = chunk.data.astype(self.output_datatype)
-        print('inference got chunk of shape', chunk.data.shape)
 
         if self.output_channels > 1:
             squeezed_data = chunk.data.squeeze()
@@ -21,19 +20,21 @@ class IdentityInference(ChunkOperation):
 
 
 class InferenceFactory:
-    def __init__(self, patch_shape, output_channels=3, output_datatype=None, model_path=None, net_path=None,
-                 accelerator_ids=None):
+    def __init__(self, patch_shape, output_channels=3, output_datatype=None, gpu=False, accelerator_ids=None):
         self.patch_shape = patch_shape
         self.output_channels = output_channels
         self.output_datatype = output_datatype
+        self.gpu = gpu
+        self.accelerator_ids = accelerator_ids
 
-    def get_operation(self, framework, model_path, net_path, accelerator_ids):
+    def get_operation(self, framework, model_path, checkpoint_path):
         if framework == 'identity':
             return IdentityInference(self.output_channels, self.output_datatype)
-        if framework == 'custom':
-            from chunkflow.chunk_operations.inference.pytorch_patch_inference_engine import PytorchPatchInferenceEngine
-            return PytorchPatchInferenceEngine(
-                output_channels=self.output_channels, output_datatype=self.output_datatype)
+        if framework == 'pytorch':
+            from chunkflow.chunk_operations.inference.pytorch_inference_engine import PyTorchInferenceEngine
+            return PyTorchInferenceEngine(self.patch_shape, output_channels=self.output_channels,
+                                          output_datatype=self.output_datatype, gpu=self.gpu,
+                                          accelerator_ids=self.accelerator_ids)
         else:
             return IdentityInference(self.output_channels, self.output_datatype)
 
