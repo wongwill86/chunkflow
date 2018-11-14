@@ -1,17 +1,17 @@
+import gc
 import itertools
-from concurrent.futures import ProcessPoolExecutor
+import time
+import weakref
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
 
 import numpy as np
-from chunkblocks.global_offset_array import GlobalOffsetArray
-from chunkblocks.iterators import UnitIterator
-from concurrent.futures import ThreadPoolExecutor, wait
-from chunkflow.memory_utils import print_memory
+import objgraph
 # from chunkblocks.global_offset_array import GLOB, GLOB_BASE
 import psutil
-import objgraph
-import gc
-import weakref
-import time
+from chunkblocks.global_offset_array import GlobalOffsetArray
+from chunkblocks.iterators import UnitIterator
+
+from chunkflow.memory_utils import print_memory
 
 START = time.time()
 

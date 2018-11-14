@@ -1,12 +1,13 @@
 import collections
-import torch
 import importlib
 import types
+
 import numpy as np
-from chunkflow.chunk_operations.inference_operation import InferenceOperation
-from chunkflow.chunk_operations.chunk_operation import ChunkOperation
+import torch
 from chunkblocks.global_offset_array import GlobalOffsetArray
 
+from chunkflow.chunk_operations.chunk_operation import ChunkOperation
+from chunkflow.chunk_operations.inference_operation import InferenceOperation
 
 CACHED_NETS = {}
 

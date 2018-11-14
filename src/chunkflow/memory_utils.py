@@ -1,5 +1,6 @@
-import psutil
 import objgraph
+import psutil
+
 
 def get_memory_usage(process, memory_type='pss'):
     try:

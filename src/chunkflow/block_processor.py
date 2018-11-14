@@ -1,20 +1,21 @@
+import functools
+import itertools
+import linecache
+import os
+import time
 import traceback
+import tracemalloc
 from collections import deque
 from datetime import datetime
-from rx import Observable, config
 from functools import reduce
 from threading import current_thread
-from chunkblocks.iterators import UnitIterator
-from chunkflow.streams import blocking_subscribe
-import itertools
-import functools
-import linecache
-import tracemalloc
-import psutil
-import time
-import os
+
 import numpy as np
-from rx import Observable
+import psutil
+from chunkblocks.iterators import UnitIterator
+from rx import Observable, config
+
+from chunkflow.streams import blocking_subscribe
 
 
 class RunState:

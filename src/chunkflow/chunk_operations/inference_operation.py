@@ -1,7 +1,8 @@
+from concurrent.futures import ProcessPoolExecutor
+
 import numpy as np
 
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation, DeferredChunkOperation
-from concurrent.futures import ProcessPoolExecutor
 
 
 class InferenceOperation(ChunkOperation):
@@ -49,4 +50,3 @@ class InferenceFactory:
             return DeferredChunkOperation(operation, parallelism=parallelism)
         else:
             return operation
-

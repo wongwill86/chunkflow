@@ -15,6 +15,7 @@ Why does this file exist, and why not put this in __main__?
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 import ast
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import click
@@ -33,7 +34,7 @@ from chunkflow.cloudvolume_datasource import (
 from chunkflow.cloudvolume_helpers import create_cloudvolume, get_possible_chunk_sizes, valid_cloudvolume
 from chunkflow.datasource_manager import SparseOverlapRepository, get_absolute_index, get_all_mod_index
 from chunkflow.streams import create_blend_stream, create_inference_and_blend_stream, create_preload_datasource_stream
-import time
+
 
 # https://stackoverflow.com/a/47730333
 class PythonLiteralOption(click.Option):

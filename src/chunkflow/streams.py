@@ -1,4 +1,5 @@
-from collections import namedtuple
+import gc
+from collections import defaultdict, namedtuple
 from enum import Enum
 from functools import partial
 
@@ -6,20 +7,16 @@ import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkblocks.models import Chunk
 from rx import Observable, config
-from rx.core import AnonymousObservable
+from rx.core import AnonymousObservable, Observable
 from rx.core.blockingobservable import BlockingObservable
-from rx.internal import extensionmethod
-from collections import defaultdict
-import gc
+from rx.internal import extensionclassmethod, extensionmethod
+from rx.internal.utils import is_future
 
 from chunkflow.chunk_buffer import CacheMiss
 
 MAX_RETRIES = 10
 
 
-from rx.core import Observable, AnonymousObservable
-from rx.internal.utils import is_future
-from rx.internal import extensionclassmethod
 
 
 @extensionclassmethod(Observable)
@@ -454,4 +451,3 @@ def create_blend_stream(block, datasource_manager):
         )
         .reduce(lambda x, y: dataset_chunk, seed=dataset_chunk).map(lambda _: dataset_chunk)
     )
-
