@@ -19,7 +19,7 @@ def test_inference(block_datasource_manager):
     runner = CliRunner()
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    task_shape = [24, 55, 55]
+    task_shape = [10, 25, 25]
     overlap = [2, 5, 5]
 
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
@@ -61,7 +61,6 @@ def test_inference(block_datasource_manager):
 
 
 def test_blend_with_offset_top_edge_task(block_datasource_manager):
-    return False
     runner = CliRunner()
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
@@ -88,6 +87,8 @@ def test_blend_with_offset_top_edge_task(block_datasource_manager):
     ])
 
     print(result.output)
+    np.set_printoptions(threshold=np.inf, linewidth=200)
+    print(block_datasource_manager.output_datasource[dataset_bounds])
     #  force print error (until click 7.0 https://github.com/pallets/click/issues/371)
     if result.exception is not None:
         print(''.join(traceback.format_exception(etype=type(result.exception), value=result.exception,

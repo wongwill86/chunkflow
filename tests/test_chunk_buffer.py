@@ -86,9 +86,7 @@ class TestChunkBuffer:
 
         chunk_to_clear = next(block.chunk_iterator())
 
-        print('before!', [c for c in chunk_buffer.local_cache])
         cleared_chunk = chunk_buffer.clear(chunk_to_clear)
-        print('after!', [c for c in chunk_buffer.local_cache])
 
         assert cleared_chunk.unit_index == chunk_to_clear.unit_index
         assert len(chunk_buffer.local_cache) == (1 << 3) - 1
