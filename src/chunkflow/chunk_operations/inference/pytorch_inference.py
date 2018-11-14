@@ -7,6 +7,10 @@ from chunkflow.chunk_operations.inference_operation import InferenceOperation
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkblocks.global_offset_array import GlobalOffsetArray
 
+
+CACHED_NETS = {}
+
+
 def load_source(fname, module_name="Model"):
     """ Imports a module from source """
     loader = importlib.machinery.SourceFileLoader(module_name,fname)
@@ -22,28 +26,46 @@ class PyTorchInference(InferenceOperation):
                  accelerator_ids=None,
                  use_bn=True, is_static_batch_norm=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.channel_patch_shape = (1,) + patch_shape
+        self.model_location = model_location
+        self.checkpoint_location = checkpoint_location
+        self.gpu = gpu
+        self.accelerator_ids = accelerator_ids
+        self.use_bn = use_bn
+        self.is_static_batch_norm = is_static_batch_norm
+        self.key = (self.channel_patch_shape, self.model_location, self.checkpoint_location,
+                    self.gpu, tuple(self.accelerator_ids), self.use_bn, self.is_static_batch_norm)
 
-        channel_patch_shape = (1,) + patch_shape
-        in_spec = dict(input=channel_patch_shape)
-        out_spec = collections.OrderedDict(mito=channel_patch_shape)
+    def get_or_create_net(self):
+        if self.key in CACHED_NETS:
+            return CACHED_NETS[self.key]
 
-        model = load_source(model_location).Model(in_spec, out_spec)
+        in_spec = dict(input=self.channel_patch_shape)
+        out_spec = collections.OrderedDict(mito=self.channel_patch_shape)
 
-        if gpu:
-            checkpoint = torch.load(checkpoint_location)
+        model = load_source(self.model_location).Model(in_spec, out_spec)
+
+        if self.gpu:
+            checkpoint = torch.load(self.checkpoint_location)
             model.load_state_dict(checkpoint)
             model.cuda()
-            self.net = torch.nn.DataParallel(model, device_ids=accelerator_ids)
+            net = torch.nn.DataParallel(model, device_ids=accelerator_ids)
         else:
-            checkpoint = torch.load(checkpoint_location, map_location=lambda location, storage: location)
+            checkpoint = torch.load(self.checkpoint_location, map_location=lambda location, storage: location)
             model.load_state_dict(checkpoint)
-            self.net = torch.nn.DataParallel(model)
+            net = torch.nn.DataParallel(model)
 
-        if use_bn and is_static_batch_norm:
-            self.net.eval()
-        self.gpu = gpu
+        if self.use_bn and self.is_static_batch_norm:
+            net.eval()
+
+        CACHED_NETS[self.key] = net
+
+        return net
+
 
     def run(self, patch):
+        net = self.get_or_create_net()
+
         # patch should be a 5d np array
         patch = patch.reshape((1,) * (5 - patch.ndim) + patch.shape)
 
@@ -53,7 +75,7 @@ class PyTorchInference(InferenceOperation):
                 in_v = in_v.cuda()
 
             # this net returns a list, but has one output
-            output_v = self.net(in_v)[0]
+            output_v = net(in_v)[0]
 
             # the network output does not have a sigmoid function
             output_patch = torch.sigmoid(output_v).data.cpu().numpy()
