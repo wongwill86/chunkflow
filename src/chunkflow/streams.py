@@ -1,13 +1,11 @@
-import gc
 from collections import defaultdict, namedtuple
 from enum import Enum
 from functools import partial
 
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
-from chunkblocks.models import Chunk
 from rx import Observable, config
-from rx.core import AnonymousObservable, Observable
+from rx.core import AnonymousObservable
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionclassmethod, extensionmethod
 from rx.internal.utils import is_future
@@ -15,8 +13,6 @@ from rx.internal.utils import is_future
 from chunkflow.chunk_buffer import CacheMiss
 
 MAX_RETRIES = 10
-
-
 
 
 @extensionclassmethod(Observable)
@@ -58,25 +54,6 @@ def from_item_or_future(item_or_future, default=None):
     Checks the item to see if it is a future-like. (could be asyncio future which is not part of the concurrent.futures
     package).
     """
-
-    def exec_subscribe(observer):
-        def done(value):
-            observer.on_next(value)
-            observer.on_completed()
-
-        result = pool.apply_async(item_or_future[0], item_or_future[1:], callback=done, error_callback=observer.on_error)
-
-        def dispose():
-            del result
-            pass
-            if future and future.cancel:
-                future.cancel()
-
-        return dispose
-
-
-    if isinstance(item_or_future, tuple):
-        return AnonymousObservable(exec_subscribe)
 
     if hasattr(item_or_future, 'result'):  # should probably check if it is callable too
         return Observable.from_my_future(item_or_future)
@@ -360,11 +337,14 @@ def create_flush_datasource_observable(datasource_manager, block, stage_to_check
     else:
         return lambda uploaded_chunk: Observable.just(uploaded_chunk)
 
+
 def create_inference_stages(block):
     state = np.zeros(block.num_chunks, dtype=np.uint8)
     completions = defaultdict(lambda: np.zeros(block.num_chunks, dtype=np.uint16))
+
     class Stages(Enum):
         START, INFERENCE_DONE, UPLOAD_DONE, DATASOURCE_FLUSH_DONE, CHUNK_FLUSH_DONE, CLEAR_DONE = range(6)
+
         def __init__(self, *args, **kwargs):
             self.hashset = set()
             self.completion = completions[self.value]
@@ -384,15 +364,14 @@ def create_inference_stages(block):
             return state
     return Stages
 
+
 def create_inference_and_blend_stream(block, inference_operation, blend_operation, datasource_manager):
+
     stages = create_inference_stages(block)
 
     return lambda chunk: (
         Observable.just(chunk)
-        .flat_map(create_checkpoint_observable(block, stages.START,datasource_manager,
-                                               notify_neighbors=False))
-        .do_action(lambda chunk: print('start', chunk.data.nbytes if chunk.data is not None else 0) or
-                   datasource_manager.print_cache_stats())
+        .flat_map(create_checkpoint_observable(block, stages.START, datasource_manager, notify_neighbors=False))
         .flat_map(create_input_stream(datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
         .flat_map(create_checkpoint_observable(block, stages.INFERENCE_DONE, datasource_manager))

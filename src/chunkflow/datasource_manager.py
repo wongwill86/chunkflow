@@ -1,11 +1,9 @@
-import gc
 import itertools
 import time
 import weakref
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
-import objgraph
 # from chunkblocks.global_offset_array import GLOB, GLOB_BASE
 import psutil
 from chunkblocks.global_offset_array import GlobalOffsetArray
@@ -14,6 +12,7 @@ from chunkblocks.iterators import UnitIterator
 from chunkflow.memory_utils import print_memory
 
 START = time.time()
+
 
 def get_absolute_index(offset, overlap, shape):
     return tuple(o // stride for o, stride in zip(
@@ -46,7 +45,7 @@ def get_mem_info(name, keys, datas):
 def get_buffer_info(name, chunk_buffer):
     if not chunk_buffer:
         return 0
-    if  len(chunk_buffer.local_cache) == 0:
+    if len(chunk_buffer.local_cache) == 0:
         keys = datas = []
     else:
         keys, chunks = zip(*chunk_buffer.local_cache.items())
@@ -96,7 +95,6 @@ class DatasourceManager:
         self.load_executor = load_executor
         self.dump_executor = dump_executor
         self.flush_executor = flush_executor
-        self.runner = ThreadPoolExecutor(max_workers=12)
 
     def download_input(self, chunk):
         return self.load_chunk(chunk, datasource=self.input_datasource)
@@ -109,8 +107,6 @@ class DatasourceManager:
             return self.datasource_buffers[datasource_key]
         return None
 
-
-    # def _perform_chunk_action(self, action, chunk_action, datasource, slices=None, executor=None):
     def _perform_chunk_action(self, action, chunk, datasource, slices=None, executor=None):
         if executor is None:
             return action(chunk, datasource, slices=slices)

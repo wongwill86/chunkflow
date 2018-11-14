@@ -10,6 +10,7 @@ class CacheMiss(Exception):
     def __str__(self):
         return 'Cache miss: %s %s' % (self.message if self.message is not None else '', self.misses)
 
+
 class ChunkBuffer:
     def __init__(self, block, datasource, channel_dimensions):
         self.block = block
@@ -26,7 +27,6 @@ class ChunkBuffer:
             np.ones(shape, dtype=self.dtype) - 1,
             global_offset=(0,) * len(self.channel_dimensions) + offset
         )
-
 
     def __setitem__(self, slices, item):
         self.setme(slices, item)

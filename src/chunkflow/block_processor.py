@@ -1,21 +1,10 @@
-import functools
-import itertools
-import linecache
-import os
-import time
 import traceback
-import tracemalloc
 from collections import deque
 from datetime import datetime
 from functools import reduce
 from threading import current_thread
 
-import numpy as np
-import psutil
-from chunkblocks.iterators import UnitIterator
 from rx import Observable, config
-
-from chunkflow.streams import blocking_subscribe
 
 
 class RunState:
@@ -42,6 +31,7 @@ class RunState:
 
     def wait_for_completion(self):
         self.latch.wait(self.timeout)
+
 
 class BlockProcessor:
     def __init__(self, block, on_next=None, on_error=None, on_completed=None, timeout=None):
@@ -72,8 +62,8 @@ class BlockProcessor:
 
         def buffer_error(error):
             run_state.latch.set()
+            self.error = error
             raise error
-
 
         def process_next_buffered():
             window = run_state.get_buffer()
@@ -93,7 +83,11 @@ class BlockProcessor:
         Observable.from_(self.block.chunk_iterator(start)).buffer_with_count(count=16).subscribe(
             enqueue_buffer, on_error=self._on_error)
         run_state.wait_for_completion()
-        self._on_completed()
+
+        if self.error is None:
+            self._on_completed()
+        else:
+            self._on_error(self.error)
 
     def _on_completed(self):
         print('Finished processing', self.num_chunks)
@@ -102,8 +96,8 @@ class BlockProcessor:
 
     def _on_error(self, error):
         print('\n\n\n\n************************************error************************************\n\n')
-        self.error = error
         traceback.print_exception(None, error, error.__traceback__)
+        self.error = error
         if self.on_error is not None:
             self.on_error(error)
         raise error

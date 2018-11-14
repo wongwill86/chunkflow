@@ -6,7 +6,6 @@ import numpy as np
 import torch
 from chunkblocks.global_offset_array import GlobalOffsetArray
 
-from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkflow.chunk_operations.inference_operation import InferenceOperation
 
 CACHED_NETS = {}
@@ -14,10 +13,11 @@ CACHED_NETS = {}
 
 def load_source(fname, module_name="Model"):
     """ Imports a module from source """
-    loader = importlib.machinery.SourceFileLoader(module_name,fname)
+    loader = importlib.machinery.SourceFileLoader(module_name, fname)
     mod = types.ModuleType(loader.name)
     loader.exec_module(mod)
     return mod
+
 
 class PyTorchInference(InferenceOperation):
     def __init__(self, patch_shape,
@@ -50,7 +50,7 @@ class PyTorchInference(InferenceOperation):
             checkpoint = torch.load(self.checkpoint_location)
             model.load_state_dict(checkpoint)
             model.cuda()
-            net = torch.nn.DataParallel(model, device_ids=accelerator_ids)
+            net = torch.nn.DataParallel(model, device_ids=self.accelerator_ids)
         else:
             checkpoint = torch.load(self.checkpoint_location, map_location=lambda location, storage: location)
             model.load_state_dict(checkpoint)
@@ -62,7 +62,6 @@ class PyTorchInference(InferenceOperation):
         CACHED_NETS[self.key] = net
 
         return net
-
 
     def run(self, patch):
         net = self.get_or_create_net()

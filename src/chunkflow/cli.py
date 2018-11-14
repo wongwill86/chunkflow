@@ -117,8 +117,10 @@ def task(obj, **kwargs):
 @click.option('--accelerator_ids', type=list, help="ids of cpus/gpus to use",
               cls=PythonLiteralOption, callback=validate_literal, default=[1])
 @click.option('--gpu/--no-gpu', help="Are we using GPUs", default=False)
+@click.option('--parallelism', type=int, help="How many patches to process in parallel", default=1)
 @click.pass_obj
-def inference(obj, patch_shape, inference_framework, blend_framework, model_path, checkpoint_path, accelerator_ids, gpu):
+def inference(obj, patch_shape, inference_framework, blend_framework, model_path, checkpoint_path, accelerator_ids,
+              gpu, parallelism):
     """
     Run inference on task
     """
@@ -156,7 +158,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     task_stream = create_inference_and_blend_stream(
         block=block,
         inference_operation=inference_factory.get_operation(inference_framework, model_path, checkpoint_path,
-                                                            deferred_processing=True),
+                                                            deferred_processing=True, parallelism=parallelism),
         blend_operation=blend_factory.get_operation(blend_framework),
         datasource_manager=chunk_datasource_manager,
     )

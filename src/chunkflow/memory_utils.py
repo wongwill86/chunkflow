@@ -1,4 +1,3 @@
-import objgraph
 import psutil
 
 
@@ -10,12 +9,15 @@ def get_memory_usage(process, memory_type='pss'):
     except psutil._exceptions.NoSuchProcess:
         return 0
 
+
 def get_memory_usage_pss(process):
     return get_memory_usage(process, 'pss')
+
 
 def get_memory_usage_uss(process):
     uss = get_memory_usage(process, 'uss')
     return uss
+
 
 def print_memory(process):
     processes = [process] + process.children(recursive=True)
@@ -24,8 +26,3 @@ def print_memory(process):
     memory_pss = sum(map(get_memory_usage_pss, processes))
     print('Total rss: %.3f GiB, Total pss: %.3f GiB, Total uss %.3f' % (memory_rss, memory_pss, memory_uss))
     return memory_pss
-
-def save_objgraph(obj, prefix, index=('x',) * 3):
-    objgraph.show_backrefs([obj], filename='futs/%s%s-%s-%s.png' % ((prefix,) + index))
-    print('showing omost common types for ', prefix, index)
-    objgraph.show_most_common_types(objects=[obj])

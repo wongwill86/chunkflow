@@ -1,5 +1,3 @@
-from functools import reduce
-
 import pytest
 from chunkblocks.models import Block
 from rx import Observable
@@ -11,8 +9,7 @@ def mock_inference_stream(block, completed):
     seed = set()
     return lambda chunk: (
         Observable.just(chunk)
-        .do_action(lambda chunk:
-                    completed.add(chunk.unit_index))
+        .do_action(lambda chunk: completed.add(chunk.unit_index))
         .flat_map(lambda chunk: block.get_all_neighbors(chunk))
         .filter(lambda chunk: all([neighbor.unit_index in completed for neighbor in block.get_all_neighbors(chunk)]))
         .distinct_hash(lambda chunk: chunk.unit_index, seed=seed)
@@ -21,7 +18,6 @@ def mock_inference_stream(block, completed):
 
 class TestBlockProcessor:
     def test_error_throw(self):
-        return
         bounds = (slice(0, 5), slice(0, 5))
         chunk_shape = (3, 3)
         overlap = (1, 1)

@@ -1,5 +1,3 @@
-from concurrent.futures import ProcessPoolExecutor
-
 import numpy as np
 
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation, DeferredChunkOperation
@@ -41,8 +39,8 @@ class InferenceFactory:
         elif framework == 'pytorch':
             from chunkflow.chunk_operations.inference.pytorch_inference import PyTorchInference
             operation = PyTorchInference(self.patch_shape, output_channels=self.output_channels,
-                                          output_datatype=self.output_datatype, gpu=self.gpu,
-                                          accelerator_ids=self.accelerator_ids)
+                                         output_datatype=self.output_datatype, gpu=self.gpu,
+                                         accelerator_ids=self.accelerator_ids)
         else:
             operation = IdentityInferenceOperation(self.output_channels, self.output_datatype)
 
