@@ -1,7 +1,5 @@
 import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
-from chunkflow.memory_utils import save_objgraph
-from memory_profiler import profile
 
 
 class CacheMiss(Exception):

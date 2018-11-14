@@ -6,10 +6,9 @@ from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkblocks.iterators import UnitIterator
 from concurrent.futures import ThreadPoolExecutor, wait
 from chunkflow.memory_utils import print_memory
-from chunkblocks.global_offset_array import GLOB, GLOB_BASE
+# from chunkblocks.global_offset_array import GLOB, GLOB_BASE
 import psutil
 import objgraph
-from memory_profiler import profile
 import gc
 import weakref
 import time
@@ -117,28 +116,6 @@ class DatasourceManager:
             return action(chunk, datasource, slices=slices)
         else:
             return executor.submit(action, chunk, datasource, slices)
-            # def run_in_executor(executor, chunk_action, datasource, slices):
-            def run_in_executor(executor, action, chunk, datasource, slices):
-                # thread_future = executor.submit(chunk_action, datasource, slices)
-                thread_future = executor.submit(action, chunk, datasource, slices)
-                done, not_done = wait([thread_future])
-                # objgraph.show_backrefs([thread_future], filename='futs/future%s.png' % id(thread_future))
-                # print('showing omost common types for ', id(thread_future))
-                # objgraph.show_most_common_types(objects=[thread_future])
-                ret = done.pop().result()
-                if hasattr(ret, 'data') and ret.data is not None:
-                    chunk_copy = ret.block.unit_index_to_chunk(ret.unit_index)
-                    if hasattr(chunk_copy, 'block'):
-                        del chunk_copy.block
-                    chunk_copy.data = ret.data.copy()
-                    del ret
-                    del thread_future
-                    ret = chunk_copy
-                return ret
-
-            # return self.runner.submit(run_in_executor, executor, chunk_action, datasource, slices)
-            return self.runner.submit(run_in_executor, executor, action, chunk, datasource, slices)
-
 
     def dump_chunk(self, chunk, datasource=None, slices=None, use_buffer=True, use_executor=True):
         """
@@ -253,10 +230,6 @@ class DatasourceManager:
         total_memory = print_memory(psutil.Process())
         print('\nActual: %.3f GiB expected: %.3f GiB,  Discrepancy is %.3f GiB Elapsed: %.2f' % (
             total_memory, memory_used, total_memory - memory_used, time.time() - START))
-        print('GlobalOffsets!', len(GLOB), 'summing to', sum(map(lambda x: x.nbytes, GLOB.values())) / 2. ** 30)
-        # print(list(GLOB.keys()))
-        print('GlobalOffsetsBASE!', len(GLOB_BASE), 'summing to', sum(map(lambda x: x.nbytes, GLOB_BASE.values())) / 2. ** 30)
-        # print(list(GLOB_BASE.keys()))
         return memory_used
 
 

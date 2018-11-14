@@ -3,6 +3,7 @@ import torch
 import importlib
 import types
 import numpy as np
+from chunkflow.chunk_operations.inference_operation import InferenceOperation
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation
 from chunkblocks.global_offset_array import GlobalOffsetArray
 
@@ -13,15 +14,14 @@ def load_source(fname, module_name="Model"):
     loader.exec_module(mod)
     return mod
 
-class PyTorchInferenceEngine(ChunkOperation):
+class PyTorchInference(InferenceOperation):
     def __init__(self, patch_shape,
-                 output_channels=1, output_datatype=None,
                  model_location='./src/chunkflow/chunk_operations/inference/mito0.py',
                  checkpoint_location='./src/chunkflow/chunk_operations/inference/mito0_220k.chkpt',
                  gpu=False,
                  accelerator_ids=None,
-                 use_bn=True, is_static_batch_norm=False):
-        super().__init__()
+                 use_bn=True, is_static_batch_norm=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         channel_patch_shape = (1,) + patch_shape
         in_spec = dict(input=channel_patch_shape)
@@ -41,9 +41,6 @@ class PyTorchInferenceEngine(ChunkOperation):
 
         if use_bn and is_static_batch_norm:
             self.net.eval()
-
-        self.output_datatype = output_datatype
-        self.output_channels = output_channels
         self.gpu = gpu
 
     def run(self, patch):

@@ -10,28 +10,16 @@ from rx.core import AnonymousObservable
 from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionmethod
 from collections import defaultdict
-from chunkblocks.global_offset_array import GLOB
 import gc
-from chunkflow.memory_utils import save_objgraph
 
 from chunkflow.chunk_buffer import CacheMiss
 
 MAX_RETRIES = 10
 
 
-def del_data(chunk):
-    if hasattr(chunk, 'data'):
-        pass
-        # objgraph.show_backrefs([chunk.data], filename='futs/data%s.png' % id(chunk.data))
-        # print('showing omost common types for ', id(chunk.data))
-        # objgraph.show_most_common_types(objects=[chunk.data])
-        # del chunk.data
-        # chunk.data = None
-
 from rx.core import Observable, AnonymousObservable
 from rx.internal.utils import is_future
 from rx.internal import extensionclassmethod
-import objgraph
 
 
 @extensionclassmethod(Observable)
@@ -263,11 +251,11 @@ def create_inference_stream(block, inference_operation, blend_operation, datasou
     return lambda chunk: (
         Observable.just(chunk)
         .map(inference_operation)
+        .flat_map(Observable.from_item_or_future)
         .map(blend_operation)
         .do_action(lambda chunk: datasource_manager.dump_chunk(
             chunk, datasource=datasource_manager.overlap_repository.get_datasource(chunk.unit_index), use_executor=False
         ))
-        .do_action(del_data)
     )
 
 
@@ -314,7 +302,6 @@ def create_upload_stream(block, datasource_manager):
         .flat_map(Observable.from_item_or_future)
         .reduce(lambda x, y: chunk, seed=chunk).map(lambda _: chunk)  # reduce to wait for all to completed transferring
         .retry(MAX_RETRIES)
-        .do_action(del_data)
     )
 
 
@@ -408,7 +395,7 @@ def create_inference_and_blend_stream(block, inference_operation, blend_operatio
         .flat_map(create_checkpoint_observable(block, stages.START,datasource_manager,
                                                notify_neighbors=False))
         .do_action(lambda chunk: print('start', chunk.data.nbytes if chunk.data is not None else 0) or
-                   datasource_manager.print_cache_stats() or objgraph.show_growth())
+                   datasource_manager.print_cache_stats())
         .flat_map(create_input_stream(datasource_manager))
         .flat_map(create_inference_stream(block, inference_operation, blend_operation, datasource_manager))
         .flat_map(create_checkpoint_observable(block, stages.INFERENCE_DONE, datasource_manager))

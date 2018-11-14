@@ -154,7 +154,8 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
 
     task_stream = create_inference_and_blend_stream(
         block=block,
-        inference_operation=inference_factory.get_operation(inference_framework, model_path, checkpoint_path),
+        inference_operation=inference_factory.get_operation(inference_framework, model_path, checkpoint_path,
+                                                            deferred_processing=True),
         blend_operation=blend_factory.get_operation(blend_framework),
         datasource_manager=chunk_datasource_manager,
     )
@@ -163,12 +164,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     BlockProcessor(block).process(task_stream)
 
     print('Finished inference! Elapsed:', time.time() - start, 's')
-    import psutil
-    print(psutil.Process().memory_info().rss / 1024 / 1024)
-    from memorytools import summarize_objects
-    summarize_objects()
     chunk_datasource_manager.print_cache_stats()
-    # __import__('pdb').set_trace()
 
 
 @task.command()

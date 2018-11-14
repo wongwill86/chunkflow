@@ -10,13 +10,10 @@ import itertools
 import functools
 import linecache
 import tracemalloc
-from concurrent.futures import as_completed, ProcessPoolExecutor
 import psutil
 import time
 import os
-import gc
 import numpy as np
-import memorytools
 from rx import Observable
 
 
@@ -72,12 +69,17 @@ class BlockProcessor:
                 run_state.latch.set()
                 pass
 
+        def buffer_error(error):
+            run_state.latch.set()
+            raise error
+
+
         def process_next_buffered():
             window = run_state.get_buffer()
             (
                 Observable.from_(window)
                 .flat_map(processing_stream)
-                .subscribe(lambda chunk: self._on_next(chunk, run_state), on_error=self._on_error,
+                .subscribe(lambda chunk: self._on_next(chunk, run_state), on_error=buffer_error,
                            on_completed=buffer_complete)
             )
 
@@ -87,13 +89,12 @@ class BlockProcessor:
                 run_state.has_started = True
                 process_next_buffered()
 
-        Observable.from_(self.block.chunk_iterator(start)).buffer_with_count(count=16).subscribe(enqueue_buffer)
+        Observable.from_(self.block.chunk_iterator(start)).buffer_with_count(count=16).subscribe(
+            enqueue_buffer, on_error=self._on_error)
         run_state.wait_for_completion()
         self._on_completed()
 
-
     def _on_completed(self):
-        gc.collect()
         print('Finished processing', self.num_chunks)
         if self.on_completed is not None:
             self.on_completed()
