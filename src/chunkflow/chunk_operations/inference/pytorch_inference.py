@@ -3,12 +3,18 @@ import importlib
 import types
 
 import numpy as np
-import torch
+
 from chunkblocks.global_offset_array import GlobalOffsetArray
 
 from chunkflow.chunk_operations.inference_operation import InferenceOperation
 
 CACHED_NETS = {}
+
+try:
+    import torch
+except ImportError:
+    PyTorchInference = InferenceOperation
+    pass
 
 
 def load_source(fname, module_name="Model"):
@@ -21,8 +27,8 @@ def load_source(fname, module_name="Model"):
 
 class PyTorchInference(InferenceOperation):
     def __init__(self, patch_shape,
-                 model_location='./src/chunkflow/chunk_operations/inference/mito0.py',
-                 checkpoint_location='./src/chunkflow/chunk_operations/inference/mito0_220k.chkpt',
+                 model_location='./models/mito0.py',
+                 checkpoint_location='./models/mito0_220k.chkpt',
                  gpu=False,
                  accelerator_ids=None,
                  use_bn=True, is_static_batch_norm=False, *args, **kwargs):
