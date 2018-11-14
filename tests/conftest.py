@@ -100,7 +100,7 @@ def output_cloudvolume_overlap(cloudvolume_factory):
 
 
 @pytest.fixture(scope='function')
-def output_cloudvolume_overlaps(blGlobalOffsetArrayock_datasource_manager):
+def output_cloudvolume_overlaps(block_datasource_manager):
     block_datasource_manager.create_overlap_datasources((0,) * len(VOXEL_OFFSET))
     return block_datasource_manager.overlap_repository.datasources.values()
 

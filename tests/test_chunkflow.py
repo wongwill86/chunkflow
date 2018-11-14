@@ -4,16 +4,15 @@ import numpy as np
 from click.testing import CliRunner
 
 from chunkflow.cli import main
-from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, default_overlap_datasource
-from chunkflow.datasource_manager import get_absolute_index, get_all_mod_index
-from chunkflow.datasource_manager import SparseOverlapRepository, get_absolute_index, get_all_mod_index
-
 from chunkflow.cloudvolume_datasource import (
     CloudVolumeCZYX,
     CloudVolumeDatasourceManager,
     create_buffered_cloudvolumeCZYX,
+    default_overlap_datasource,
     default_overlap_name
 )
+from chunkflow.datasource_manager import SparseOverlapRepository, get_absolute_index, get_all_mod_index
+
 
 def test_inference(block_datasource_manager):
     runner = CliRunner()
@@ -88,7 +87,7 @@ def test_blend_with_offset_top_edge_task(block_datasource_manager):
 
     print(result.output)
     np.set_printoptions(threshold=np.inf, linewidth=200)
-    print(block_datasource_manager.output_datasource[dataset_bounds])
+    # print(block_datasource_manager.output_datasource[dataset_bounds])
     #  force print error (until click 7.0 https://github.com/pallets/click/issues/371)
     if result.exception is not None:
         print(''.join(traceback.format_exception(etype=type(result.exception), value=result.exception,

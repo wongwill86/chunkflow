@@ -183,9 +183,9 @@ def aggregate(slices, aggregate, datasource):
         return aggregate
 
     try:
-        data = datasource[channel_slices].copy()
+        data = datasource[channel_slices]
     except CacheMiss:
-        data = datasource.get_item(channel_slices, fill_missing=True).copy()
+        data = datasource.get_item(channel_slices, fill_missing=True)
 
     # 0 from seed
     if aggregate is 0:
@@ -444,10 +444,7 @@ def create_blend_stream(block, datasource_manager):
             # Aggregate overlap dataset
             lambda dataset_chunk_slices:
             (
-                # create temp list of repositories values at time of iteration
-                Observable.from_(block.get_all_neighbors(dataset_chunk)).start_with(dataset_chunk)
-                .map(datasource_manager.get_overlap_datasource)
-                .filter(lambda datasource: datasource is not None)
+                Observable.from_(datasource_manager.overlap_repository.datasources.values())
                 .reduce(partial(aggregate, dataset_chunk_slices), seed=0)
                 .do_action(
                     partial(datasource_manager.copy, dataset_chunk, destination=datasource_manager.output_datasource,

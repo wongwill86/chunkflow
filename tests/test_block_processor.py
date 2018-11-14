@@ -1,7 +1,8 @@
+from functools import reduce
+
 import pytest
 from chunkblocks.models import Block
 from rx import Observable
-from functools import reduce
 
 from chunkflow.block_processor import BlockProcessor
 
@@ -41,4 +42,3 @@ class TestBlockProcessor:
             block_processor.process(task_stream)
 
         assert block_processor.error is not None
-

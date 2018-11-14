@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 import os
 
+import sphinx_py3doc_enhanced_theme
 
 extensions = [
     'sphinx.ext.autodoc',
@@ -35,7 +36,6 @@ extlinks = {
     'issue': ('https://github.com/wongwill86/chunkflow/issues/%s', '#'),
     'pr': ('https://github.com/wongwill86/chunkflow/pull/%s', 'PR #'),
 }
-import sphinx_py3doc_enhanced_theme
 html_theme = "sphinx_py3doc_enhanced_theme"
 html_theme_path = [sphinx_py3doc_enhanced_theme.get_html_theme_path()]
 html_theme_options = {
