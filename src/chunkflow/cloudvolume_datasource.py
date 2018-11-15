@@ -1,4 +1,3 @@
-import os
 from functools import reduce
 from math import ceil
 from multiprocessing import Lock
@@ -7,7 +6,6 @@ import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkblocks.models import Block
 from cloudvolume import CloudVolume
-from cloudvolume.storage import reset_connection_pools
 
 from chunkflow.chunk_buffer import ChunkBuffer
 from chunkflow.datasource_manager import DatasourceManager, OverlapRepository, SparseOverlapRepository
@@ -70,27 +68,6 @@ class CloudVolumeCZYX(CloudVolume):
     Cloudvolume assumes XYZC Fortran order.  This class hijacks cloud volume indexing to use CZYX C order indexing
     instead. All other usages of indices such as in the constructor are STILL in ZYXC fortran order!!!!
     """
-    def __init__(self, *args, **kwargs):
-        if os.getpid() not in CONNECTED_PIDS:
-            RESET_LOCK.acquire()
-            reset_connection_pools()
-            CONNECTED_PIDS.add(os.getpid())
-            RESET_LOCK.release()
-        super().__init__(*args, **kwargs)
-
-    def __reduce__(self):
-        """
-        Help make pickle serialization much easier
-        """
-        return (
-            CloudVolumeCZYX,
-            (
-                self.layer_cloudpath, self.mip, self.bounded, self.autocrop, self.fill_missing, self.cache.enabled,
-                self.cdn_cache, self.progress, self.info, None, self.compress, self.non_aligned_writes, self.parallel,
-                self.output_to_shared_memory, self.cache_compress
-            ),
-        )
-
     def __getitem__(self, slices):
         # convert this from Fortran xyzc order because offset is kept in czyx c-order for this class
         dataset_offset = tuple(self.voxel_offset[::-1])
