@@ -7,6 +7,7 @@ import numpy as np
 from chunkblocks.global_offset_array import GlobalOffsetArray
 
 from chunkflow.chunk_operations.inference_operation import InferenceOperation
+from chunkflow.io import download_to_local
 
 CACHED_NETS = {}
 
@@ -27,15 +28,15 @@ def load_source(fname, module_name="Model"):
 
 class PyTorchInference(InferenceOperation):
     def __init__(self, patch_shape,
-                 model_location='./models/mito0.py',
-                 checkpoint_location='./models/mito0_220k.chkpt',
+                 model_location='file://~/src/chunkflow/models/mito0.py',
+                 checkpoint_location='file://~/src/chunkflow/models/mito0_220k.chkpt',
                  gpu=False,
                  accelerator_ids=None,
                  use_bn=True, is_static_batch_norm=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.channel_patch_shape = (1,) + patch_shape
-        self.model_location = model_location
-        self.checkpoint_location = checkpoint_location
+        self.model_location = download_to_local(model_location)
+        self.checkpoint_location = download_to_local(checkpoint_location)
         self.gpu = gpu
         self.accelerator_ids = accelerator_ids
         self.use_bn = use_bn
