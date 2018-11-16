@@ -1,6 +1,6 @@
 import numpy as np
 
-from chunkflow.chunk_operations.chunk_operation import ChunkOperation, DeferredChunkOperation
+from chunkflow.chunk_operations.chunk_operation import ChunkOperation, OffProcessChunkOperation
 
 
 class InferenceOperation(ChunkOperation):
@@ -33,18 +33,20 @@ class InferenceFactory:
         self.gpu = gpu
         self.accelerator_ids = accelerator_ids
 
-    def get_operation(self, framework, model_path, checkpoint_path, deferred_processing=False, parallelism=1):
+    def get_operation(self, framework, model_path, checkpoint_path, off_main_process=False, parallelism=1):
         if framework == 'identity':
             operation = IdentityInferenceOperation(self.output_channels, self.output_datatype)
         elif framework == 'pytorch':
             from chunkflow.chunk_operations.inference.pytorch_inference import PyTorchInference
-            operation = PyTorchInference(self.patch_shape, output_channels=self.output_channels,
+            operation = PyTorchInference(self.patch_shape,
+                                         model_path=model_path, checkpoint_path=checkpoint_path,
+                                         output_channels=self.output_channels,
                                          output_datatype=self.output_datatype, gpu=self.gpu,
                                          accelerator_ids=self.accelerator_ids)
         else:
             operation = IdentityInferenceOperation(self.output_channels, self.output_datatype)
 
-        if deferred_processing:
-            return DeferredChunkOperation(operation, parallelism=parallelism)
+        if off_main_process:
+            return OffProcessChunkOperation(operation, parallelism=parallelism)
         else:
             return operation

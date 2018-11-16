@@ -1,5 +1,6 @@
-from cloudvolume.storage import Storage
 import os
+
+from cloudvolume.storage import Storage
 
 
 def download_to_local(remote_location):
@@ -13,6 +14,7 @@ def download_to_local(remote_location):
     local_location = os.path.join('/tmp', remote_filename)
 
     with open(local_location, 'wb') as f:
+        print('Downloading %s to %s' % (remote_location, local_location))
         downloaded_file = remote_storage.get_file(remote_filename)
         if downloaded_file is None:
             raise IOError('remote_location %s not found' % remote_location)

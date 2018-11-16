@@ -3,7 +3,6 @@ import importlib
 import types
 
 import numpy as np
-
 from chunkblocks.global_offset_array import GlobalOffsetArray
 
 from chunkflow.chunk_operations.inference_operation import InferenceOperation
@@ -28,20 +27,20 @@ def load_source(fname, module_name="Model"):
 
 class PyTorchInference(InferenceOperation):
     def __init__(self, patch_shape,
-                 model_location='file://~/src/chunkflow/models/mito0.py',
-                 checkpoint_location='file://~/src/chunkflow/models/mito0_220k.chkpt',
+                 model_path=None,  # 'file://~/src/chunkflow/models/mito0.py',
+                 checkpoint_path=None,  # 'file://~/src/chunkflow/models/mito0_220k.chkpt',
                  gpu=False,
                  accelerator_ids=None,
                  use_bn=True, is_static_batch_norm=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.channel_patch_shape = (1,) + patch_shape
-        self.model_location = download_to_local(model_location)
-        self.checkpoint_location = download_to_local(checkpoint_location)
+        self.model_path = download_to_local(model_path)
+        self.checkpoint_path = download_to_local(checkpoint_path)
         self.gpu = gpu
         self.accelerator_ids = accelerator_ids
         self.use_bn = use_bn
         self.is_static_batch_norm = is_static_batch_norm
-        self.key = (self.channel_patch_shape, self.model_location, self.checkpoint_location,
+        self.key = (self.channel_patch_shape, self.model_path, self.checkpoint_path,
                     self.gpu, tuple(self.accelerator_ids), self.use_bn, self.is_static_batch_norm)
 
     def get_or_create_net(self):
@@ -51,15 +50,15 @@ class PyTorchInference(InferenceOperation):
         in_spec = dict(input=self.channel_patch_shape)
         out_spec = collections.OrderedDict(mito=self.channel_patch_shape)
 
-        model = load_source(self.model_location).Model(in_spec, out_spec)
+        model = load_source(self.model_path).Model(in_spec, out_spec)
 
         if self.gpu:
-            checkpoint = torch.load(self.checkpoint_location)
+            checkpoint = torch.load(self.checkpoint_path)
             model.load_state_dict(checkpoint)
             model.cuda()
             net = torch.nn.DataParallel(model, device_ids=self.accelerator_ids)
         else:
-            checkpoint = torch.load(self.checkpoint_location, map_location=lambda location, storage: location)
+            checkpoint = torch.load(self.checkpoint_path, map_location=lambda location, storage: location)
             model.load_state_dict(checkpoint)
             net = torch.nn.DataParallel(model)
 

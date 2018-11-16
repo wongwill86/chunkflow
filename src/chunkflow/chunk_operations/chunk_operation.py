@@ -17,7 +17,7 @@ class ChunkOperation:
         return chunk
 
 
-class DeferredChunkOperation(ChunkOperation):
+class OffProcessChunkOperation(ChunkOperation):
     def __init__(self, operation, parallelism=1, *args, **kwargs):
         self.operation = operation
         self.pool = ProcessPoolExecutor(max_workers=parallelism)
