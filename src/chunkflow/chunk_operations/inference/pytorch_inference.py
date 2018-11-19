@@ -1,54 +1,29 @@
 import collections
-import importlib
-import types
 
-import numpy as np
-from chunkblocks.global_offset_array import GlobalOffsetArray
+from chunkflow.io import load_source
 
-from chunkflow.chunk_operations.inference_operation import InferenceOperation
-from chunkflow.io import download_to_local
-
-CACHED_NETS = {}
+from chunkflow.chunk_operations.inference_operation import CachedNetworkReshapedInference
 
 try:
     import torch
 except ImportError:
-    PyTorchInference = InferenceOperation
+    PyTorchInference = CachedNetworkReshapedInference
     pass
 
 
-def load_source(fname, module_name="Model"):
-    """ Imports a module from source """
-    loader = importlib.machinery.SourceFileLoader(module_name, fname)
-    mod = types.ModuleType(loader.name)
-    loader.exec_module(mod)
-    return mod
-
-
-class PyTorchInference(InferenceOperation):
-    def __init__(self, patch_shape,
+class PyTorchInference(CachedNetworkReshapedInference):
+    def __init__(self,
+                 patch_shape,
                  model_path=None,  # 'file://~/src/chunkflow/models/mito0.py',
                  checkpoint_path=None,  # 'file://~/src/chunkflow/models/mito0_220k.chkpt',
                  gpu=False,
                  accelerator_ids=None,
                  use_bn=True, is_static_batch_norm=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.channel_patch_shape = (1,) + patch_shape
-        self.model_path = download_to_local(model_path)
-        self.checkpoint_path = download_to_local(checkpoint_path)
-        self.gpu = gpu
-        self.accelerator_ids = accelerator_ids
-        self.use_bn = use_bn
-        self.is_static_batch_norm = is_static_batch_norm
-        self.key = (self.channel_patch_shape, self.model_path, self.checkpoint_path,
-                    self.gpu, tuple(self.accelerator_ids), self.use_bn, self.is_static_batch_norm)
 
-    def get_or_create_net(self):
-        if self.key in CACHED_NETS:
-            return CACHED_NETS[self.key]
-
+    def _create_net(self):
         in_spec = dict(input=self.channel_patch_shape)
-        out_spec = collections.OrderedDict(mito=self.channel_patch_shape)
+        out_spec = collections.OrderedDict(out=self.channel_patch_shape)
 
         model = load_source(self.model_path).Model(in_spec, out_spec)
 
@@ -65,13 +40,9 @@ class PyTorchInference(InferenceOperation):
         if self.use_bn and self.is_static_batch_norm:
             net.eval()
 
-        CACHED_NETS[self.key] = net
-
         return net
 
-    def run(self, patch):
-        net = self.get_or_create_net()
-
+    def _run(self, net, patch):
         # patch should be a 5d np array
         patch = patch.reshape((1,) * (5 - patch.ndim) + patch.shape)
 
@@ -86,10 +57,3 @@ class PyTorchInference(InferenceOperation):
             # the network output does not have a sigmoid function
             output_patch = torch.sigmoid(output_v).data.cpu().numpy()
             return output_patch
-
-    def _process(self, chunk):
-        output = self.run(chunk.data.astype(self.output_datatype))
-        if output.shape[0] < self.output_channels:
-            squeezed_output = output.squeeze()
-            output = np.tile(squeezed_output, (self.output_channels,) + (1,) * len(squeezed_output.shape))
-        chunk.data = GlobalOffsetArray(output, global_offset=(0,) + chunk.offset)

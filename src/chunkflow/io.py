@@ -1,4 +1,6 @@
+import importlib
 import os
+import types
 
 from cloudvolume.storage import Storage
 
@@ -21,3 +23,11 @@ def download_to_local(remote_location):
         f.write(downloaded_file)
 
     return local_location
+
+
+def load_source(fname, module_name="Model"):
+    """ Imports a module from source """
+    loader = importlib.machinery.SourceFileLoader(module_name, fname)
+    mod = types.ModuleType(loader.name)
+    loader.exec_module(mod)
+    return mod
