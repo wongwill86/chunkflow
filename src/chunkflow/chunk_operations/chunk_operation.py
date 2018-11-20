@@ -18,9 +18,12 @@ class ChunkOperation:
 
 
 class OffProcessChunkOperation(ChunkOperation):
-    def __init__(self, operation, parallelism=1, *args, **kwargs):
-        self.operation = operation
+    def __init__(self, operation_class, parallelism=1, *args, **kwargs):
+        self.operation_class = operation_class
+        self.args = args
+        self.kwargs = kwargs
         self.pool = ProcessPoolExecutor(max_workers=parallelism)
 
     def __call__(self, chunk):
-        return self.pool.submit(self.operation.__call__, chunk)
+        operation = self.operation_class(*self.args, **self.kwargs)
+        return self.pool.submit(operation.__call__, chunk)

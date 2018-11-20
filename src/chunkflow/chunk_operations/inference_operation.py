@@ -4,7 +4,6 @@ from chunkblocks.global_offset_array import GlobalOffsetArray
 from chunkflow.chunk_operations.chunk_operation import ChunkOperation, OffProcessChunkOperation
 from chunkflow.io import download_to_local
 
-
 CACHED_NETS = {}
 
 
@@ -14,20 +13,23 @@ class InferenceOperation(ChunkOperation):
                  checkpoint_path=None,  # 'file://~/src/chunkflow/models/mito0_220k.chkpt',
                  gpu=False,
                  accelerator_ids=None,
-                 use_bn=True, is_static_batch_norm=False, *args, **kwargs):
+                 use_bn=True, is_static_batch_norm=False):
 
         self.output_channels = output_channels
         self.output_datatype = output_datatype
         self.channel_patch_shape = (1,) + patch_shape
-        self.model_path = download_to_local(model_path)
-        self.checkpoint_path = download_to_local(checkpoint_path)
+        self.model_path = model_path
+        self.checkpoint_path = checkpoint_path
+        if model_path is not None:
+            self.model_path = download_to_local(model_path)
+        if checkpoint_path is not None:
+            self.checkpoint_path = download_to_local(checkpoint_path)
         self.gpu = gpu
         self.accelerator_ids = accelerator_ids
         self.use_bn = use_bn
         self.is_static_batch_norm = is_static_batch_norm
         self.key = (self.channel_patch_shape, self.model_path, self.checkpoint_path,
                     self.gpu, tuple(self.accelerator_ids), self.use_bn, self.is_static_batch_norm)
-        super().__init__(*args, **kwargs)
 
     def get_or_create_net(self):
         if self.key in CACHED_NETS:
@@ -40,7 +42,7 @@ class InferenceOperation(ChunkOperation):
     def _create_net(self):
         raise NotImplementedError
 
-    def _run(self, patch):
+    def _run(self, net, patch):
         raise NotImplementedError
 
 
@@ -51,7 +53,7 @@ class CachedNetworkReshapedInference(InferenceOperation):
 
         net = self.get_or_create_net()
 
-        output = self.run(patch)
+        output = self._run(net, patch)
 
         if output.shape[0] < self.output_channels:
             squeezed_output = output.squeeze()
@@ -82,18 +84,23 @@ class InferenceFactory:
 
     def get_operation(self, framework, model_path, checkpoint_path, off_main_process=False, parallelism=1):
         if framework == 'identity':
-            operation = IdentityInferenceOperation(self.output_channels, self.output_datatype)
+            inference_operation_class = IdentityInferenceOperation
         elif framework == 'pytorch':
             from chunkflow.chunk_operations.inference.pytorch_inference import PyTorchInference
-            operation = PyTorchInference(self.patch_shape,
-                                         model_path=model_path, checkpoint_path=checkpoint_path,
-                                         output_channels=self.output_channels,
-                                         output_datatype=self.output_datatype, gpu=self.gpu,
-                                         accelerator_ids=self.accelerator_ids)
+            inference_operation_class = PyTorchInference
         else:
-            operation = IdentityInferenceOperation(self.output_channels, self.output_datatype)
+            inference_operation_class = IdentityInferenceOperation
 
         if off_main_process:
-            return OffProcessChunkOperation(operation, parallelism=parallelism)
+            return OffProcessChunkOperation(inference_operation_class, parallelism=parallelism,
+                                            patch_shape=self.patch_shape,
+                                            model_path=model_path, checkpoint_path=checkpoint_path,
+                                            output_channels=self.output_channels,
+                                            output_datatype=self.output_datatype, gpu=self.gpu,
+                                            accelerator_ids=self.accelerator_ids)
         else:
-            return operation
+            return inference_operation_class(self.patch_shape,
+                                             model_path=model_path, checkpoint_path=checkpoint_path,
+                                             output_channels=self.output_channels,
+                                             output_datatype=self.output_datatype, gpu=self.gpu,
+                                             accelerator_ids=self.accelerator_ids)

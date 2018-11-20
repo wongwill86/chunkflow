@@ -1,14 +1,7 @@
 import collections
 
-from chunkflow.io import load_source
-
 from chunkflow.chunk_operations.inference_operation import CachedNetworkReshapedInference
-
-try:
-    import torch
-except ImportError:
-    PyTorchInference = CachedNetworkReshapedInference
-    pass
+from chunkflow.io import load_source
 
 
 class PyTorchInference(CachedNetworkReshapedInference):
@@ -22,6 +15,7 @@ class PyTorchInference(CachedNetworkReshapedInference):
         super().__init__(*args, **kwargs)
 
     def _create_net(self):
+        import torch
         in_spec = dict(input=self.channel_patch_shape)
         out_spec = collections.OrderedDict(out=self.channel_patch_shape)
 
@@ -43,6 +37,7 @@ class PyTorchInference(CachedNetworkReshapedInference):
         return net
 
     def _run(self, net, patch):
+        import torch
         # patch should be a 5d np array
         patch = patch.reshape((1,) * (5 - patch.ndim) + patch.shape)
 
