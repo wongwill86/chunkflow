@@ -155,7 +155,7 @@ class TestInferenceStream:
         task_stream = create_inference_and_blend_stream(
             block=block,
             inference_operation=IncrementInference(step=1),
-            blend_operation=AverageBlend(block),
+            blend_operation=AverageBlend(block, weight_borders=False),
             datasource_manager=datasource_manager
         )
 
@@ -203,7 +203,7 @@ class TestInferenceStream:
         task_stream = create_inference_and_blend_stream(
             block=block,
             inference_operation=IncrementInference(step=1),
-            blend_operation=AverageBlend(block),
+            blend_operation=AverageBlend(block, weight_borders=False),
             datasource_manager=datasource_manager,
         )
 
@@ -226,25 +226,23 @@ class TestInferenceStream:
         task_stream = create_inference_and_blend_stream(
             block=block,
             inference_operation=IncrementThreeChannelInference(step=1),
-            blend_operation=AverageBlend(block),
+            blend_operation=AverageBlend(block, weight_borders=False),
             datasource_manager=datasource_manager
         )
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
-
-        print(datasource_manager.output_datasource)
-        print(datasource_manager.output_datasource_final)
 
         assert np.product(block.shape) * 111 == \
             datasource_manager.output_datasource.sum() + \
             datasource_manager.output_datasource_final.sum()
 
     def test_process_single_channel_3d(self):
-        bounds = (slice(0, 7), slice(0, 7), slice(0, 7))
-        chunk_shape = (3, 3, 3)
-        overlap = (1, 1, 1)
+        chunk_shape = (3, 6, 5)
+        offset = (0, 0, 0)
+        overlap = (1, 2, 2)
+        num_chunks = (3, 3, 3)
 
-        block = Block(bounds=bounds, chunk_shape=chunk_shape, overlap=overlap)
+        block = Block(num_chunks=num_chunks, offset=offset, chunk_shape=chunk_shape, overlap=overlap)
 
         fake_data = GlobalOffsetArray(np.zeros(block.shape), global_offset=(0,) * len(block.shape))
         datasource_manager = NumpyDatasourceManager(input_datasource=fake_data, output_shape=fake_data.shape)
@@ -252,11 +250,15 @@ class TestInferenceStream:
         task_stream = create_inference_and_blend_stream(
             block=block,
             inference_operation=IncrementInference(step=1),
-            blend_operation=AverageBlend(block),
+            blend_operation=AverageBlend(block, weight_borders=False),
             datasource_manager=datasource_manager
         )
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).subscribe(print)
+
+        np.set_printoptions(threshold=np.NaN, linewidth=200)
+        print(datasource_manager.output_datasource)
+        print(datasource_manager.output_datasource_final)
 
         assert np.product(block.shape) == \
             datasource_manager.output_datasource.sum() + \
@@ -275,7 +277,7 @@ class TestInferenceStream:
         task_stream = create_inference_and_blend_stream(
             block=block,
             inference_operation=IncrementThreeChannelInference(step=1),
-            blend_operation=AverageBlend(block),
+            blend_operation=AverageBlend(block, weight_borders=False),
             datasource_manager=datasource_manager
         )
 
@@ -299,7 +301,7 @@ class TestInferenceStream:
             block=block,
             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
                 chunk_datasource_manager.output_datasource.dtype)),
-            blend_operation=AverageBlend(block),
+            blend_operation=AverageBlend(block, weight_borders=False),
             datasource_manager=chunk_datasource_manager
         )
 
@@ -330,7 +332,7 @@ class TestInferenceStream:
             block=block,
             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
                 chunk_datasource_manager.output_datasource.dtype)),
-            blend_operation=AverageBlend(block),
+            blend_operation=AverageBlend(block, weight_borders=False),
             datasource_manager=chunk_datasource_manager
         )
 
@@ -364,12 +366,15 @@ class TestInferenceStream:
             block=block,
             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
                 chunk_datasource_manager.output_datasource.dtype)),
-            blend_operation=AverageBlend(block),
+            blend_operation=AverageBlend(block, weight_borders=False),
             datasource_manager=chunk_datasource_manager
         )
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(print)
 
+        np.set_printoptions(threshold=np.NaN, linewidth=400)
+        print(chunk_datasource_manager.output_datasource[bounds])
+        print(chunk_datasource_manager.output_datasource_final[bounds])
         assert np.product(block.shape) * 111 == \
             chunk_datasource_manager.output_datasource[bounds].sum() + \
             chunk_datasource_manager.output_datasource_final[bounds].sum()
@@ -578,7 +583,7 @@ class TestPerformance:
         task_stream = create_inference_and_blend_stream(
             block=block,
             inference_operation=IncrementThreeChannelInference(step=1, output_dtype=dtype),
-            blend_operation=AverageBlend(block),
+            blend_operation=AverageBlend(block, weight_borders=False),
             datasource_manager=datasource_manager,
         )
         import time
@@ -630,6 +635,68 @@ class TestPerformance:
         actual = datasource_manager.output_datasource[block.bounds].sum() + \
             datasource_manager.output_datasource_final[block.bounds].sum()
         assert np.product(block.shape) * 111 == actual
+
+
+class TestStreamIntegration:
+
+    def test_stream_inference_then_blend(self, chunk_datasource_manager, block_datasource_manager):
+        from chunkflow.datasource_manager import get_absolute_index
+
+        input_datasource = chunk_datasource_manager.input_datasource
+        offset = input_datasource.voxel_offset[::-1]
+        overlap = (1, 4, 4)
+        patch_shape = (5, 10, 10)
+        num_patches_per_task = (2, 2, 2)
+        task_shape = tuple((ps - olap) * num + olap for ps, olap, num in zip(patch_shape, overlap,
+                                                                             num_patches_per_task))
+        dataset_block = Block(offset=offset, num_chunks=[3, 3, 3], chunk_shape=task_shape, overlap=overlap)
+
+        np.set_printoptions(threshold=np.NaN, linewidth=400)
+        for chunk in list(dataset_block.chunk_iterator()):
+            # get the corresponding overlap index for this
+            absolute_index = get_absolute_index(chunk.offset, overlap, task_shape)
+            output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource(absolute_index)
+            chunk_datasource_manager.output_datasource = output_cloudvolume_overlap
+
+            task_block = Block(num_chunks=num_patches_per_task, offset=chunk.offset, chunk_shape=patch_shape,
+                               overlap=overlap)
+
+            chunk_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
+            chunk_datasource_manager.overlap_repository = create_sparse_overlap_cloudvolumeCZYX(
+                chunk_datasource_manager.output_datasource_final, task_block
+            )
+
+            task_stream = create_inference_and_blend_stream(
+                block=task_block,
+                inference_operation=IncrementThreeChannelInference(step=1, output_dtype=np.dtype(
+                    chunk_datasource_manager.output_datasource.dtype)),
+                blend_operation=AverageBlend(task_block),
+                datasource_manager=chunk_datasource_manager
+            )
+
+            Observable.from_(task_block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(print)
+
+        block_datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
+
+        blend_stream = create_blend_stream(dataset_block, block_datasource_manager)
+        (
+            Observable.from_(list(dataset_block.chunk_iterator()))
+            .flat_map(create_preload_datasource_stream(dataset_block, block_datasource_manager,
+                                                       block_datasource_manager.output_datasource))
+            .flat_map(blend_stream)
+            .reduce(lambda x, y: x)
+            .map(lambda _: block_datasource_manager.flush(None, datasource=block_datasource_manager.output_datasource))
+            .flat_map(lambda chunk_or_future: Observable.from_item_or_future(chunk_or_future))
+            .subscribe(print)
+        )
+
+        inner_bounds = tuple(slice(s.start + o, s.stop - o) for s, o in zip(dataset_block.bounds, overlap))
+        inner_shape = tuple(sh - o * 2 for sh, o in zip(dataset_block.shape, overlap))
+        print(dataset_block.bounds, inner_bounds)
+        print(task_block.shape, inner_shape)
+
+        assert np.product(inner_shape) * 111 == \
+            chunk_datasource_manager.output_datasource_final[inner_bounds].sum()
 
 
 class TestRxExtension:

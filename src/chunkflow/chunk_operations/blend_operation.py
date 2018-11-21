@@ -13,7 +13,7 @@ class AverageBlend(ChunkOperation):
     This blends by weighting using the average across overlaps.
 
     :param block: dataset block for computing borders
-    :param weight_borders: def
+    :param weight_borders: should the edge block borders be included to be weighted
     """
     def __init__(self, block, weight_borders=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -41,8 +41,10 @@ class AverageBlend(ChunkOperation):
     def generate_weight_mapping(self, chunk):
         weight_mapping = np.ones(chunk.shape, dtype=chunk.data.dtype)
         # remove the offset for these slice ranges
-        overlap_slices = [slices for slices in chunk.border_slices(nonintersecting=False) if not self.is_border_slice(
-            slices)]
+        # overlap_slices = [slices for slices in chunk.border_slices(nonintersecting=False) if not self.is_border_slice(
+        #     slices)]
+        overlap_slices = [slices for slices in chunk.border_slices(nonintersecting=False) if self.weight_borders or not
+                          self.is_border_slice(slices)]
 
         overlap_slices = [
             tuple(slice(s.start - o, s.stop - o) for s, o in zip(

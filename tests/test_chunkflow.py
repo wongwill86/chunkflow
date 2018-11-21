@@ -5,7 +5,7 @@ from click.testing import CliRunner
 
 from chunkflow.cli import main
 from chunkflow.cloudvolume_datasource import CloudVolumeCZYX, default_overlap_datasource
-from chunkflow.datasource_manager import get_absolute_index, get_all_mod_index
+from chunkflow.datasource_manager import get_all_mod_index
 
 
 def test_inference(block_datasource_manager):
@@ -35,22 +35,19 @@ def test_inference(block_datasource_manager):
 
     np.set_printoptions(threshold=np.inf)
 
-    absolute_index = get_absolute_index(offset, overlap, task_shape)
-    output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource(absolute_index)
-
-    data = (
-        block_datasource_manager.output_datasource[(slice(0, 3),) + dataset_bounds] +
-        output_cloudvolume_overlap[(slice(0, 3),) + dataset_bounds]
-    )
     print(result.output)
 
     # force print error (until click 7.0 https://github.com/pallets/click/issues/371)
     if result.exception is not None:
         print(''.join(traceback.format_exception(etype=type(result.exception), value=result.exception,
                                                  tb=result.exception.__traceback__)))
+
     assert result.exit_code == 0
     assert result.exception is None
-    assert np.prod(task_shape) * 3 == data.sum()
+    inner_bounds = tuple(slice(o + olap, o + s - olap) for s, o, olap in zip(task_shape, offset, overlap))
+    inner_shape = tuple(sh - o * 2 for sh, o in zip(task_shape, overlap))
+
+    assert np.prod(inner_shape) * 3 == block_datasource_manager.output_datasource[inner_bounds].sum()
 
 
 def test_blend_with_offset_top_edge_task(block_datasource_manager):
@@ -204,8 +201,8 @@ def test_check(block_datasource_manager, output_cloudvolume_overlaps):
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
         'cloudvolume',
-        '--patch_shape', [3, 30, 30],
-        '--overlap', [1, 10, 10],
+        '--patch_shape', [5, 10, 10],
+        '--overlap', [1, 4, 4],
         '--num_channels', 3,
         '--check_overlaps',
         '--min_mips', 0,
@@ -247,8 +244,8 @@ def test_check_missing_overlaps_not_needed(block_datasource_manager):
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
         'cloudvolume',
-        '--patch_shape', [3, 30, 30],
-        '--overlap', [1, 10, 10],
+        '--patch_shape', [5, 10, 10],
+        '--overlap', [1, 4, 4],
         '--num_channels', 3,
         '--min_mips', 0,
         'check',
@@ -353,8 +350,8 @@ def test_create_only_some_cloudvolume(input_cloudvolume, output_cloudvolume, out
             '--input_image_source', input_cloudvolume.layer_cloudpath,
             '--output_destination', output_cloudvolume.layer_cloudpath,
             'cloudvolume',
-            '--patch_shape', [3, 30, 30],
-            '--overlap', [1, 10, 10],
+            '--patch_shape', [5, 10, 10],
+            '--overlap', [1, 4, 4],
             '--num_channels', 3,
             '--check_overlaps',
             '--min_mips', 0,

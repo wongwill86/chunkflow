@@ -37,8 +37,8 @@ def get_possible_chunk_sizes(overlap, task_shape, min_mips, num_patches):
     core_shape = tuple(p - o for p, o in zip(task_shape, overlap))
 
     min_mip_factor = 2 ** min_mips
-    assert all(c_s % min_mip_factor == 0 for c_s in core_shape), 'Unable to support %s with %s mips' % (
-        task_shape, min_mips)
+    assert all(c_s % min_mip_factor == 0 for c_s in core_shape), 'Unable to support %s with %s mips, core shape %s' % (
+        task_shape, min_mips, core_shape)
     core_shape = tuple(c_s // min_mip_factor * n_p for c_s, n_p in zip(core_shape, num_patches))
 
     chunk_shape_options = [
