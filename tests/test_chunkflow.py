@@ -12,8 +12,11 @@ def test_inference(block_datasource_manager):
     runner = CliRunner()
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    task_shape = [10, 25, 25]
-    overlap = [2, 5, 5]
+    overlap = [1, 4, 4]
+    patch_shape = [5, 10, 10]
+    num_chunks = [2, 2, 2]
+    task_shape = tuple((ps - olap) * num + olap for ps, olap, num in zip(patch_shape, overlap,
+                                                                         num_chunks))
 
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
 
@@ -28,7 +31,7 @@ def test_inference(block_datasource_manager):
         '--task_shape', list(task_shape),
         '--overlap', overlap,
         'inference',
-        '--patch_shape', [4, 10, 10],
+        '--patch_shape', patch_shape,
         '--inference_framework', 'identity',
         '--blend_framework', 'average',
     ])
@@ -48,6 +51,37 @@ def test_inference(block_datasource_manager):
     inner_shape = tuple(sh - o * 2 for sh, o in zip(task_shape, overlap))
 
     assert np.prod(inner_shape) * 3 == block_datasource_manager.output_datasource[inner_bounds].sum()
+
+
+def test_inference_bad_config(block_datasource_manager):
+    runner = CliRunner()
+    offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
+    volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
+    overlap = [1, 4, 4]
+    patch_shape = [5, 10, 10]
+    num_chunks = [3, 2, 2]
+    task_shape = tuple((ps - olap) * num + olap for ps, olap, num in zip(patch_shape, overlap,
+                                                                         num_chunks))
+
+    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
+
+    block_datasource_manager.input_datasource[dataset_bounds] = np.ones(
+        volume_shape, dtype=np.dtype(block_datasource_manager.input_datasource.data_type))
+
+    result = runner.invoke(main, [
+        '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
+        '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
+        'task',
+        '--task_offset_coordinates', list(offset),
+        '--task_shape', list(task_shape),
+        '--overlap', overlap,
+        'inference',
+        '--patch_shape', patch_shape,
+        '--inference_framework', 'identity',
+        '--blend_framework', 'average',
+    ])
+
+    assert result.exit_code != 0
 
 
 def test_blend_with_offset_top_edge_task(block_datasource_manager):

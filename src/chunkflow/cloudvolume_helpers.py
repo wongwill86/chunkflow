@@ -60,8 +60,8 @@ def valid_cloudvolume(path_or_cv, chunk_shape_options, input_datasource):
 
         for c_size, chunk_shape_option in zip(actual_chunk_size, chunk_shape_options):
             if c_size not in chunk_shape_option:
-                print('Warning: %s already has incorrect chunk size %s. Please reformat with one of these chunk sizes:'
-                      '%s' % (cloudvolume.layer_cloudpath, actual_chunk_size, chunk_shape_options))
+                print('Warning: %s has incorrect chunk size %s. These chunk sizes are compatible: %s' % (
+                    cloudvolume.layer_cloudpath, actual_chunk_size, chunk_shape_options))
                 return False
 
         for attribute in ATTRIBUTE_COMPARISONS:

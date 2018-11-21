@@ -149,6 +149,18 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     print('Using output_datasource', chunk_datasource_manager.output_datasource.layer_cloudpath)
     print('Using output_datasource_final', chunk_datasource_manager.output_datasource_final.layer_cloudpath)
 
+    chunk_shape_options = get_possible_chunk_sizes(obj['overlap'], patch_shape, 0, block.num_chunks)
+    assert valid_cloudvolume(
+        chunk_datasource_manager.output_datasource_final,
+        chunk_shape_options, chunk_datasource_manager.input_datasource
+    ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s' % (
+        chunk_datasource_manager.output_datasource.layer_cloudpath, patch_shape, block.num_chunks, obj['overlap'])
+    assert valid_cloudvolume(
+        chunk_datasource_manager.output_datasource,
+        chunk_shape_options, chunk_datasource_manager.input_datasource
+    ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s' % (
+        chunk_datasource_manager.output_datasource_final.layer_cloudpath, patch_shape, block.num_chunks, obj['overlap'])
+
     output_datasource = chunk_datasource_manager.output_datasource
     inference_factory = InferenceFactory(tuple(patch_shape), output_channels=output_datasource.num_channels,
                                          output_datatype=output_datasource.data_type, gpu=gpu,
