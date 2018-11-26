@@ -1,14 +1,14 @@
 from chunkflow.chunk_operations.inference_operation import CachedNetworkReshapedInference
+from chunkflow.io import load_source
+import sys
 
 
 class PZNetInference(CachedNetworkReshapedInference):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def _create_net(self):
+        net_directory = load_source(self.model_path)
+        sys.path.append(net_directory)
         import pznet
-        # "/nets/pinky100/unet4-long/mip1/cores2"
-        net = pznet.znet(self.model_path, self.checkpoint_path)
+        net = pznet.znet().load_net(net_directory)
         return net
 
     def _run(self, net, patch):

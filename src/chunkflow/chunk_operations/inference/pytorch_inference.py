@@ -5,15 +5,6 @@ from chunkflow.io import load_source
 
 
 class PyTorchInference(CachedNetworkReshapedInference):
-    def __init__(self,
-                 patch_shape,
-                 model_path=None,  # 'file://~/src/chunkflow/models/mito0.py',
-                 checkpoint_path=None,  # 'file://~/src/chunkflow/models/mito0_220k.chkpt',
-                 gpu=False,
-                 accelerator_ids=None,
-                 use_bn=True, is_static_batch_norm=False, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def _create_net(self):
         import torch
         in_spec = dict(input=self.channel_patch_shape)

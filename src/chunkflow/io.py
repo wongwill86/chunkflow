@@ -1,5 +1,7 @@
 import importlib
 import os
+import tarfile
+import tempfile
 import types
 
 from cloudvolume.storage import Storage
@@ -13,7 +15,8 @@ def download_to_local(remote_location):
     remote_filename = remote_location[last_slash + 1:]
     remote_storage = Storage(remote_folder)
 
-    local_location = os.path.join('/tmp', remote_filename)
+    temp_dir = tempfile.mkdtemp()
+    local_location = os.path.join(temp_dir, remote_filename)
 
     with open(local_location, 'wb') as f:
         print('Downloading %s to %s' % (remote_location, local_location))
@@ -21,6 +24,15 @@ def download_to_local(remote_location):
         if downloaded_file is None:
             raise IOError('remote_location %s not found' % remote_location)
         f.write(downloaded_file)
+
+    if tarfile.is_tarfile(local_location):
+        directories = [d for d in tarfile.getmembers() if d.isdir()]
+        tarfile.extractall(temp_dir)
+
+        if len(directories) == 1:
+            local_location = os.path.join(local_location, directories[0].name)
+        else:
+            assert len(directories) == 0, 'Only one directory should be given in zip, found: %s' % directories
 
     return local_location
 

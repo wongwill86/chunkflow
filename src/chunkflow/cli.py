@@ -149,17 +149,23 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     print('Using output_datasource', chunk_datasource_manager.output_datasource.layer_cloudpath)
     print('Using output_datasource_final', chunk_datasource_manager.output_datasource_final.layer_cloudpath)
 
+    # Check to make sure patch sizes are correct
     chunk_shape_options = get_possible_chunk_sizes(obj['overlap'], patch_shape, 0, block.num_chunks)
     assert valid_cloudvolume(
         chunk_datasource_manager.output_datasource_final,
         chunk_shape_options, chunk_datasource_manager.input_datasource
-    ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s' % (
-        chunk_datasource_manager.output_datasource.layer_cloudpath, patch_shape, block.num_chunks, obj['overlap'])
+    ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s, expecting: %s' % (
+        chunk_datasource_manager.output_datasource.layer_cloudpath, patch_shape, block.num_chunks, obj['overlap'],
+        chunk_shape_options
+    )
     assert valid_cloudvolume(
         chunk_datasource_manager.output_datasource,
         chunk_shape_options, chunk_datasource_manager.input_datasource
-    ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s' % (
-        chunk_datasource_manager.output_datasource_final.layer_cloudpath, patch_shape, block.num_chunks, obj['overlap'])
+    ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s, expecting: %s' % (
+        chunk_datasource_manager.output_datasource_final.layer_cloudpath, patch_shape, block.num_chunks,
+        obj['overlap'], chunk_shape_options
+    )
+
 
     output_datasource = chunk_datasource_manager.output_datasource
     inference_factory = InferenceFactory(tuple(patch_shape), output_channels=output_datasource.num_channels,
@@ -246,7 +252,7 @@ def blend(obj, **kwargs):
 @click.option('--patch_shape', type=list, help="convnet input patch shape (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--num_patches', type=list, help="how large of a task desired(ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, default=[4, 4, 4])
+              cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--min_mips', type=int, help="number of mip levels expected (sets minimum chunk size)",
               default=4)
 @click.option('--overlap', type=list,
