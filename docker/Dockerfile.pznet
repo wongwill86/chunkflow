@@ -60,6 +60,7 @@ RUN apt-get update \
         /usr/share/doc \
         /usr/share/doc-base
 
+
 # Get commit hash and tags these three files need to be excluded from .dockerignore:
 #.git/refs/heads/
 #.git/refs/tags/
@@ -72,3 +73,15 @@ RUN cat .git/refs/$(cat .git/HEAD | sed -e's/ref: refs\///g') > version/COMMIT \
     && mv version/TAGS version/base.TAGS.slim
 
 ENTRYPOINT ["chunkflow/docker/entrypoint.sh"]
+
+######### HACKS FOR PZNET #########
+RUN export LC_ALL=C.UTF-8
+RUN export LANG=C.UTF-8
+
+# pznet writes to .tmp within that folder
+RUN mkdir -p /opt/znnphi_interface/code/znet/src/python/pznet/.tmp/ && \
+    chmod -R 777 /opt/znnphi_interface/code/include/znn/jit/.tmp /opt/znnphi_interface/code/znet/src/python/pznet/.tmp
+
+# python2 update
+RUN sed -i -e 's/print \(.*\)$/print(\1)/g' /opt/znnphi_interface/code/include/znn/jit/jit.py
+######### END HACKS FOR PZNET #########

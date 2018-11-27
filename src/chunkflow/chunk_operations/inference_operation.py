@@ -35,7 +35,7 @@ class InferenceOperation(ChunkOperation):
         raise NotImplementedError
 
 
-class CachedNetworkReshapedInference(InferenceOperation):
+class CachedNetworkInference(InferenceOperation):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, should_download=False, **kwargs)
         if self.model_path is not None:
@@ -66,12 +66,7 @@ class CachedNetworkReshapedInference(InferenceOperation):
 
         output = self._run(net, patch)
 
-        if output.shape[0] < self.channel_dimensions[0]:
-            squeezed_output = output.squeeze()
-            output = np.tile(squeezed_output, self.channel_dimensions + (1,) * len(squeezed_output.shape))
-        else:
-            output = output.reshape(self.channel_dimensions + chunk.shape)
-
+        output = output.reshape(self.channel_dimensions + chunk.shape)
         chunk.data = GlobalOffsetArray(output, global_offset=len(self.channel_dimensions) * (0,) + chunk.offset)
 
 

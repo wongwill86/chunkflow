@@ -1,10 +1,10 @@
 import collections
 
-from chunkflow.chunk_operations.inference_operation import CachedNetworkReshapedInference
+from chunkflow.chunk_operations.inference_operation import CachedNetworkInference
 from chunkflow.io import load_source
 
 
-class PyTorchInference(CachedNetworkReshapedInference):
+class PyTorchInference(CachedNetworkInference):
     def _create_net(self):
         import torch
         in_spec = dict(input=self.channel_patch_shape)
