@@ -26,13 +26,14 @@ def download_to_local(remote_location):
         f.write(downloaded_file)
 
     if tarfile.is_tarfile(local_location):
-        directories = [d for d in tarfile.getmembers() if d.isdir()]
-        tarfile.extractall(temp_dir)
+        tar = tarfile.open(local_location)
+        root_directories = [d for d in tar.getmembers() if d.isdir() and d.name.find(os.sep) < 0]
+        tar.extractall(temp_dir)
 
-        if len(directories) == 1:
-            local_location = os.path.join(local_location, directories[0].name)
+        if len(root_directories) == 1:
+            local_location = os.path.join(temp_dir, root_directories[0].name)
         else:
-            assert len(directories) == 0, 'Only one directory should be given in zip, found: %s' % directories
+            assert len(root_directories) == 0, 'Found more than one root directory in archive: %s' % root_directories
 
     return local_location
 

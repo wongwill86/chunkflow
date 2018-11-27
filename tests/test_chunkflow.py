@@ -239,6 +239,7 @@ def test_check(block_datasource_manager, output_cloudvolume_overlaps):
         '--overlap', [1, 4, 4],
         '--num_channels', 3,
         '--check_overlaps',
+        '--num_patches', [4, 4, 4],
         '--min_mips', 0,
         'check',
     ])
@@ -265,6 +266,7 @@ def test_check_bad_chunksize(block_datasource_manager, output_cloudvolume_overla
         '--overlap', [1, 10, 10],
         '--num_channels', 3,
         '--check_overlaps',
+        '--num_patches', [4, 4, 4],
         '--min_mips', 1,
         'check',
     ])
@@ -281,6 +283,7 @@ def test_check_missing_overlaps_not_needed(block_datasource_manager):
         '--patch_shape', [5, 10, 10],
         '--overlap', [1, 4, 4],
         '--num_channels', 3,
+        '--num_patches', [4, 4, 4],
         '--min_mips', 0,
         'check',
     ])
@@ -302,6 +305,7 @@ def test_check_missing_overlaps_needed(block_datasource_manager):
         '--overlap', [1, 10, 10],
         '--num_channels', 3,
         '--check_overlaps',
+        '--num_patches', [4, 4, 4],
         '--min_mips', 1,
         'check',
     ])
@@ -319,6 +323,7 @@ def test_check_missing_cloudvolume():
         '--overlap', [1, 10, 10],
         '--num_channels', 3,
         '--check_overlaps',
+        '--num_patches', [4, 4, 4],
         '--min_mips', 1,
         'check',
     ])
@@ -339,6 +344,7 @@ def test_create_cloudvolume(input_cloudvolume):
             '--overlap', [1, 10, 10],
             '--num_channels', 3,
             '--check_overlaps',
+            '--num_patches', [4, 4, 4],
             '--min_mips', 0,
             'create'
         ],
@@ -388,6 +394,7 @@ def test_create_only_some_cloudvolume(input_cloudvolume, output_cloudvolume, out
             '--overlap', [1, 4, 4],
             '--num_channels', 3,
             '--check_overlaps',
+            '--num_patches', [4, 4, 4],
             '--min_mips', 0,
             'create'
         ],

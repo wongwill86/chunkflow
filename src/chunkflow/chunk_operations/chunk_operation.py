@@ -1,14 +1,10 @@
 from concurrent.futures import ProcessPoolExecutor
 
 
-def create_operation_and_execute(operation, chunk):
-    return operation(chunk)
-
-
 class ChunkOperation:
     def _process(self, chunk):
         """
-        returns processed data
+        returns processed chunk
         """
         raise NotImplementedError
 
@@ -18,12 +14,10 @@ class ChunkOperation:
 
 
 class OffProcessChunkOperation(ChunkOperation):
-    def __init__(self, operation_class, parallelism=1, *args, **kwargs):
-        self.operation_class = operation_class
-        self.args = args
-        self.kwargs = kwargs
+    def __init__(self, operation, parallelism=1):
+        self.operation = operation
         self.pool = ProcessPoolExecutor(max_workers=parallelism)
 
     def __call__(self, chunk):
-        operation = self.operation_class(*self.args, **self.kwargs)
-        return self.pool.submit(operation.__call__, chunk)
+        # return self.pool.submit(create_operation_and_execute, self.operation_class, self.args, self.kwargs, chunk)
+        return self.pool.submit(self.operation.__call__, chunk)

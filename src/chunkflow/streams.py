@@ -151,8 +151,8 @@ def blocking_subscribe(source, on_next=None, on_error=None, on_completed=None, t
 def aggregate(slices, aggregate, datasource):
     try:
         # Account for additional output dimensions
-        channel_dimensions = len(datasource.shape) - len(slices)
-        channel_slices = (slice(None),) * (channel_dimensions) + slices
+        num_channel_dimensions = len(datasource.shape) - len(slices)
+        channel_slices = (slice(None),) * (num_channel_dimensions) + slices
     except ReferenceError:
         return aggregate
 
@@ -164,9 +164,9 @@ def aggregate(slices, aggregate, datasource):
     # 0 from seed
     if aggregate is 0:
         slice_shape = tuple(s.stop - s.start for s in slices)
-        offset = (0,) * channel_dimensions + tuple(s.start for s in slices)
+        offset = (0,) * num_channel_dimensions + tuple(s.start for s in slices)
         aggregate = GlobalOffsetArray(
-            np.zeros(data.shape[0:channel_dimensions] + slice_shape, dtype=data.dtype),
+            np.zeros(data.shape[0:num_channel_dimensions] + slice_shape, dtype=data.dtype),
             global_offset=offset
         )
         aggregate += data

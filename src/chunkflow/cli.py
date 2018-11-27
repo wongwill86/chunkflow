@@ -166,9 +166,9 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
         obj['overlap'], chunk_shape_options
     )
 
-
     output_datasource = chunk_datasource_manager.output_datasource
-    inference_factory = InferenceFactory(tuple(patch_shape), output_channels=output_datasource.num_channels,
+    channel_dimensions = (output_datasource.num_channels,)
+    inference_factory = InferenceFactory(tuple(patch_shape), channel_dimensions=channel_dimensions,
                                          output_datatype=output_datasource.data_type, gpu=gpu,
                                          accelerator_ids=accelerator_ids)
     blend_factory = BlendFactory(block)
@@ -176,7 +176,7 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
     task_stream = create_inference_and_blend_stream(
         block=block,
         inference_operation=inference_factory.get_operation(inference_framework, model_path, checkpoint_path,
-                                                            off_main_process=True, parallelism=inference_parallelism),
+                                                            off_main_process=False, parallelism=inference_parallelism),
         blend_operation=blend_factory.get_operation(blend_framework),
         datasource_manager=chunk_datasource_manager,
     )
