@@ -10,6 +10,7 @@ from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionclassmethod, extensionmethod
 from rx.internal.utils import is_future
 
+from chunkflow.datasource_manager import get_mod_index
 from chunkflow.chunk_buffer import CacheMiss
 
 MAX_RETRIES = 10
@@ -242,6 +243,7 @@ def create_aggregate_stream(block, datasource_manager):
             (
                 # create temp list of repositories values at time of iteration / also weakref
                 Observable.from_(block.get_all_neighbors(chunk)).start_with(chunk)
+                .distinct(lambda chunk: get_mod_index(chunk.unit_index))
                 .map(datasource_manager.get_overlap_datasource)
                 .filter(lambda datasource: datasource is not None)
                 .reduce(partial(aggregate, chunk.slices), seed=0)
@@ -420,7 +422,9 @@ def create_blend_stream(block, datasource_manager):
             # Aggregate overlap dataset
             lambda dataset_chunk_slices:
             (
-                Observable.from_(datasource_manager.overlap_repository.datasources.values())
+                Observable.from_(datasource_manager.overlap_repository.datasources.items())
+                .distinct(lambda mod_index_datasource: get_mod_index(mod_index_datasource[0]))
+                .map(lambda mod_index_datasource: mod_index_datasource[1])
                 .reduce(partial(aggregate, dataset_chunk_slices), seed=0)
                 .do_action(
                     partial(datasource_manager.copy, dataset_chunk, destination=datasource_manager.output_datasource,

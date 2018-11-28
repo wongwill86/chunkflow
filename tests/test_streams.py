@@ -209,6 +209,10 @@ class TestInferenceStream:
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(print)
 
+        print(datasource_manager.output_datasource)
+        print(datasource_manager.output_datasource_final)
+        for ds in datasource_manager.overlap_repository.datasources.values():
+            print(ds)
         assert np.product(block.shape) == \
             datasource_manager.output_datasource.sum() + \
             datasource_manager.output_datasource_final.sum()
@@ -407,7 +411,7 @@ class TestBlendStream:
 
         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
-        assert 3 ** len(chunk_index) * 3 == \
+        assert len(datasource_manager.overlap_repository.datasources) * 3 == \
             datasource_manager.output_datasource.sum()
 
     def test_blend_3d(self):
@@ -435,7 +439,7 @@ class TestBlendStream:
 
         Observable.just(chunk).flat_map(blend_stream).subscribe(print)
 
-        assert 3 ** len(chunk_index) * 7 == \
+        assert len(datasource_manager.overlap_repository.datasources) * 7 == \
             datasource_manager.output_datasource.sum()
 
     def test_blend_multichannel_3d(self):
@@ -694,6 +698,11 @@ class TestStreamIntegration:
         inner_shape = tuple(sh - o * 2 for sh, o in zip(dataset_block.shape, overlap))
         print(dataset_block.bounds, inner_bounds)
         print(task_block.shape, inner_shape)
+
+        print(datasource_manager.output_datasource)
+        print(datasource_manager.output_datasource_final)
+        for ds in datasource_manager.overlap_repository.datasources.values():
+            print(ds)
 
         assert np.product(inner_shape) * 111 == \
             chunk_datasource_manager.output_datasource_final[inner_bounds].sum()
