@@ -21,7 +21,7 @@ def get_absolute_index(offset, overlap, shape):
 
 
 def get_mod_index(index):
-    return tuple(abs(idx % 3) for idx in index)
+    return tuple(abs(idx % 2) for idx in index)
 
 
 def get_all_mod_index(index):
