@@ -25,7 +25,7 @@ def get_mod_index(index):
 
 
 def get_all_mod_index(index):
-    return itertools.chain([index], map(get_mod_index, UnitIterator().get_all_neighbors(index)))
+    return set(itertools.chain([tuple(index)], map(get_mod_index, UnitIterator().get_all_neighbors(index))))
 
 
 def get_mem_info(name, keys, datas):

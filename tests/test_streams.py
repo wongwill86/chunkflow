@@ -209,10 +209,6 @@ class TestInferenceStream:
 
         Observable.from_(block.chunk_iterator()).flat_map(task_stream).to_blocking().blocking_subscribe(print)
 
-        print(datasource_manager.output_datasource)
-        print(datasource_manager.output_datasource_final)
-        for ds in datasource_manager.overlap_repository.datasources.values():
-            print(ds)
         assert np.product(block.shape) == \
             datasource_manager.output_datasource.sum() + \
             datasource_manager.output_datasource_final.sum()
@@ -347,9 +343,13 @@ class TestInferenceStream:
             chunk_datasource_manager.output_datasource_final[block.bounds].sum()
 
     def test_process_cloudvolume_sparse_buffered(self, chunk_datasource_manager):
-        task_shape = (5, 10, 10)
+        # task_shape = (5, 10, 10)
+        # overlap = (1, 2, 2)
+        # num_chunks = (3, 3, 3)
+
         overlap = (1, 2, 2)
-        num_chunks = (3, 3, 3)
+        task_shape = (5, 10, 10)
+        num_chunks = (2, 2, 2)
 
         input_datasource = chunk_datasource_manager.input_datasource
         offsets = input_datasource.voxel_offset[::-1]
@@ -538,6 +538,8 @@ class TestBlendStream:
             Observable.from_(list(block.chunk_iterator()))
             .flat_map(create_preload_datasource_stream(block, block_datasource_manager,
                                                        block_datasource_manager.output_datasource))
+            .reduce(lambda x, y: x + [y], seed=[])
+            .flat_map(lambda x: x)
             .flat_map(blend_stream)
             .reduce(lambda x, y: x)
             .map(lambda _: block_datasource_manager.flush(None, datasource=block_datasource_manager.output_datasource))
@@ -545,7 +547,7 @@ class TestBlendStream:
             .subscribe(print)
         )
         np.set_printoptions(threshold=np.nan, linewidth=400)
-        print(block_datasource_manager.output_datasource[block.bounds][0])
+        print(block_datasource_manager.output_datasource[block.bounds])
         assert data_sum == block_datasource_manager.output_datasource[block.bounds].sum()
 
 
@@ -696,13 +698,6 @@ class TestStreamIntegration:
 
         inner_bounds = tuple(slice(s.start + o, s.stop - o) for s, o in zip(dataset_block.bounds, overlap))
         inner_shape = tuple(sh - o * 2 for sh, o in zip(dataset_block.shape, overlap))
-        print(dataset_block.bounds, inner_bounds)
-        print(task_block.shape, inner_shape)
-
-        print(datasource_manager.output_datasource)
-        print(datasource_manager.output_datasource_final)
-        for ds in datasource_manager.overlap_repository.datasources.values():
-            print(ds)
 
         assert np.product(inner_shape) * 111 == \
             chunk_datasource_manager.output_datasource_final[inner_bounds].sum()

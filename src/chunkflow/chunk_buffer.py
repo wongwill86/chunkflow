@@ -21,7 +21,6 @@ class ChunkBuffer:
     def create(self, offset):
         shape = self.channel_dimensions + self.block.chunk_shape
         # shape = (10, 20, 256, 256)
-        print(shape)
 
         return GlobalOffsetArray(
             np.ones(shape, dtype=self.dtype) - 1,

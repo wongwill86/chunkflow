@@ -10,8 +10,8 @@ from rx.core.blockingobservable import BlockingObservable
 from rx.internal import extensionclassmethod, extensionmethod
 from rx.internal.utils import is_future
 
-from chunkflow.datasource_manager import get_mod_index
 from chunkflow.chunk_buffer import CacheMiss
+from chunkflow.datasource_manager import get_mod_index
 
 MAX_RETRIES = 10
 

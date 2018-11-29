@@ -190,13 +190,15 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
 
 @task.command()
 @click.option('--volume_size', type=list, help="Total size of volume data (ZYX order). Used to determine if overlap "
-              "region needs to be included at dataset boundaries, i.e. if current task is at the boundary of region of "
-              "interest or completely inside. MUST be specified with --voxel_offset",
-              cls=PythonLiteralOption, callback=validate_literal, default=None)
+              "region along the high index dataset_boundaries should be computed i.e. current task is at the boundary "
+              "of the region of interest or completely inside. MUST be specified with --voxel_offset. If not "
+              "specified it is assumed that this is an inner block and high index boundaries will be computed by the "
+              "next task", cls=PythonLiteralOption, callback=validate_literal, default=None)
 @click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data (ZYX order). Used to "
-              "determine if overlap region needs to be included at dataset_boundaries, i.e. if current task is at the "
-              "boundary of the region of interest or completely inside. MUST be specified with --voxel_offset",
-              cls=PythonLiteralOption, callback=validate_literal, default=None)
+              "determine if overlap region along the high index dataset_boundaries should be computed i.e. current "
+              " task is at the boundary of the region of interest or completely inside. MUST be specified with "
+              "--volume_size. If not specified it is assumed that this is an inner block and high index boundaries "
+              "will be computed by the next task", cls=PythonLiteralOption, callback=validate_literal, default=None)
 @click.pass_obj
 def blend(obj, **kwargs):
     """
@@ -217,7 +219,6 @@ def blend(obj, **kwargs):
         overlap = obj['overlap']
         dataset_bounds = tuple(slice(o - (s - olap), o + (s - olap) + s) for o, s, olap in zip(
             task_offset, task_shape, overlap))
-        print(dataset_bounds)
 
     datasource_manager = obj['block_datasource_manager']
     datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
@@ -234,6 +235,8 @@ def blend(obj, **kwargs):
     chunk = block.unit_index_to_chunk(chunk_index)
 
     (
+        # Note if we are blending multiple chunks, be sure to complete all preloading before running blend
+        # i.e. preload ... .reduce(lambda x, y: x + [y], seed=[]).flat_map(lambda x: x) ...
         Observable.just(chunk)
         .flat_map(create_preload_datasource_stream(block, datasource_manager,
                                                    datasource_manager.output_datasource))

@@ -133,7 +133,7 @@ class TestCloudVolumeDatasource:
 
         datasource = repository.overlap_repository.get_datasource((10, 11, 12))
 
-        assert repository.overlap_repository.get_datasource((1, 2, 0)) == datasource
+        assert repository.overlap_repository.get_datasource((0, 1, 0)) == datasource
 
     def test_pickle(self, input_cloudvolume):
         return
