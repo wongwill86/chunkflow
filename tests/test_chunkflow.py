@@ -14,9 +14,7 @@ def test_inference(block_datasource_manager):
     volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
     overlap = [1, 4, 4]
     patch_shape = [5, 10, 10]
-    num_chunks = [2, 2, 2]
-    task_shape = tuple((ps - olap) * num + olap for ps, olap, num in zip(patch_shape, overlap,
-                                                                         num_chunks))
+    num_patches = [2, 2, 2]
 
     dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
 
@@ -26,12 +24,12 @@ def test_inference(block_datasource_manager):
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
+        '--patch_shape', list(patch_shape),
+        '--num_patches', list(num_patches),
+        '--overlap', list(overlap),
         'task',
         '--task_offset_coordinates', list(offset),
-        '--task_shape', list(task_shape),
-        '--overlap', overlap,
         'inference',
-        '--patch_shape', patch_shape,
         '--inference_framework', 'identity',
         '--blend_framework', 'average',
     ])
@@ -47,36 +45,23 @@ def test_inference(block_datasource_manager):
 
     assert result.exit_code == 0
     assert result.exception is None
+    task_shape = tuple((ps - olap) * n + olap for ps, olap, n in zip(patch_shape, overlap, num_patches))
     inner_bounds = tuple(slice(o + olap, o + s - olap) for s, o, olap in zip(task_shape, offset, overlap))
     inner_shape = tuple(sh - o * 2 for sh, o in zip(task_shape, overlap))
 
     assert np.prod(inner_shape) * 3 == block_datasource_manager.output_datasource[inner_bounds].sum()
 
-
-def test_inference_bad_config(block_datasource_manager):
-    runner = CliRunner()
-    offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
-    volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    overlap = [1, 4, 4]
-    patch_shape = [5, 10, 10]
-    num_chunks = [3, 2, 2]
-    task_shape = tuple((ps - olap) * num + olap for ps, olap, num in zip(patch_shape, overlap,
-                                                                         num_chunks))
-
-    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
-
-    block_datasource_manager.input_datasource[dataset_bounds] = np.ones(
-        volume_shape, dtype=np.dtype(block_datasource_manager.input_datasource.data_type))
-
+    # test bad_config
+    num_patches = [3, 2, 2]
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
+        '--patch_shape', list(patch_shape),
+        '--num_patches', list(num_patches),
+        '--overlap', list(overlap),
         'task',
         '--task_offset_coordinates', list(offset),
-        '--task_shape', list(task_shape),
-        '--overlap', overlap,
         'inference',
-        '--patch_shape', patch_shape,
         '--inference_framework', 'identity',
         '--blend_framework', 'average',
     ])
@@ -84,30 +69,43 @@ def test_inference_bad_config(block_datasource_manager):
     assert result.exit_code != 0
 
 
-def test_blend_with_offset_top_edge_task(block_datasource_manager):
+def test_blend_with_offset_outer_chunk(block_datasource_manager):
+    """
+    Normal higher index overlap edges along a chunk are normally processed by the following task chunk. However, along
+    the dataset boundaries there are no such task and therefore these overlap edges along the dataset edge must be
+    processed in the chunk.
+    """
     runner = CliRunner()
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
-    volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    task_shape = (3, 30, 30)
+    task_shape = patch_shape = (3, 15, 15)
+    num_patches = (1, 1, 1)
     output_shape = (3,) + task_shape
+    overlap = [1, 5, 5]
 
-    task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
-    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
+    # Test for the bottom corner
+    task_offset = list(o + oo for o, oo in zip(offset, (4, 20, 20)))
+    task_bounds = tuple(slice(o, o + s) for o, s in zip(task_offset, task_shape))
 
     block_datasource_manager.create_overlap_datasources(task_shape)
     for datasource in block_datasource_manager.overlap_repository.datasources.values():
         datasource[task_bounds] = np.ones(output_shape, dtype=np.dtype(datasource.data_type))
 
+    core_shape = tuple(s - 2 * olap for s, olap in zip(task_shape, overlap))
+    core_slice = tuple(slice(o + olap, o + s - olap) for o, olap, s in zip(task_offset, overlap, task_shape))
+    block_datasource_manager.output_datasource[core_slice] = np.ones((3,) + core_shape,
+                                                                     dtype=np.dtype(datasource.data_type))
+
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
+        '--patch_shape', list(patch_shape),
+        '--num_patches', list(num_patches),
+        '--overlap', list(overlap),
         'task',
-        '--task_offset_coordinates', list(offset),
-        '--task_shape', list(task_shape),
-        '--overlap', [1, 10, 10],
+        '--task_offset_coordinates', list(task_offset),  # list(offset),
         'blend',
-        '--voxel_offset', list(offset),
-        '--volume_size', [3, 30, 30],
+        '--dataset_voxel_offset', list(offset),
+        '--dataset_size', [7, 35, 35],
     ])
 
     print(result.output)
@@ -120,16 +118,25 @@ def test_blend_with_offset_top_edge_task(block_datasource_manager):
     assert result.exit_code == 0
     assert result.exception is None
     # Includes top left edge task
-    num_values = np.product(task_shape)
-    assert (num_values) * (3 ** len(task_shape) - 1) * 3 == \
-        block_datasource_manager.output_datasource[dataset_bounds].sum()
+
+    np.set_printoptions(threshold=np.inf, linewidth=250)
+
+    # for the bottom corner, only the core is not filled
+    # ((entire task - core) * unique mod indices + core shape) * # channels
+    assert (
+        ((np.product(task_shape) - np.product(core_shape)) * 2 ** len(task_shape) + np.product(core_shape)) * 3) == \
+        block_datasource_manager.output_datasource[task_bounds].sum()
 
 
-def test_blend_with_offset_non_top_edge_task(block_datasource_manager):
+def test_blend_with_offset_inner_chunk(block_datasource_manager):
+    """
+    Process task chunk as an inner chunk with no regard for dataset boundary effects
+    """
     runner = CliRunner()
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
     volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    task_shape = (3, 30, 30)
+    task_shape = patch_shape = (3, 30, 30)
+    num_patches = (1, 1, 1)
     overlap = [1, 10, 10]
     output_shape = (3,) + task_shape
 
@@ -143,13 +150,14 @@ def test_blend_with_offset_non_top_edge_task(block_datasource_manager):
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
+        '--patch_shape', list(patch_shape),
+        '--num_patches', list(num_patches),
+        '--overlap', list(overlap),
         'task',
         '--task_offset_coordinates', list(offset),
-        '--task_shape', list(task_shape),
-        '--overlap', overlap,
         'blend',
-        '--voxel_offset', list(o - s + olap for o, s, olap in zip(offset, task_shape, overlap)),
-        '--volume_size', [7, 70, 70],
+        '--dataset_voxel_offset', list(o - s + olap for o, s, olap in zip(offset, task_shape, overlap)),
+        '--dataset_size', [7, 70, 70],
     ])
 
     print(result.output)
@@ -159,19 +167,24 @@ def test_blend_with_offset_non_top_edge_task(block_datasource_manager):
                                                  tb=result.exception.__traceback__)))
     assert result.exit_code == 0
     assert result.exception is None
-    assert np.product(task_shape) * 7 * 3 == \
+
+    # overlap area * overlaps * unique mod indices * # channels
+    assert np.product(overlap) * 7 * 2 ** 3 * 3 == \
         block_datasource_manager.output_datasource[dataset_bounds].sum()
 
 
 def test_blend_no_offset(block_datasource_manager):
+    """
+    With no voxel_offset specified, process task chunk as an inner chunk with no regard for dataset boundary effects
+    """
     runner = CliRunner()
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
-    volume_shape = block_datasource_manager.input_datasource.volume_size[::-1]
-    task_shape = (3, 30, 30)
+    task_shape = patch_shape = (3, 30, 30)
+    num_patches = (1, 1, 1)
     output_shape = (3,) + task_shape
+    overlap = [1, 10, 10]
 
     task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
-    dataset_bounds = tuple(slice(o, o + s) for o, s in zip(offset, volume_shape))
 
     block_datasource_manager.create_overlap_datasources(task_shape)
     for datasource in block_datasource_manager.overlap_repository.datasources.values():
@@ -180,14 +193,15 @@ def test_blend_no_offset(block_datasource_manager):
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
+        '--patch_shape', list(patch_shape),
+        '--num_patches', list(num_patches),
+        '--overlap', list(overlap),
         'task',
         '--task_offset_coordinates', list(offset),
-        '--task_shape', list(task_shape),
-        '--overlap', [1, 10, 10],
         'blend',
     ])
 
-    np.set_printoptions(threshold=np.inf)
+    np.set_printoptions(threshold=np.inf, linewidth=250)
 
     print(result.output)
     #  force print error (until click 7.0 https://github.com/pallets/click/issues/371)
@@ -196,15 +210,22 @@ def test_blend_no_offset(block_datasource_manager):
                                                  tb=result.exception.__traceback__)))
     assert result.exit_code == 0
     assert result.exception is None
-    assert np.product(task_shape) * 7 * 3 == \
-        block_datasource_manager.output_datasource[dataset_bounds].sum()
+
+    slices = tuple(slice(o, s + o) for s, o in zip(task_shape, offset))
+    print(block_datasource_manager.output_datasource[slices][0])
+
+    # overlap area * overlaps * unique mod indices * # channels
+    assert np.product(overlap) * 7 * 2 ** 3 * 3 == \
+        block_datasource_manager.output_datasource[slices].sum()
 
 
 def test_blend_bad_param(block_datasource_manager):
     runner = CliRunner()
     offset = block_datasource_manager.input_datasource.voxel_offset[::-1]
-    task_shape = (3, 30, 30)
+    task_shape = patch_shape = (3, 30, 30)
+    num_patches = (1, 1, 1)
     output_shape = (3,) + task_shape
+    overlap = [1, 10, 10]
 
     task_bounds = tuple(slice(o, o + s) for o, s in zip(offset, task_shape))
 
@@ -215,12 +236,14 @@ def test_blend_bad_param(block_datasource_manager):
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
+        '--patch_shape', list(patch_shape),
+        '--num_patches', list(num_patches),
+        '--overlap', list(overlap),
         'task',
         '--task_offset_coordinates', list(offset),
         '--task_shape', list(task_shape),
-        '--overlap', [1, 10, 10],
         'blend',
-        '--voxel_offset', [1, 10, 10],
+        '--dataset_voxel_offset', [1, 10, 10],
     ])
 
     np.set_printoptions(threshold=np.inf)
@@ -234,12 +257,12 @@ def test_check(block_datasource_manager, output_cloudvolume_overlaps):
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
-        'cloudvolume',
-        '--patch_shape', [5, 10, 10],
         '--overlap', [1, 4, 4],
-        '--num_channels', 3,
-        '--check_overlaps',
+        '--patch_shape', [5, 10, 10],
         '--num_patches', [4, 4, 4],
+        'cloudvolume',
+        '--num_channels', 3,
+        '--overlaps',
         '--min_mips', 0,
         'check',
     ])
@@ -261,12 +284,12 @@ def test_check_bad_chunksize(block_datasource_manager, output_cloudvolume_overla
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
-        'cloudvolume',
         '--patch_shape', [3, 30, 30],
         '--overlap', [1, 10, 10],
-        '--num_channels', 3,
-        '--check_overlaps',
         '--num_patches', [4, 4, 4],
+        'cloudvolume',
+        '--num_channels', 3,
+        '--overlaps',
         '--min_mips', 1,
         'check',
     ])
@@ -279,12 +302,13 @@ def test_check_missing_overlaps_not_needed(block_datasource_manager):
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
-        'cloudvolume',
         '--patch_shape', [5, 10, 10],
         '--overlap', [1, 4, 4],
-        '--num_channels', 3,
         '--num_patches', [4, 4, 4],
+        'cloudvolume',
+        '--num_channels', 3,
         '--min_mips', 0,
+        '--no_overlaps',
         'check',
     ])
     print(result.output)
@@ -300,12 +324,12 @@ def test_check_missing_overlaps_needed(block_datasource_manager):
     result = runner.invoke(main, [
         '--input_image_source', block_datasource_manager.input_datasource.layer_cloudpath,
         '--output_destination', block_datasource_manager.output_datasource.layer_cloudpath,
-        'cloudvolume',
         '--patch_shape', [3, 30, 30],
         '--overlap', [1, 10, 10],
-        '--num_channels', 3,
-        '--check_overlaps',
         '--num_patches', [4, 4, 4],
+        'cloudvolume',
+        '--num_channels', 3,
+        '--overlaps',
         '--min_mips', 1,
         'check',
     ])
@@ -318,12 +342,12 @@ def test_check_missing_cloudvolume():
     result = runner.invoke(main, [
         '--input_image_source', 'badlayer',
         '--output_destination', 'badlayer',
-        'cloudvolume',
         '--patch_shape', [3, 30, 30],
         '--overlap', [1, 10, 10],
-        '--num_channels', 3,
-        '--check_overlaps',
         '--num_patches', [4, 4, 4],
+        'cloudvolume',
+        '--num_channels', 3,
+        '--overlaps',
         '--min_mips', 1,
         'check',
     ])
@@ -339,12 +363,12 @@ def test_create_cloudvolume(input_cloudvolume):
         [
             '--input_image_source', input_cloudvolume.layer_cloudpath,
             '--output_destination', output_destination,
-            'cloudvolume',
             '--patch_shape', [3, 30, 30],
-            '--overlap', [1, 10, 10],
-            '--num_channels', 3,
-            '--check_overlaps',
             '--num_patches', [4, 4, 4],
+            '--overlap', [1, 10, 10],
+            'cloudvolume',
+            '--num_channels', 3,
+            '--overlaps',
             '--min_mips', 0,
             'create'
         ],
@@ -389,12 +413,12 @@ def test_create_only_some_cloudvolume(input_cloudvolume, output_cloudvolume, out
         [
             '--input_image_source', input_cloudvolume.layer_cloudpath,
             '--output_destination', output_cloudvolume.layer_cloudpath,
-            'cloudvolume',
             '--patch_shape', [5, 10, 10],
             '--overlap', [1, 4, 4],
-            '--num_channels', 3,
-            '--check_overlaps',
             '--num_patches', [4, 4, 4],
+            'cloudvolume',
+            '--num_channels', 3,
+            '--overlaps',
             '--min_mips', 0,
             'create'
         ],
@@ -446,11 +470,12 @@ def test_create_cloudvolume_mixed_chunk_size(input_cloudvolume, output_cloudvolu
         [
             '--input_image_source', input_cloudvolume.layer_cloudpath,
             '--output_destination', output_cloudvolume.layer_cloudpath,
-            'cloudvolume',
             '--patch_shape', [3, 30, 30],
             '--overlap', [1, 10, 10],
+            '--num_patches', [4, 4, 4],
+            'cloudvolume',
             '--num_channels', 3,
-            '--check_overlaps',
+            '--overlaps',
             '--min_mips', 1,
             'create'
         ],

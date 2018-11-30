@@ -75,8 +75,8 @@ RUN cat .git/refs/$(cat .git/HEAD | sed -e's/ref: refs\///g') > version/COMMIT \
 ENTRYPOINT ["chunkflow/docker/entrypoint.sh"]
 
 ######### HACKS FOR PZNET #########
-RUN export LC_ALL=C.UTF-8
-RUN export LANG=C.UTF-8
+ENV LC_ALL C.UTF-8
+ENV LANG C.UTF-8
 
 # pznet writes to .tmp within that folder
 RUN mkdir -p /opt/znnphi_interface/code/znet/src/python/pznet/.tmp/ && \
