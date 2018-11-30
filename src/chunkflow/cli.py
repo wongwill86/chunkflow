@@ -64,24 +64,25 @@ def validate_literal(ctx, param, value):
 @click.option('--output_destination', type=str, help="destination path for the valid output of the chunk,\
               prefixes supported: file://, gs://, s3://.",
               required=True)
+@click.option('--patch_shape', type=list, help="shape of the input task to run (ZYX order)",
+              cls=PythonLiteralOption, callback=validate_literal, required=True)
+@click.option('--num_patches', type=list, help="shape of the input task to run (ZYX order)",
+              cls=PythonLiteralOption, callback=validate_literal, required=True)
+@click.option('--overlap', type=list, help="overlap across this task with other tasks, assumed same as patch overlap "
+              "(ZYX order)", cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.pass_context
 def main(ctx, **kwargs):
     obj = {}
     obj.update(kwargs)
     ctx.obj = obj
-    pass
+    obj['task_shape'] = tuple((ps - olap) * n + olap for ps, olap, n in zip(
+        obj['patch_shape'], obj['overlap'], obj['num_patches']))
+    print('Computed task shape:', obj['task_shape'])
 
 
 @main.group()
 @click.option('--task_offset_coordinates', type=list, help="the start coordinates to run task (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--task_shape', type=list, help="shape of the input task to run (ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--overlap', type=list,
-              help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--overlap_protocol', type=str, help="cloudvolume protocol to use for overlap cloudvolumes",
-              default=None)
 @click.pass_obj
 def task(obj, **kwargs):
     """
@@ -90,10 +91,9 @@ def task(obj, **kwargs):
     print('Setting up datasource manager')
     obj.update(kwargs)
 
-    obj['task_bounds'] = tuple(slice(o, o + sh) for o, sh in zip(
-        obj['task_offset_coordinates'],
-        obj['task_shape']
-    ))
+    obj['task_bounds'] = tuple(slice(o, o + sh) for o, sh in zip(obj['task_offset_coordinates'], obj['task_shape']))
+
+    print('Computed task bounds:', obj['task_bounds'])
 
     input_cloudvolume = CloudVolumeCZYX(
         obj['input_image_source'], cache=False, fill_missing=True)
@@ -106,28 +106,26 @@ def task(obj, **kwargs):
 
 
 @task.command()
-@click.option('--patch_shape', type=list, help="convnet input patch shape (ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--inference_framework', type=str, help="backend of deep learning framework, such as pytorch and pznet.",
-              default='cpytorch')
-@click.option('--blend_framework', type=str, help="What blend method to use",
-              default='average')
-@click.option('--model_path', type=str, help="the path of convnet model")
-@click.option('--checkpoint_path', type=str, help="the path of convnet weights")
+@click.option('--inference_framework', type=str, help="backend deep learning framework, i.e. 'pytorch' and 'pznet'.",
+              default='pytorch')
+@click.option('--blend_framework', type=str, help="What blend method to use", default='average')
+@click.option('--model_path', type=str, help="Cloudvolume Storage compatible path for model")
+@click.option('--checkpoint_path', type=str, help="Cloudvolume Storage compatible path for checkpoints")
 @click.option('--accelerator_ids', type=list, help="ids of cpus/gpus to use",
               cls=PythonLiteralOption, callback=validate_literal, default=[1])
 @click.option('--gpu/--no-gpu', help="Are we using GPUs", default=False)
 @click.option('--inference_parallelism', type=int, help="How many patches to process in parallel", default=1)
+@click.option('--io_parallelism', type=int, help="How many downloads and uploads to perform in parallel", default=1)
 @click.pass_obj
-def inference(obj, patch_shape, inference_framework, blend_framework, model_path, checkpoint_path, accelerator_ids,
-              gpu, inference_parallelism):
+def inference(obj, inference_framework, blend_framework, model_path, checkpoint_path, accelerator_ids, gpu,
+              inference_parallelism, io_parallelism):
     """
     Run inference on task
     """
     print('Running inference ...')
     block_datasource_manager = obj['block_datasource_manager']
 
-    block = Block(bounds=obj['task_bounds'], chunk_shape=tuple(patch_shape), overlap=obj['overlap'])
+    block = Block(bounds=obj['task_bounds'], chunk_shape=tuple(obj['patch_shape']), overlap=obj['overlap'])
 
     absolute_index = get_absolute_index(obj['task_offset_coordinates'], obj['overlap'], obj['task_shape'])
     output_cloudvolume_overlap = block_datasource_manager.overlap_repository.get_datasource(absolute_index)
@@ -142,33 +140,33 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
             dtype=output_cloudvolume_overlap.dtype,
         ),
         buffer_generator=create_buffered_cloudvolumeCZYX,
-        load_executor=ProcessPoolExecutor(),
-        flush_executor=ProcessPoolExecutor()
+        load_executor=ProcessPoolExecutor(max_workers=io_parallelism),
+        flush_executor=ProcessPoolExecutor(max_workers=io_parallelism)
     )
 
     print('Using output_datasource', chunk_datasource_manager.output_datasource.layer_cloudpath)
     print('Using output_datasource_final', chunk_datasource_manager.output_datasource_final.layer_cloudpath)
 
     # Check to make sure patch sizes are correct
-    chunk_shape_options = get_possible_chunk_sizes(obj['overlap'], patch_shape, 0, block.num_chunks)
+    chunk_shape_options = get_possible_chunk_sizes(obj['overlap'], obj['patch_shape'], 0, block.num_chunks)
     assert valid_cloudvolume(
         chunk_datasource_manager.output_datasource_final,
         chunk_shape_options, chunk_datasource_manager.input_datasource
     ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s, expecting: %s' % (
-        chunk_datasource_manager.output_datasource.layer_cloudpath, patch_shape, block.num_chunks, obj['overlap'],
-        chunk_shape_options
+        chunk_datasource_manager.output_datasource.layer_cloudpath, obj['patch_shape'], block.num_chunks,
+        obj['overlap'], chunk_shape_options
     )
     assert valid_cloudvolume(
         chunk_datasource_manager.output_datasource,
         chunk_shape_options, chunk_datasource_manager.input_datasource
     ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s, expecting: %s' % (
-        chunk_datasource_manager.output_datasource_final.layer_cloudpath, patch_shape, block.num_chunks,
+        chunk_datasource_manager.output_datasource_final.layer_cloudpath, obj['patch_shape'], block.num_chunks,
         obj['overlap'], chunk_shape_options
     )
 
     output_datasource = chunk_datasource_manager.output_datasource
     channel_dimensions = (output_datasource.num_channels,)
-    inference_factory = InferenceFactory(tuple(patch_shape), channel_dimensions=channel_dimensions,
+    inference_factory = InferenceFactory(tuple(obj['patch_shape']), channel_dimensions=channel_dimensions,
                                          output_datatype=output_datasource.data_type, gpu=gpu,
                                          accelerator_ids=accelerator_ids)
     blend_factory = BlendFactory(block)
@@ -189,16 +187,21 @@ def inference(obj, patch_shape, inference_framework, blend_framework, model_path
 
 
 @task.command()
-@click.option('--volume_size', type=list, help="Total size of volume data (ZYX order). Used to determine if overlap "
-              "region along the high index dataset_boundaries should be computed i.e. current task is at the boundary "
-              "of the region of interest or completely inside. MUST be specified with --voxel_offset. If not "
-              "specified it is assumed that this is an inner block and high index boundaries will be computed by the "
-              "next task", cls=PythonLiteralOption, callback=validate_literal, default=None)
-@click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data (ZYX order). Used to "
-              "determine if overlap region along the high index dataset_boundaries should be computed i.e. current "
-              " task is at the boundary of the region of interest or completely inside. MUST be specified with "
-              "--volume_size. If not specified it is assumed that this is an inner block and high index boundaries "
-              "will be computed by the next task", cls=PythonLiteralOption, callback=validate_literal, default=None)
+@click.option('--dataset_size', type=list, help="""
+              Total size of where to volume to process (ZYX order). Used to determine if overlap region along the high
+              index dataset_boundaries should be computed i.e. current task is at the boundary of the region of interest
+              or completely inside. MUST be specified with --dataset_voxel_offset. If not specified, it is assumed that
+              this is an inner task chunk and high index boundaries will be skipped (assumed to be computed by the next
+              task).
+              """, cls=PythonLiteralOption, callback=validate_literal, default=None)
+@click.option('--dataset_voxel_offset', type=list, help="""
+              Beginning offset coordinates of volume to process (ZYX order). Used to determine if overlap region along
+              the high index dataset_boundaries should be computed i.e. current task is at the boundary of the region of
+              interest or completely inside. MUST be specified with --dataset_size. If not specified, it is assumed that
+              this is an inner task chunk and high index boundaries will be skipped (assumed to be computed by the next
+              task)
+              """, cls=PythonLiteralOption,
+              callback=validate_literal, default=None)
 @click.pass_obj
 def blend(obj, **kwargs):
     """
@@ -208,10 +211,10 @@ def blend(obj, **kwargs):
     obj.update(kwargs)
     task_shape = obj['task_shape']
 
-    if obj['volume_size'] is not None and obj['voxel_offset'] is not None:
-        dataset_bounds = tuple(slice(o, o + s) for o, s in zip(obj['voxel_offset'], obj['volume_size']))
-    elif obj['volume_size'] is not None or obj['voxel_offset'] is not None:
-        raise ValueError("MUST specify both volume_size AND voxel_offset")
+    if obj['dataset_size'] is not None and obj['dataset_voxel_offset'] is not None:
+        dataset_bounds = tuple(slice(o, o + s) for o, s in zip(obj['dataset_voxel_offset'], obj['dataset_size']))
+    elif obj['dataset_size'] is not None or obj['dataset_voxel_offset'] is not None:
+        raise ValueError("MUST specify both dataset_size AND dataset_voxel_offset")
     else:
         # assume this task is completely inside so we blend all overlap regions
         task_offset = obj['task_offset_coordinates']
@@ -219,13 +222,11 @@ def blend(obj, **kwargs):
         overlap = obj['overlap']
         dataset_bounds = tuple(slice(o - (s - olap), o + (s - olap) + s) for o, s, olap in zip(
             task_offset, task_shape, overlap))
+        print('No dataset_size and dataset_voxel_offset, high index boundaries will not be computed')
 
     datasource_manager = obj['block_datasource_manager']
     datasource_manager.buffer_generator = create_buffered_cloudvolumeCZYX
 
-    print(obj['voxel_offset'])
-    print(obj['volume_size'])
-    print('dataset_bounds', dataset_bounds)
     block = Block(bounds=dataset_bounds, chunk_shape=obj['task_shape'], overlap=obj['overlap'])
 
     datasource_manager.create_overlap_datasources(obj['task_shape'])
@@ -245,24 +246,17 @@ def blend(obj, **kwargs):
         # flushing everything returns a list of futures
         .map(lambda _: datasource_manager.flush(None, datasource=datasource_manager.output_datasource))
         .flat_map(lambda futures: as_completed(futures))
-        .subscribe(lambda a: print('Completed Blend of datasource_chunk:!', a.result().unit_index))
+        .subscribe(lambda a: print('Completed Blend of datasource_chunk:', a.result().unit_index))
     )
 
     print('Finished blend!')
 
 
 @main.group()
-@click.option('--patch_shape', type=list, help="convnet input patch shape (ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, required=True)
-@click.option('--num_patches', type=list, help="how large of a task desired(ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--min_mips', type=int, help="number of mip levels expected (sets minimum chunk size)",
               default=4)
-@click.option('--overlap', type=list,
-              help="overlap across this task with other tasks, assumed same as patch overlap (ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, required=True)
 @click.option('--num_channels', type=int, help="number of convnet output channels", default=3)
-@click.option('--check_overlaps/--no-check_overlaps', help="Option to consider overlap datasources", default=False)
+@click.option('--overlaps/--no_overlaps', help="Option to consider overlap datasources", default=True)
 @click.pass_obj
 def cloudvolume(obj, **kwargs):
     """
@@ -270,30 +264,27 @@ def cloudvolume(obj, **kwargs):
     """
     obj.update(kwargs)
 
-    overlap = kwargs['overlap']
-    patch_shape = kwargs['patch_shape']
-    chunk_shape_options = get_possible_chunk_sizes(overlap, patch_shape, obj['min_mips'], obj['num_patches'])
+    chunk_shape_options = get_possible_chunk_sizes(obj['overlap'], obj['patch_shape'], obj['min_mips'],
+                                                   obj['num_patches'])
     obj['chunk_shape_options'] = chunk_shape_options
     obj['input_datasource'] = CloudVolumeCZYX(obj['input_image_source'])
-
-    print('Finished cloudvolume prepare')
 
 
 @cloudvolume.command()
 @click.pass_obj
 def check(obj):
     """
-    Check if output destination exists and if the chunk sizes are correct (use --check_overlaps to check overlaps)
+    Check if output destination exists and if the chunk sizes are correct (use --overlaps to check overlaps)
     """
     print('Checking cloudvolume ...')
     output_destination = obj['output_destination']
     assert valid_cloudvolume(output_destination, obj['chunk_shape_options'], obj['input_datasource'])
 
-    if obj['check_overlaps']:
+    if obj['overlaps']:
         for mod_index in get_all_mod_index((0,) * len(obj['patch_shape'])):
             assert valid_cloudvolume(default_overlap_name(output_destination, mod_index),
                                      obj['chunk_shape_options'], obj['input_datasource'])
-    print('Done cloudvolume!')
+    print('Checks complete!')
 
 
 @cloudvolume.command()
@@ -301,21 +292,22 @@ def check(obj):
 @click.option('--data_type', type=str, help="Data type of the output", default='float32')
 @click.option('--chunk_size', type=list, help="Underlying chunk size to use (ZYX order)",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
-@click.option('--volume_size', type=list, help="Total size of volume data (ZYX order)",
-              cls=PythonLiteralOption, callback=validate_literal, default=None)
-@click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data (ZYX order)",
+@click.option('--volume_size', type=list, help="Total size of volume data (ZYX order). Uses input datasource if not "
+              "specified", cls=PythonLiteralOption, callback=validate_literal, default=None)
+@click.option('--voxel_offset', type=list, help="Beginning offset coordinates of volume data (ZYX order). Uses input "
+              "datasource settings if not specified",
               cls=PythonLiteralOption, callback=validate_literal, default=None)
 @click.pass_obj
 def create(obj, **kwargs):
     """
-    Try to create output destinations(use --check_overlaps to create check_overlaps)
+    Try to create output destinations(use --overlaps to create overlaps)
     """
     print('Creating cloudvolume ...')
     obj.update(kwargs)
     datasource_names = []
     datasource_names.append(obj['output_destination'])
 
-    if obj['check_overlaps']:
+    if obj['overlaps']:
         datasource_names.extend([
             default_overlap_name(obj['output_destination'], mod_index)
             for mod_index in get_all_mod_index((0,) * len(obj['patch_shape']))
@@ -353,7 +345,7 @@ def create(obj, **kwargs):
     else:
         print('Datasources already created with suitable chunk sizes')
 
-    print('Done creating cloudvolume!')
+    print('Done creating cloudvolumes!')
 
 
 def prompt_for_chunk_size(chunk_shape_options):
