@@ -152,15 +152,25 @@ def inference(obj, inference_framework, blend_framework, model_path, checkpoint_
     assert valid_cloudvolume(
         chunk_datasource_manager.output_datasource_final,
         chunk_shape_options, chunk_datasource_manager.input_datasource
-    ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s, expecting: %s' % (
-        chunk_datasource_manager.output_datasource.layer_cloudpath, obj['patch_shape'], block.num_chunks,
+    ), '''
+    Bad configuration for %s. Underlying chunk size: %s, patch_shape: %s, num_patches: %s, overlap: %s, Expecting chunk
+    size: %s
+    ''' % (
+        chunk_datasource_manager.output_datasource_final.layer_cloudpath,
+        chunk_datasource_manager.output_datasource_final.underlying[::-1],
+        obj['patch_shape'], block.num_chunks,
         obj['overlap'], chunk_shape_options
     )
     assert valid_cloudvolume(
         chunk_datasource_manager.output_datasource,
         chunk_shape_options, chunk_datasource_manager.input_datasource
-    ), 'Bad configuration for %s with patch_shape: %s, num_patches: %s, overlap: %s, expecting: %s' % (
-        chunk_datasource_manager.output_datasource_final.layer_cloudpath, obj['patch_shape'], block.num_chunks,
+    ), '''
+    Bad configuration for %s. Underlying chunk size: %s, patch_shape: %s, num_patches: %s, overlap: %s, Expecting chunk
+    size: %s
+    ''' % (
+        chunk_datasource_manager.output_datasource.layer_cloudpath,
+        chunk_datasource_manager.output_datasource.underlying[::-1],
+        obj['patch_shape'], block.num_chunks,
         obj['overlap'], chunk_shape_options
     )
 
